@@ -428,6 +428,284 @@
     window.addEventListener('scroll', () => { if (current) { current = null; tip.style.display = 'none'; } }, true);
   }
 
+  // ── Licença ↔ S&S: traz o suporte junto da licença ───────────────────────
+  // Nos relatórios ESW da IBM a licença e o seu S&S NUNCA compartilham o mesmo
+  // PID (ex.: 5698DG3 "Data Gate for z/OS" ↔ 5698DGS "Data Gate for z/OS S&S"),
+  // então o casamento usa dois sinais: a família do produto (descrição sem os
+  // marcadores de S&S) e o par Effective Date + Config Value. Em "Tipo de
+  // Licença: Todos", o S&S casado é desenhado logo abaixo da sua licença, para
+  // mostrar que, além da licença, o cliente tem suporte para aquele produto.
+
+  const FAM_STOPWORDS = new Set(['for', 'and', 'the', 'of', 'ibm', 'zos', 'os', 'sw', 'v', 'ver', 'version', 'tiv', 'tivoli']);
+  const FAM_MIN = 0.6; // semelhança mínima de família para casar sem data/quantidade
+  const FAM_WEAK = 0.3; // piso de família mesmo quando data e quantidade batem
+
+  /** Quantidade do produto: soma dos Config Values das features. */
+  function configTotal(p) {
+    return (p.features || []).reduce((a, f) => a + (f.numericValue || 0), 0);
+  }
+
+  /** Tokens da família: tira marcadores de S&S, versões e palavras de ruído. */
+  function familyTokens(desc) {
+    return String(desc || '').toLowerCase()
+      .replace(/subscription\s*&\s*support/g, ' ')
+      .replace(/\bs\s*&\s*s\b/g, ' ')
+      .replace(/\b(sns|supp|support|subscription)\b/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(' ')
+      // Fora: letras soltas ("z" de z/VM, z/OS), que inflariam a semelhança
+      // ("z/VM" casaria com "OMEGAMON z/VM S&S"), e números de versão soltos
+      // ou no formato "v2"/"v13" — a licença traz a versão e o S&S não.
+      .filter((t) => t.length > 1 && !/^\d+$/.test(t) && !/^v\d+$/.test(t) && !FAM_STOPWORDS.has(t));
+  }
+
+  /**
+   * Peso de cada token pela raridade (IDF) no inventário do cliente.
+   * Sem isso, o "ruído" comum a muitos produtos ("db2", "solution", "pack")
+   * casaria "DB2 Perform Solution Pack" com "DB2 Utilities Sol Pack S&S" —
+   * produtos diferentes. O que distingue são justamente os tokens raros.
+   */
+  function buildTokenWeights(data) {
+    const df = new Map();
+    data.forEach((p) => {
+      new Set(familyTokens(p.description)).forEach((t) => df.set(t, (df.get(t) || 0) + 1));
+    });
+    const n = data.length || 1;
+    const w = new Map();
+    df.forEach((freq, t) => w.set(t, Math.log((n + 1) / (freq + 1))));
+    return w;
+  }
+
+  /**
+   * Compara duas famílias. Devolve { score, blocked }:
+   *  - score 0..1 ponderado por raridade (token igual ou prefixo do outro,
+   *    para abreviações como "Comparison"/"Comp", "Solution"/"Sol");
+   *  - blocked: um termo distintivo aparece de um lado e não do outro, o que
+   *    denuncia produtos diferentes ("DB2 *Utilities* Sol Pack" não é
+   *    "DB2 *Admin* Sol Pack", ainda que o resto da descrição coincida).
+   */
+  function compareFamily(a, b, weights, distinctiveMin) {
+    if (!a.length || !b.length) return { score: 0, blocked: true };
+    const w = (t) => {
+      const v = weights.get(t);
+      return v === undefined ? 1 : v;
+    };
+    const casa = (ta, tb) => ta === tb
+      || (ta.length >= 3 && tb.length >= 3 && (ta.startsWith(tb) || tb.startsWith(ta)));
+
+    const usedB = new Set();
+    const missA = [];
+    let matched = 0;
+    for (const ta of a) {
+      let hit = -1;
+      for (let i = 0; i < b.length; i++) {
+        if (!usedB.has(i) && casa(ta, b[i])) { hit = i; break; }
+      }
+      if (hit < 0) missA.push(ta);
+      else {
+        usedB.add(hit);
+        matched += Math.min(w(ta), w(b[hit])); // abreviação: fica com o menor peso
+      }
+    }
+    const missB = b.filter((_, i) => !usedB.has(i));
+
+    const sum = (list) => list.reduce((acc, t) => acc + w(t), 0);
+    const denom = Math.max(sum(a), sum(b));
+    // Descrições feitas só de termos comuns (peso ~0): cai na contagem simples.
+    const score = denom < 0.01 ? usedB.size / Math.max(a.length, b.length) : matched / denom;
+
+    // Dois vetos, que pegam erros de naturezas diferentes:
+    //  1) sobrou um termo raro de um lado só — "z/VM" não é "OMEGAMON z/VM";
+    //  2) sobrou termo dos DOIS lados — "IMS HP Unload" não é "DB2 HP Unload".
+    //     Aqui o peso não denuncia: "ims" e "db2" são comuns no inventário,
+    //     mas são exatamente o que separa um produto do outro.
+    const raroSobrando = missA.concat(missB).some((t) => w(t) >= distinctiveMin);
+    const sobraDosDoisLados = missA.length > 0 && missB.length > 0;
+    return { score, blocked: raroSobrando || sobraDosDoisLados };
+  }
+
+  /** Agrupa registros por PID, guardando tokens e chaves "data|quantidade". */
+  function groupByPid(list) {
+    const m = new Map();
+    list.forEach((p) => {
+      let e = m.get(p.productId);
+      if (!e) {
+        e = { pid: p.productId, recs: [], tokens: familyTokens(p.description), keys: new Set() };
+        m.set(p.productId, e);
+      }
+      e.recs.push(p);
+      const date = String(p.effDate || '').trim();
+      const cfg = configTotal(p);
+      if (date && date !== '-' && cfg > 0) e.keys.add(`${date}|${cfg}`);
+    });
+    return m;
+  }
+
+  /**
+   * Casa cada PID de S&S com o PID de licença mais provável.
+   * Devolve Map: pidDaLicenca -> [{ pid, recs, basis }].
+   */
+  function pairLicenceWithSS(data) {
+    const lic = groupByPid(data.filter((p) => p.category !== 'SS'));
+    const ss = groupByPid(data.filter((p) => p.category === 'SS'));
+    if (!lic.size || !ss.size) return new Map();
+    const weights = buildTokenWeights(data);
+    // Acima deste peso, o termo identifica o produto (aparece em poucos itens).
+    const distinctiveMin = 0.45 * Math.log(data.length + 1);
+
+    // Índices por token/prefixo e por data|quantidade: evita comparar todos
+    // contra todos (o inventário de um cliente grande passa de 6 mil linhas).
+    const byToken = new Map();
+    const byKey = new Map();
+    const push = (map, k, v) => {
+      if (!k) return;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(v);
+    };
+    lic.forEach((l) => {
+      const seen = new Set();
+      l.tokens.forEach((t) => {
+        [t, t.slice(0, 3)].forEach((ix) => {
+          if (seen.has(ix)) return;
+          seen.add(ix);
+          push(byToken, ix, l);
+        });
+      });
+      l.keys.forEach((k) => push(byKey, k, l));
+    });
+
+    const pairs = new Map();
+    ss.forEach((s) => {
+      const cand = new Set();
+      s.tokens.forEach((t) => {
+        (byToken.get(t) || []).forEach((l) => cand.add(l));
+        (byToken.get(t.slice(0, 3)) || []).forEach((l) => cand.add(l));
+      });
+      s.keys.forEach((k) => (byKey.get(k) || []).forEach((l) => cand.add(l)));
+
+      let best = null;
+      let ties = 0;
+      cand.forEach((l) => {
+        const fam = compareFamily(s.tokens, l.tokens, weights, distinctiveMin);
+        const sameKey = [...s.keys].some((k) => l.keys.has(k));
+        // Um termo distintivo sobrando de qualquer lado derruba o par, venha
+        // ele da família ou de data+quantidade: "IMS HALDB Toolkit" não é o
+        // mesmo produto que "IMS ETO Support" só porque a data e a quantidade
+        // coincidem. Aqui um par errado (dizer que há suporte quando não há)
+        // custa mais caro do que um par a menos.
+        if (fam.blocked) return;
+        const porFamilia = fam.score >= FAM_MIN;
+        const porDataQtd = sameKey && fam.score >= FAM_WEAK;
+        if (!porFamilia && !porDataQtd) return;
+        const score = fam.score * 2 + (sameKey ? 1 : 0);
+        if (!best || score > best.score) {
+          best = { lic: l, score, fam: fam.score, porFamilia, sameKey };
+          ties = 1;
+        } else if (score === best.score) {
+          ties++;
+        }
+      });
+      if (!best) return;
+      // Aceito só por data+quantidade e há empate: não dá para afirmar o par.
+      if (!best.porFamilia && ties > 1) return;
+
+      const basis = best.porFamilia
+        ? (best.sameKey ? 'família do produto, Eff. Date e Config Value' : 'família do produto')
+        : 'Eff. Date + Config Value';
+      push(pairs, best.lic.pid, { pid: s.pid, recs: s.recs, basis });
+    });
+    return pairs;
+  }
+
+  /** Desenha a linha do produto (e suas features) na visão hierárquica. */
+  function appendProductRows(tbody, prod, opts) {
+    opts = opts || {};
+    const paired = opts.attachedTo;
+    const row = document.createElement('tr');
+    row.className = `row-parent row-clickable${paired ? ' tfp-row-ss-pair' : ''}`;
+    row.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+    row.title = paired
+      ? `S&S da licença ${paired.licPid} — casado por ${paired.basis}`
+      : 'Clique para abrir detalhes, carta de anúncio e VUE do produto';
+
+    let categoria = prod.category === 'SS'
+      ? '<span class="badge badge-ss">S&S Suporte</span>'
+      : '<span class="badge badge-lic">Licença</span>';
+    if (opts.coverage) {
+      const pids = opts.coverage.map((c) => c.pid).join(', ');
+      const como = opts.coverage[0].basis;
+      categoria += `<span class="badge tfp-badge-cov" title="Este produto também tem S&S: ${escHtml(pids)} (casado por ${escHtml(como)})">+ S&amp;S</span>`;
+    }
+    if (paired) {
+      categoria += `<span class="tfp-pair-note">da licença ${escHtml(paired.licPid)}</span>`;
+    }
+
+    row.innerHTML =
+      `<td><strong>${escHtml(prod.productId)}</strong></td>` +
+      `<td>${escHtml(prod.swSerial)}</td>` +
+      `<td style="color:#0f62fe; font-weight:600;">${escHtml(prod.effDate || '-')}</td>` +
+      `<td>${escHtml(prod.description)}</td>` +
+      `<td>${categoria}</td>` +
+      `<td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${escHtml(prod.status || '-')}</span></td>` +
+      '<td>-</td><td>-</td>';
+    tbody.appendChild(row);
+
+    (prod.features || []).forEach((feat) => {
+      const fRow = document.createElement('tr');
+      fRow.className = `row-child row-clickable${paired ? ' tfp-row-ss-pair' : ''}`;
+      fRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+      fRow.innerHTML =
+        `<td style="padding-left: 28px;">↳ ${escHtml(feat.featureCode)}</td>` +
+        '<td>-</td><td>-</td>' +
+        `<td>${escHtml(feat.description)}</td>` +
+        '<td>-</td><td>-</td>' +
+        `<td>${escHtml(feat.metric)}</td>` +
+        `<td class="val-highlight">${escHtml(feat.configValue)}</td>`;
+      tbody.appendChild(fRow);
+    });
+  }
+
+  // Substitui a montagem da tabela hierárquica do painel.
+  const panelRenderHierarchical = window.renderHierarchicalTable;
+
+  window.renderHierarchicalTable = function (data) {
+    const tbody = document.querySelector('#tblHierarquica tbody');
+    const filtro = typeof currentCategoryFilter !== 'undefined' ? currentCategoryFilter : 'ALL';
+    // Só faz sentido juntar quando as duas categorias estão na tela.
+    if (!tbody || filtro !== 'ALL' || !Array.isArray(data) || !data.length) {
+      return panelRenderHierarchical.call(this, data);
+    }
+
+    let pairs;
+    try {
+      pairs = pairLicenceWithSS(data);
+    } catch (err) {
+      console.warn('Pareamento Licença/S&S falhou; mostrando a tabela original.', err);
+      return panelRenderHierarchical.call(this, data);
+    }
+    if (!pairs.size) return panelRenderHierarchical.call(this, data);
+
+    const attached = new Set();
+    pairs.forEach((list) => list.forEach((m) => attached.add(m.pid)));
+
+    tbody.innerHTML = '';
+    const done = new Set();
+    data.forEach((prod) => {
+      // S&S casado não aparece solto: entra logo abaixo da sua licença.
+      if (prod.category === 'SS' && attached.has(prod.productId)) return;
+
+      const coverage = pairs.get(prod.productId) || null;
+      appendProductRows(tbody, prod, { coverage });
+
+      if (coverage && !done.has(prod.productId)) {
+        done.add(prod.productId);
+        coverage.forEach((m) => m.recs.forEach((r) => {
+          appendProductRows(tbody, r, { attachedTo: { licPid: prod.productId, basis: m.basis } });
+        }));
+      }
+    });
+  };
+
   function init() {
     rebindUpload();
     setupStatusTooltips();

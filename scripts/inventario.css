@@ -320,6 +320,26 @@
     .badge-lic { background: var(--blue-light); color: #0043ce; }
     .badge-ss { background: var(--success-light); color: #0e6027; }
 
+    /* ── Par Licença ↔ S&S (visão hierárquica, filtro "Todos") ───────────── */
+    /* O S&S casado é desenhado logo abaixo da licença, com um filete verde
+       ligando as duas linhas. */
+    .badge.tfp-badge-cov {
+      background: var(--success-light);
+      color: #0e6027;
+      margin-left: 6px;
+      font-weight: 600;
+    }
+    tr.tfp-row-ss-pair > td { background: var(--success-light); }
+    tr.tfp-row-ss-pair > td:first-child { box-shadow: inset 3px 0 0 #24a148; }
+    tr.tfp-row-ss-pair.row-parent > td:first-child { padding-left: 22px; }
+    tr.tfp-row-ss-pair.row-child > td:first-child { padding-left: 40px; }
+    .tfp-pair-note {
+      margin-left: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
     /* ── Modal de produto ────────────────────────────────────────────────── */
     /* Começa oculto; o JS troca para display:flex ao abrir o produto. */
     .modal-overlay {
