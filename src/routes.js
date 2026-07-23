@@ -517,6 +517,14 @@ router.get('/clients/:id/dashboard', asyncHandler(async (req, res) => {
       acc12,
       acc12Months,
       groupBreakdown: breakdownOf(r),
+      // Detalhamento do mês por máquina e por LPAR (para os modos do gráfico).
+      machineBreakdown: (r.machines || []).map((m) => ({
+        id: m.identifier || m.serialNumber || '—',
+        msu: m.msuConsumed || 0,
+      })),
+      lparBreakdown: (r.lpars || [])
+        .filter((l) => l.msuConsumed != null)
+        .map((l) => ({ key: `${l.machine || ''}|${l.name}`, name: l.name, machine: l.machine || null, msu: l.msuConsumed })),
       lparCount: r.lpars ? r.lpars.filter((l) => l.msuConsumed != null).length : 0,
       // Base zero (mês parado/dados parciais) não gera Infinity/NaN — fica null como "sem base de comparação".
       momPct: prevMonth && prevMonth.totalMsuConsumed > 0

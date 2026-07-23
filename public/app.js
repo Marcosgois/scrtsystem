@@ -41,6 +41,11 @@ const GROUP_COLORS = ['#0f62fe', '#b45309', '#6929c4', '#198038', '#9f1853'];
 const COLOR_UNGROUPED = '#8d8d8d';
 const COLOR_NO_DETAIL = '#c6c6c6';
 const COLOR_OVERFLOW = '#4d5358';
+// Paleta categórica IBM Carbon (14 tons) — para empilhados por máquina/LPAR.
+const CARBON_CAT = [
+  '#6929c4', '#1192e8', '#005d5d', '#9f1853', '#fa4d56', '#570408', '#198038',
+  '#002d9c', '#ee538b', '#b28600', '#009d9a', '#012749', '#8a3800', '#a56eff',
+];
 
 /* ── Ordenação das tabelas ──────────────────────────────
    Cada tabela declara data-sort-table; cada <th> ordenável, data-sort="<campo>".
@@ -534,11 +539,14 @@ function renderChart(series, client) {
   const baseline = client.monthlyBaselineMsu || null;
   const isAcc = state.chartMode === 'acc12';
   const isGroups = state.chartMode === 'groups';
+  const isMachines = state.chartMode === 'machines';
+  const isLpars = state.chartMode === 'lpars';
+  const isStacked = isGroups || isMachines || isLpars;
   const showBaseline = $('toggle-baseline').checked && baseline;
   const selIdx = series.findIndex((s) => s.periodKey === state.selectedPeriodKey);
 
   // Tendência só faz sentido no modo mensal.
-  $('toggle-trend-wrap').classList.toggle('hidden', isAcc || isGroups);
+  $('toggle-trend-wrap').classList.toggle('hidden', isAcc || isStacked);
 
   // Mês selecionado ganha a versão escurecida da cor.
   const perBarColor = (color) => series.map((_, i) => (i === selIdx ? darken(color) : color));
@@ -621,6 +629,71 @@ function renderChart(series, client) {
         pointHoverRadius: 0,
       });
     }
+  } else if (isMachines || isLpars) {
+    const field = isMachines ? 'machineBreakdown' : 'lparBreakdown';
+    const keyOf = isMachines ? (i) => i.id : (i) => i.key;
+    const labelOf = isMachines ? (i) => i.id : (i) => i.name;
+    const TOP_N = 8;
+
+    // Ranking das entidades pelo total consumido no período visível.
+    const totalByKey = new Map();
+    const labelByKey = new Map();
+    for (const s of series) {
+      for (const it of (s[field] || [])) {
+        const k = keyOf(it);
+        totalByKey.set(k, (totalByKey.get(k) || 0) + (it.msu || 0));
+        if (!labelByKey.has(k)) labelByKey.set(k, labelOf(it));
+      }
+    }
+    const ranked = [...totalByKey.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    const shownKeys = ranked.slice(0, TOP_N);
+    const overflowKeys = new Set(ranked.slice(TOP_N));
+
+    const msuOf = (s, key) => {
+      const it = (s[field] || []).find((x) => keyOf(x) === key);
+      return it ? it.msu : 0;
+    };
+    const stackedBar = (label, data, color) => ({
+      type: 'bar',
+      label,
+      stack: 'msu',
+      data,
+      backgroundColor: perBarColor(color),
+      borderColor: '#ffffff',
+      borderWidth: 1,
+      maxBarThickness: 46,
+    });
+
+    shownKeys.forEach((k, i) => {
+      datasets.push(stackedBar(labelByKey.get(k), series.map((s) => msuOf(s, k)), CARBON_CAT[i % CARBON_CAT.length]));
+    });
+    if (overflowKeys.size) {
+      datasets.push(stackedBar(
+        `Outras (${overflowKeys.size})`,
+        series.map((s) => (s[field] || []).reduce((a, it) => a + (overflowKeys.has(keyOf(it)) ? (it.msu || 0) : 0), 0)),
+        COLOR_OVERFLOW
+      ));
+    }
+    // Meses sem detalhe da entidade (ex.: sem seção de LPAR) — total em cinza.
+    const semDetalhe = series.map((s) => {
+      const soma = (s[field] || []).reduce((a, it) => a + (it.msu || 0), 0);
+      return soma > 0 ? 0 : s.totalMsuConsumed;
+    });
+    if (semDetalhe.some((v) => v > 0)) {
+      datasets.push(stackedBar(isLpars ? 'Sem detalhe por LPAR' : 'Sem detalhe por máquina', semDetalhe, COLOR_NO_DETAIL));
+    }
+    if (showBaseline) {
+      datasets.push({
+        type: 'line',
+        label: `Baseline mensal (${fmtM(baseline)} MSU)`,
+        data: labels.map(() => baseline),
+        borderColor: '#da1e28',
+        borderWidth: 2,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        pointHoverRadius: 0,
+      });
+    }
   } else {
     const values = series.map((s) => s.totalMsuConsumed);
     const trend = trendLine(values);
@@ -690,23 +763,23 @@ function renderChart(series, client) {
         tooltip: {
           backgroundColor: '#1c1c1c',
           padding: 12,
-          filter: (item) => !isGroups || item.dataset.type !== 'bar' || item.parsed.y > 0,
+          filter: (item) => !isStacked || item.dataset.type !== 'bar' || item.parsed.y > 0,
           callbacks: {
             label: (c) => ` ${c.dataset.label}: ${fmt(c.parsed.y)} MSU`,
             afterBody: (items) => {
               if (!items.length) return '';
               const s = series[items[0].dataIndex];
               if (isAcc) return s.acc12Months < 12 ? `soma de ${s.acc12Months} mês(es) disponíveis` : '';
-              if (isGroups) return `Total do mês: ${fmt(s.totalMsuConsumed)} MSU`;
+              if (isStacked) return `Total do mês: ${fmt(s.totalMsuConsumed)} MSU`;
               return '';
             },
           },
         },
       },
       scales: {
-        x: { stacked: isGroups, grid: { display: false }, ticks: { font: { size: 12 } } },
+        x: { stacked: isStacked, grid: { display: false }, ticks: { font: { size: 12 } } },
         y: {
-          stacked: isGroups,
+          stacked: isStacked,
           beginAtZero: !isAcc,
           grid: { color: '#eef1f5' },
           ticks: { font: { size: 12 }, callback: (v) => fmtM(v) },
