@@ -291,8 +291,7 @@ function triggerUpload() {
 }
 
 $('file-input').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (file) uploadScrt(file);
+  if (e.target.files.length) uploadScrtFiles(e.target.files);
   e.target.value = '';
 });
 
@@ -325,18 +324,42 @@ document.addEventListener('drop', (e) => {
   dragDepth = 0;
   $('drop-overlay').classList.add('hidden');
   if (!state.clientId) { toast('Cadastre um cliente antes de subir o SCRT.', 'error'); return; }
-  const file = e.dataTransfer.files[0];
-  if (file) uploadScrt(file);
+  if (e.dataTransfer.files.length) uploadScrtFiles(e.dataTransfer.files);
 });
 
-async function uploadScrt(file) {
-  const client = currentClient();
-  const clientName = client ? client.name : 'cliente selecionado';
-  const form = new FormData();
-  form.append('file', file);
-  toast(`Processando "${file.name}"…`);
-  try {
-    const result = await api(`/clients/${state.clientId}/reports`, { method: 'POST', body: form });
+/** Sobe um ou vários SCRTs em sequência e mostra um resumo consolidado. */
+async function uploadScrtFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  if (!state.clientId) { toast('Cadastre um cliente antes de subir o SCRT.', 'error'); return; }
+
+  const clientName = (currentClient() || {}).name || 'cliente selecionado';
+  toast(files.length === 1 ? `Processando "${files[0].name}"…` : `Processando ${files.length} arquivos…`);
+
+  const results = [];
+  for (const file of files) {
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const result = await api(`/clients/${state.clientId}/reports`, { method: 'POST', body: form });
+      results.push({ file: file.name, ok: true, result });
+    } catch (err) {
+      results.push({ file: file.name, ok: false, error: err.message });
+    }
+  }
+
+  renderUploadResult(results, clientName);
+  openModal('modal-upload-result');
+  await loadClients();
+}
+
+function renderUploadResult(results, clientName) {
+  const okCount = results.filter((r) => r.ok).length;
+  $('modal-upload-title').textContent = results.length === 1 ? 'SCRT processado' : `${results.length} arquivos processados`;
+
+  // Um único arquivo com sucesso: visão detalhada (número em destaque).
+  if (results.length === 1 && results[0].ok) {
+    const { result } = results[0];
     const r = result.report;
     $('upload-result-body').innerHTML = `
       <div class="upload-summary">
@@ -350,11 +373,45 @@ async function uploadScrt(file) {
           ? `<ul>${result.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>`
           : ''}
       </div>`;
-    openModal('modal-upload-result');
-    await loadClients();
-  } catch (err) {
-    toast(err.message, 'error');
+    return;
   }
+
+  // Lote: tabela com uma linha por arquivo.
+  const rows = results.map((r) => {
+    if (!r.ok) {
+      return `<tr>
+        <td>${esc(r.file)}</td><td>–</td><td class="num">–</td>
+        <td><span class="tag tag-alert">erro</span> <span class="muted small">${esc(r.error)}</span></td></tr>`;
+    }
+    const rep = r.result.report;
+    const conflict = r.result.conflicts && r.result.conflicts.length;
+    const statusTag = conflict
+      ? '<span class="tag tag-alert">conflito</span>'
+      : r.result.replaced
+        ? '<span class="tag tag-neutral">substituído</span>'
+        : '<span class="tag tag-ok">salvo</span>';
+    const abas = r.result.sheetCount > 1 ? ` <span class="muted small">(${r.result.sheetCount} abas)</span>` : '';
+    return `<tr>
+      <td>${esc(r.file)}${abas}</td>
+      <td>${esc(rep.periodLabel)}</td>
+      <td class="num">${fmt(rep.totalMsuConsumed)}</td>
+      <td>${statusTag}</td></tr>`;
+  }).join('');
+
+  // Avisos e conflitos agregados (mostra uma vez cada).
+  const avisos = [...new Set(results.filter((r) => r.ok).flatMap((r) => r.result.warnings || []))];
+
+  $('upload-result-body').innerHTML = `
+    <div class="upload-summary">
+      <div><strong>${okCount} de ${results.length}</strong> arquivo(s) processado(s) · cliente <strong>${esc(clientName)}</strong></div>
+      <div class="table-responsive" style="max-height: 340px; margin-top: 10px;">
+        <table>
+          <thead><tr><th>Arquivo</th><th>Mês</th><th class="num">Consumo (MSU)</th><th>Status</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${avisos.length ? `<ul>${avisos.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+    </div>`;
 }
 
 /* ── Dashboard ──────────────────────────────────────── */

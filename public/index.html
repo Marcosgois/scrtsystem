@@ -64,7 +64,7 @@
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5L14 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 3v4.5h4.5M8.5 12h7M8.5 16h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <h2>Nenhum SCRT enviado para <span id="empty-reports-client"></span></h2>
-    <p>Arraste o SCRT (.csv ou planilha .xlsx com uma aba por máquina) para esta tela ou clique em "Subir SCRT".</p>
+    <p>Arraste um ou vários SCRTs (.csv ou planilha .xlsx com uma aba por máquina) para esta tela ou clique em "Subir SCRT".</p>
     <button class="btn btn-primary" id="btn-empty-upload">Subir SCRT</button>
   </section>
 
@@ -307,7 +307,7 @@
     <div class="drop-icon">
       <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <h2>Solte o arquivo SCRT aqui</h2>
+    <h2>Solte o(s) arquivo(s) SCRT aqui</h2>
     <p id="drop-client-hint"></p>
   </div>
 </div>
@@ -467,7 +467,7 @@
   </div>
 </div>
 
-<input type="file" id="file-input" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+<input type="file" id="file-input" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
 
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
