@@ -20,9 +20,12 @@ app.use(express.json({ limit: '25mb' }));
 app.use('/api', apiRoutes);
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rota amigável do módulo de Inventário (além de /inventario.html servido pelo estático).
+// Rotas amigáveis dos módulos (além dos .html servidos pelo estático).
 app.get('/inventario', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'inventario.html'));
+});
+app.get('/mlc', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'mlc.html'));
 });
 
 // Erros da API respondem JSON; erros de entrada do cliente viram 4xx, não 500.

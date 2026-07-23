@@ -4,8 +4,9 @@ const express = require('express');
 const multer = require('multer');
 const mongoose = require('mongoose');
 const { Client, ScrtReport, Inventory } = require('./models');
-const { parseScrt } = require('./scrtParser');
+const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
+const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
 
 const router = express.Router();
 const upload = multer({
@@ -276,13 +277,35 @@ router.post('/clients/:id/reports', upload.single('file'), asyncHandler(async (r
   if (!req.file) return res.status(400).json({ error: 'Envie o arquivo SCRT (.csv) no campo "file".' });
 
   let parsed;
+  let sheetCount = 0;
   try {
-    parsed = parseScrt(req.file.buffer);
+    if (isXlsx(req.file.buffer)) {
+      // Planilha: cada aba é uma máquina; combina num multiplex único.
+      const sheets = readXlsxSheets(req.file.buffer);
+      const parsedSheets = [];
+      for (const sheet of sheets) {
+        try {
+          parsedSheets.push(parseScrt(Buffer.from(rowsToCsv(sheet.rows), 'utf8')));
+        } catch (e) {
+          // Aba que não é um SCRT (resumo, notas etc.) — ignora.
+        }
+      }
+      if (!parsedSheets.length) {
+        return res.status(422).json({ error: 'Nenhuma aba da planilha é um SCRT válido.' });
+      }
+      parsed = combineReports(parsedSheets);
+      sheetCount = parsedSheets.length;
+    } else {
+      parsed = parseScrt(req.file.buffer);
+    }
   } catch (err) {
     return res.status(422).json({ error: `Falha ao interpretar o SCRT: ${err.message}` });
   }
 
   const warnings = [...parsed.warnings];
+  if (sheetCount > 1) {
+    warnings.push(`Planilha com ${sheetCount} abas (máquinas) combinadas num multiplex de ${parsed.machines.length} máquina(s).`);
+  }
   const clientNorm = normalizeName(client.name);
   const customerNorm = normalizeName(parsed.customerName);
   if (clientNorm && customerNorm && !customerNorm.includes(clientNorm) && !clientNorm.includes(customerNorm)) {
@@ -357,6 +380,7 @@ router.post('/clients/:id/reports', upload.single('file'), asyncHandler(async (r
   res.status(existing ? 200 : 201).json({
     replaced: Boolean(existing),
     merged: doMes.length > 1,
+    sheetCount, // abas combinadas (planilha .xlsx); 0 para CSV
     conflicts,
     report,
     month: {

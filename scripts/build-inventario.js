@@ -36,6 +36,7 @@ function findSource() {
 const ICONS = {
   chart: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   box: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  trend: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   close: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   building: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 20h18M4 20V9.5L12 4l8 5.5V20M9 20v-5.5h6V20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
@@ -48,7 +49,8 @@ const TOPBAR = `
         <div class="tfp-brand-mark">TFP</div>
         <div><h1>TFPSystem</h1></div>
         <nav class="tfp-module-nav" aria-label="Módulos">
-          <a href="/">${ICONS.chart}Consumo (SCRT)</a>
+          <a href="/">${ICONS.chart}Consumo zOTC (SCRT)</a>
+          <a href="/mlc">${ICONS.trend}Consumo MLC (SCRT)</a>
           <a href="/inventario" class="active" aria-current="page">${ICONS.box}Inventário</a>
         </nav>
       </div>

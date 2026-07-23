@@ -344,6 +344,7 @@ async function uploadScrt(file) {
         <div>Período: <strong>${esc(r.periodLabel)}</strong> (${esc(r.periodDays ?? '?')} dias)</div>
         <div class="big">${fmt(r.totalMsuConsumed)} MSU</div>
         <div>Consumo mensal = soma de "Machine MSU Consumed" de <strong>${r.machines.length}</strong> máquina(s)</div>
+        ${result.sheetCount > 1 ? `<div style="margin-top:6px;"><span class="tag tag-history">planilha: ${result.sheetCount} abas combinadas</span></div>` : ''}
         ${result.replaced ? '<div style="margin-top:6px;"><span class="tag tag-neutral">Relatório do mês substituído</span></div>' : ''}
         ${result.warnings && result.warnings.length
           ? `<ul>${result.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>`
@@ -679,7 +680,7 @@ async function selectMonth(periodKey) {
   state.selectedPeriodKey = periodKey;
   renderKpis(state.dashboard.series, state.dashboard.client);
   renderChart(state.dashboard.series, state.dashboard.client);
-  document.querySelectorAll('#history-tbody tr[data-report]').forEach((tr) =>
+  document.querySelectorAll('#history-tbody tr[data-period]').forEach((tr) =>
     tr.classList.toggle('selected', tr.dataset.period === periodKey));
   try {
     await loadMonthDetail(periodKey);
@@ -1270,6 +1271,11 @@ function renderForecastYears(f) {
   }).join('');
 }
 
+$('btn-open-forecast').addEventListener('click', () => {
+  openModal('modal-forecast');
+  // Redesenha no tamanho atual do modal se já houver projeção (canvas precisa estar visível).
+  if (state.forecast) requestAnimationFrame(() => renderForecast());
+});
 $('btn-forecast').addEventListener('click', runForecast);
 $('forecast-method').addEventListener('change', () => { if (state.forecast) runForecast(); });
 $('forecast-years').addEventListener('change', () => { if (state.forecast) runForecast(); });

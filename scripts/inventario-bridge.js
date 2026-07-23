@@ -313,8 +313,124 @@
     });
   }
 
+  // ── Tooltip dos status de inventário (iERP S/4HANA) ──────────────────────
+  // Passar o mouse sobre o código de status (ECUS, AVLB, INAC, ECUS SLBP…)
+  // mostra o significado. Definições internas do iERP.
+
+  const STATUS_INFO = {
+    ECUS: { t: 'ECUS', d: 'Produto ativo.' },
+    AVLB: { t: 'AVLB', d: 'Produto reservado (booked), mas ainda não entregue.' },
+    INAC: { t: 'INAC', d: 'Produto inativo (foi removido).' },
+    ESTO: { t: 'ESTO', d: 'Relacionado a remoção pendente — ver "ECUS ESTO YREM".' },
+    YREM: { t: 'YREM', d: 'Relacionado a remoção pendente — ver "ECUS ESTO YREM".' },
+    QUBP: {
+      t: 'QUBP',
+      d: 'Há uma cotação não processada no histórico da licença. Sem efeito negativo — a Techline ainda pode configurar outra cotação ou bump. Quando a cotação é processada ou rejeitada, o QUBP some. (Pode haver restrição para criar configuração de bump no Danube.)',
+    },
+    SLBP: {
+      t: 'SLBP',
+      d: 'Há um pedido incompleto no histórico da licença, impedindo o bump (na GUI ou no CFSW/Techline). "Incompleto" pode significar:',
+      bullets: [
+        'O pedido está realmente incompleto — falta alguma informação obrigatória (ex.: erro de preço, nº de segmento de lucro). Some quando o pedido é completado.',
+        'Um pedido com entrega ainda não foi totalmente entregue. Some quando o status muda para totalmente entregue.',
+        'A licença pode ter ECUS SLBP sem nenhuma das condições acima — o status pode ter vindo copiado do CBS. Corrige-se na IQ02 com acesso de super-usuário.',
+      ],
+    },
+    'ECUS ESTO YREM': { t: 'ECUS ESTO YREM', d: 'Produto ativo, mas aguardando remoção.' },
+    'AVLB INAC': { t: 'AVLB INAC', d: 'Produto não foi entregue e foi rejeitado.' },
+    'ECUS QUBP': null, // usa a definição de QUBP
+    'ECUS SLBP': null, // usa a definição de SLBP
+    'ECUS INAC': {
+      t: 'ECUS INAC',
+      d: 'Produto ativo que foi rejeitado — está errado. Corrigir no iERP S/4HANA criando um pedido de remoção ou excluindo a rejeição.',
+    },
+  };
+  STATUS_INFO['ECUS QUBP'] = { t: 'ECUS QUBP', d: STATUS_INFO.QUBP.d };
+  STATUS_INFO['ECUS SLBP'] = { t: 'ECUS SLBP', d: STATUS_INFO.SLBP.d, bullets: STATUS_INFO.SLBP.bullets };
+
+  const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  /** Descreve um texto de status (simples, composto, ou lista separada por vírgula). */
+  function describeStatus(text) {
+    const norm = String(text || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    if (!norm || norm === '-') return null;
+    if (STATUS_INFO[norm]) return [STATUS_INFO[norm]];
+
+    // Consolidado: vários status separados por vírgula ("ECUS, AVLB").
+    if (norm.includes(',')) {
+      const parts = norm.split(',').map((p) => p.trim()).filter(Boolean);
+      const infos = parts.map((p) => STATUS_INFO[p] || tokensInfo(p)).flat().filter(Boolean);
+      return infos.length ? infos : null;
+    }
+    return tokensInfo(norm);
+  }
+
+  /** Combinação desconhecida: explica cada código conhecido que aparece. */
+  function tokensInfo(norm) {
+    const infos = norm.split(' ').map((tok) => STATUS_INFO[tok]).filter(Boolean);
+    return infos.length ? infos : null;
+  }
+
+  function statusTooltipHtml(infos) {
+    return infos.map((i) => {
+      const bullets = i.bullets ? `<ul>${i.bullets.map((b) => `<li>${escHtml(b)}</li>`).join('')}</ul>` : '';
+      return `<div class="tfp-tip-item"><span class="tfp-tip-code">${escHtml(i.t)}</span>${escHtml(i.d)}${bullets}</div>`;
+    }).join('');
+  }
+
+  function setupStatusTooltips() {
+    if (document.getElementById('tfp-status-tip')) return;
+    const tip = document.createElement('div');
+    tip.id = 'tfp-status-tip';
+    tip.className = 'tfp-status-tip';
+    tip.style.display = 'none';
+    document.body.appendChild(tip);
+
+    let current = null;
+
+    const position = (badge) => {
+      const r = badge.getBoundingClientRect();
+      tip.style.display = 'block';
+      const tr = tip.getBoundingClientRect();
+      let left = r.left + window.scrollX;
+      let top = r.bottom + window.scrollY + 6;
+      // Mantém dentro da tela (horizontal) e mostra acima se não couber abaixo.
+      const maxLeft = window.scrollX + document.documentElement.clientWidth - tr.width - 10;
+      if (left > maxLeft) left = Math.max(window.scrollX + 10, maxLeft);
+      if (r.bottom + tr.height + 12 > document.documentElement.clientHeight) {
+        top = r.top + window.scrollY - tr.height - 6;
+      }
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+    };
+
+    const statusBadge = (el) => {
+      const badge = el && el.closest && el.closest('.badge');
+      if (!badge || badge.classList.contains('badge-lic') || badge.classList.contains('badge-ss')) return null;
+      return describeStatus(badge.textContent) ? badge : null;
+    };
+
+    document.addEventListener('mouseover', (e) => {
+      const badge = statusBadge(e.target);
+      if (!badge || badge === current) return;
+      current = badge;
+      tip.innerHTML = statusTooltipHtml(describeStatus(badge.textContent));
+      position(badge);
+    });
+    document.addEventListener('mouseout', (e) => {
+      if (!current) return;
+      const to = e.relatedTarget;
+      if (to && current.contains(to)) return;
+      current = null;
+      tip.style.display = 'none';
+    });
+    // Fecha ao rolar (a posição fixa ficaria deslocada).
+    window.addEventListener('scroll', () => { if (current) { current = null; tip.style.display = 'none'; } }, true);
+  }
+
   function init() {
     rebindUpload();
+    setupStatusTooltips();
     window.populateCustomerDropdown();
   }
 

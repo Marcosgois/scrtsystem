@@ -891,3 +891,24 @@ th[data-sort].sorted { color: var(--primary); background: var(--primary-light); 
 }
 
 .tag-forecast { background: #fff2e8; color: #8a3800; }
+
+/* ── Modal do capacity planning ──────────────────────────────────────────── */
+.modal.modal-forecast {
+  max-width: 940px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-forecast-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.modal-forecast .forecast-controls { margin: 14px 0 4px; }
+.modal-forecast-scroll {
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}

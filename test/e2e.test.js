@@ -16,6 +16,7 @@ const BRB_JAN_SCN = brbFile('SCRT - Janeiro 2026 - SCN.csv');
 const BRB_JAN_SIG = brbFile('SCRT - Janeiro 2026 - SIG.csv');
 const BRB_FEV_SCN = brbFile('SCRT - Fevereiro 2026 - SCN.csv');
 const BRB_FEV_SIG = brbFile('SCRT - Fevereiro 2026 - SIG.csv');
+const ITAU_XLSX = path.join(__dirname, '..', 'SCRT', 'ITAU', 'SCRT TFP Jan-26.xlsx');
 const PORT = 3999;
 const BASE = `http://127.0.0.1:${PORT}/api`;
 
@@ -345,6 +346,40 @@ async function main() {
         r.body.totalDelta);
       check('merge: comparativo enxerga as 2 máquinas',
         r.body.machines.length === 2, r.body.machines.length);
+    }
+
+    // ── Upload de SCRT em planilha .xlsx (ITAÚ: aba = máquina) ────────────
+    if (fs.existsSync(ITAU_XLSX)) {
+      const itauId = (await api('/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'BANCO ITAU' }),
+      })).body._id;
+
+      const form = new FormData();
+      form.append('file', new Blob([fs.readFileSync(ITAU_XLSX)]), 'SCRT TFP Jan-26.xlsx');
+      r = await api(`/clients/${itauId}/reports`, { method: 'POST', body: form });
+      check('xlsx: upload combina as 12 abas num multiplex -> 14.194.272 MSU',
+        r.status === 201 && r.body.report.totalMsuConsumed === 14194272 && r.body.report.machines.length === 12,
+        { status: r.status, total: r.body.report && r.body.report.totalMsuConsumed, maq: r.body.report && r.body.report.machines.length });
+      check('xlsx: informa quantas abas foram combinadas', r.body.sheetCount === 12, r.body.sheetCount);
+      check('xlsx: uma única origem (um relatório multiplex, não 12)', r.body.month.sourceCount === 1, r.body.month.sourceCount);
+
+      r = await api(`/clients/${itauId}/months/2026-01`);
+      check('xlsx: mês tem as 12 máquinas e LPARs somando o total',
+        r.status === 200 && r.body.machines.length === 12 &&
+        r.body.lpars.filter((l) => l.msuConsumed != null).reduce((a, l) => a + l.msuConsumed, 0) === 14194272,
+        { maq: r.body.machines && r.body.machines.length });
+
+      // Reenviar a mesma planilha substitui (mesmas 12 máquinas = mesma origem)
+      const form2 = new FormData();
+      form2.append('file', new Blob([fs.readFileSync(ITAU_XLSX)]), 'SCRT TFP Jan-26.xlsx');
+      r = await api(`/clients/${itauId}/reports`, { method: 'POST', body: form2 });
+      check('xlsx: reenvio substitui, mantém 1 origem e o total',
+        r.status === 200 && r.body.replaced === true && r.body.month.sourceCount === 1 &&
+        r.body.month.totalMsuConsumed === 14194272);
+    } else {
+      console.log('  (planilha .xlsx do ITAÚ ausente — teste de xlsx pulado)');
     }
 
     // ── Capacity planning (projeção) ──────────────────────────────────────

@@ -409,4 +409,52 @@ function parseScrt(buffer) {
   };
 }
 
-module.exports = { parseScrt, parseCsvLine, parseReportingPeriod, decodeBuffer, parseLparSections };
+/**
+ * Combina vários relatórios do MESMO mês/cliente num único multiplex.
+ * Usado quando um SCRT vem como planilha .xlsx com uma aba por máquina —
+ * cada aba é um relatório de máquina única que, juntos, formam o multiplex.
+ * @param {Array} list resultados de parseScrt (um por aba)
+ * @returns {object} um relatório com todas as máquinas, LPARs e containers
+ */
+function combineReports(list) {
+  if (!list.length) throw new Error('Nada para combinar.');
+  if (list.length === 1) return list[0];
+
+  const first = list[0];
+  const divergente = list.find((p) => p.periodKey !== first.periodKey);
+  if (divergente) {
+    throw new Error(`As abas têm períodos diferentes (${first.periodLabel} e ${divergente.periodLabel}).`);
+  }
+
+  const machines = [];
+  const lpars = [];
+  const containers = [];
+  const warnings = [];
+  let totalMsuConsumed = 0;
+  let containersTotalMsu = 0;
+  let hasContainers = false;
+  let processorsInMultiplex = 0;
+
+  for (const p of list) {
+    machines.push(...p.machines);
+    lpars.push(...p.lpars);
+    containers.push(...p.containers);
+    warnings.push(...p.warnings);
+    totalMsuConsumed += p.totalMsuConsumed;
+    if (p.containersTotalMsu != null) { hasContainers = true; containersTotalMsu += p.containersTotalMsu; }
+    processorsInMultiplex += p.processorsInMultiplex || 0;
+  }
+
+  return {
+    ...first,
+    processorsInMultiplex: processorsInMultiplex || first.processorsInMultiplex,
+    machines,
+    lpars,
+    containers,
+    totalMsuConsumed,
+    containersTotalMsu: hasContainers ? containersTotalMsu : null,
+    warnings,
+  };
+}
+
+module.exports = { parseScrt, parseCsvLine, parseReportingPeriod, decodeBuffer, parseLparSections, combineReports };

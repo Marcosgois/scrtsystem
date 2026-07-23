@@ -5,12 +5,12 @@
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
-const { parseScrt, parseCsvLine, parseReportingPeriod } = require('../src/scrtParser');
+const { parseScrt, parseCsvLine, parseReportingPeriod, combineReports } = require('../src/scrtParser');
 
 const SAMPLE = path.join(__dirname, '..', 'SCRT', 'CAIXA', '#JUN2026.csv');
 const BB_SAMPLE = path.join(__dirname, '..', 'SCRT', 'BB', 'PR3001-MES02.csv');
 const BRB_SAMPLE = path.join(__dirname, '..', 'SCRT', 'BRB', 'SCRT - Janeiro 2026 - SIG.csv');
-const ITAU_SAMPLE = path.join(__dirname, '..', 'SCRT', 'ITAU', 'SCRT TFP Jan-26.csv');
+const ITAU_XLSX = path.join(__dirname, '..', 'SCRT', 'ITAU', 'SCRT TFP Jan-26.xlsx');
 
 let failures = 0;
 function check(name, fn) {
@@ -160,25 +160,44 @@ check('SCRT - Janeiro 2026 - SIG.csv: campos planos + Reporting Period na C5', (
   assert.strictEqual(usage.reduce((a, l) => a + l.msuConsumed, 0), 520762);
 });
 
-console.log('parseScrt (separador ";" e aspas simples — arquivo real ITAÚ):');
-check('SCRT TFP Jan-26.csv: delimitado por ";" com valores entre aspas simples', () => {
-  const p = parseScrt(fs.readFileSync(ITAU_SAMPLE));
+console.log('parseScrt (separador ";" e aspas simples — formato ITAÚ):');
+check('detecta separador ";" e remove aspas simples que envolvem o valor', () => {
+  // Formato exportado do ITAÚ: delimitado por ";", valores entre aspas simples,
+  // colunas vazias à direita e vírgula dentro do período (não deve confundir).
+  const itau = [
+    "==B5========= SCRT SUB-CAPACITY MVM REPORT - IBM Corp ====;;;;",
+    "Customer Name;'BANCO ITAU SA';;;;",
+    "Machine Serial Number;82-C9D48;;;;",
+    "Machine Type and Model;9175-717;Machine Model change observed;;;",
+    "Machine MSU Consumed;554392;;;;",
+    "==C5====;;;;",
+    "Reporting Period;'2 Jan, 2026 - 1 Feb, 2026 inclusive (31 days)';;;;",
+    "",
+  ].join('\r\n');
+  const p = parseScrt(Buffer.from('﻿' + itau, 'utf8')); // com BOM, como o arquivo real
   assert.strictEqual(p.customerName, 'BANCO ITAU SA'); // aspas simples removidas
-  assert.strictEqual(p.periodKey, '2026-01');
+  assert.strictEqual(p.periodKey, '2026-01'); // vírgula do período não quebra
   assert.strictEqual(p.reportingPeriod.days, 31);
   assert.strictEqual(p.machines.length, 1);
   assert.strictEqual(p.machines[0].identifier, '82-C9D48');
   assert.strictEqual(p.machines[0].typeModel, '9175-717');
   assert.strictEqual(p.totalMsuConsumed, 554392);
-  assert.ok(p.submitter.email && p.submitter.email.includes('@')); // e-mail real omitido do repo
-  const usage = p.lpars.filter((l) => l.msuConsumed != null);
-  assert.ok(usage.length >= 4, `esperava LPARs, veio ${usage.length}`);
-  assert.strictEqual(usage.reduce((a, l) => a + l.msuConsumed, 0), 554392);
 });
-check('detecção de separador não confunde vírgula dentro do Reporting Period', () => {
-  // O período "2 Jan, 2026 - 1 Feb, 2026" tem vírgulas, mas o arquivo é ";".
-  const p = parseScrt(fs.readFileSync(ITAU_SAMPLE));
-  assert.strictEqual(p.periodLabel, 'Jan/2026');
+
+console.log('parseScrt (planilha .xlsx com aba por máquina — arquivo real ITAÚ):');
+check('SCRT TFP Jan-26.xlsx: 12 abas combinadas somam 14.194.272 MSU', () => {
+  if (!fs.existsSync(ITAU_XLSX)) { console.log('    (arquivo ausente — pulado)'); return; }
+  const { readXlsxSheets, rowsToCsv } = require('../src/xlsx');
+  const sheets = readXlsxSheets(fs.readFileSync(ITAU_XLSX));
+  assert.strictEqual(sheets.length, 12);
+  const parsedSheets = sheets.map((s) => parseScrt(Buffer.from(rowsToCsv(s.rows), 'utf8')));
+  const combined = combineReports(parsedSheets);
+  assert.strictEqual(combined.customerName, 'BANCO ITAU SA');
+  assert.strictEqual(combined.periodKey, '2026-01');
+  assert.strictEqual(combined.machines.length, 12);
+  assert.strictEqual(combined.totalMsuConsumed, 14194272);
+  const usage = combined.lpars.filter((l) => l.msuConsumed != null);
+  assert.strictEqual(usage.reduce((a, l) => a + l.msuConsumed, 0), 14194272);
 });
 
 console.log('parseScrt (SCRT duplo-codificado — arquivo real BB):');

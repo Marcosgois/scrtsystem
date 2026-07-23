@@ -574,3 +574,36 @@
       color: var(--text-muted) !important;
     }
     .status-filter-frame { border-left: 2px solid var(--ibm-blue) !important; }
+
+    /* ── Tooltip dos status de inventário ────────────────────────────────── */
+    /* Badges de status (cinza) ganham cursor de ajuda; categorias (lic/S&S) não. */
+    .badge:not(.badge-lic):not(.badge-ss) {
+      cursor: help;
+      border-bottom: 1px dotted var(--text-muted);
+    }
+
+    .tfp-status-tip {
+      position: absolute;
+      z-index: 2000;
+      max-width: 380px;
+      background: #ffffff;
+      color: var(--text-color);
+      border: 1px solid var(--border-strong);
+      border-left: 3px solid var(--ibm-blue);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+      padding: 12px 14px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      pointer-events: none;
+    }
+    .tfp-tip-item + .tfp-tip-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); }
+    .tfp-tip-code {
+      display: inline-block;
+      font-weight: 600;
+      color: var(--ibm-blue);
+      font-family: var(--mono, monospace);
+      margin-right: 6px;
+    }
+    .tfp-status-tip ul { margin: 6px 0 0; padding-left: 16px; }
+    .tfp-status-tip li { margin: 3px 0; }

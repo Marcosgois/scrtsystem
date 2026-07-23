@@ -94,6 +94,7 @@ em `SCRT/`):
 | **Sub-Capacity / MVM · máquina única** | BRB | Campos planos `chave,valor` na B5; `Reporting Period` e `Tool Release` vêm da seção `==C5` |
 | **CSV duplo-codificado** | BB | Cada linha vem empacotada como um único campo (`"Customer Name,""BANCO DO BRASIL"""`); o parser detecta e re-interpreta |
 | **Separador `;` + aspas simples** | ITAÚ | Delimitado por ponto e vírgula, valores entre aspas simples (`Customer Name;'BANCO ITAU SA'`), UTF-8 com BOM; o separador é detectado automaticamente |
+| **Planilha `.xlsx` (aba = máquina)** | ITAÚ | Uma aba por máquina; o sistema lê todas as abas e as combina num único multiplex (soma o consumo, une máquinas/LPARs) |
 | **Linha extra antes do banner** | Excel (`sep=,`) | O banner `==B5` é localizado em qualquer posição |
 
 ## Dashboard
