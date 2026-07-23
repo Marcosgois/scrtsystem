@@ -525,8 +525,8 @@ async function main() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pairOverrides: [
-            { ssPid: '5698DGS', licPid: '5698DG3' }, // força o par
-            { ssPid: '5655W41', licPid: null }, // não casa com ninguém
+            { ssPid: '5655E90', ssSerial: 'W0005V8', licPid: '5655DT2', licSerial: 'W000N5P' }, // força o par
+            { ssPid: '5655E90', ssSerial: 'W0005V9', licPid: null, licSerial: null }, // não casa com ninguém
           ],
         }),
       });
@@ -535,21 +535,21 @@ async function main() {
 
       r = await api(`/clients/${caixaId}/inventory`);
       check('pares: GET do inventário devolve os ajustes',
-        r.body.pairOverrides.some((o) => o.ssPid === '5698DGS' && o.licPid === '5698DG3')
-        && r.body.pairOverrides.some((o) => o.ssPid === '5655W41' && o.licPid === null), r.body.pairOverrides);
+        r.body.pairOverrides.some((o) => o.ssSerial === 'W0005V8' && o.licPid === '5655DT2' && o.licSerial === 'W000N5P')
+        && r.body.pairOverrides.some((o) => o.ssSerial === 'W0005V9' && o.licSerial === null), r.body.pairOverrides);
 
       r = await api(`/clients/${caixaId}/inventory/pairs`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pairOverrides: [
-            { ssPid: '5698DGS', licPid: '5698DG3' },
-            { ssPid: '5698DGS', licPid: null }, // o último para o mesmo S&S vence
+            { ssPid: '5655E90', ssSerial: 'W0005V8', licPid: '5655DT2', licSerial: 'W000N5P' },
+            { ssPid: '5655E90', ssSerial: 'W0005V8', licPid: null, licSerial: null }, // o último vence
           ],
         }),
       });
-      check('pares: um ajuste por PID de S&S (o último vence)',
-        r.body.pairOverrides.length === 1 && r.body.pairOverrides[0].licPid === null, r.body.pairOverrides);
+      check('pares: um ajuste por registro de S&S (o último vence)',
+        r.body.pairOverrides.length === 1 && r.body.pairOverrides[0].licSerial === null, r.body.pairOverrides);
 
       r = await api(`/clients/${caixaId}/inventory/pairs`, {
         method: 'PUT',
@@ -562,9 +562,30 @@ async function main() {
       r = await api(`/clients/${caixaId}/inventory/pairs`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pairOverrides: [{ licPid: '5698DG3' }] }),
+        body: JSON.stringify({ pairOverrides: [{ licPid: '5655DT2', licSerial: 'W000N5P' }] }),
       });
-      check('pares: ajuste sem ssPid -> 400', r.status === 400, r.status);
+      check('pares: ajuste sem ssPid/ssSerial -> 400', r.status === 400, r.status);
+
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pairOverrides: [{ ssPid: '5655E90', ssSerial: 'W0005V8', licPid: '5655DT2' }],
+        }),
+      });
+      check('pares: licença pela metade (PID sem serial) -> 400', r.status === 400, r.status);
+
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pairOverrides: [
+            { ssPid: '5655E90', ssSerial: 'W0005V8', licPid: '5655DT2', licSerial: 'W000N5P' },
+            { ssPid: '5655E90', ssSerial: 'W0005V9', licPid: '5655DT2', licSerial: 'W000N5P' }, // mesma licença 2x
+          ],
+        }),
+      });
+      check('pares: mesma licença para dois S&S -> 422 (é 1 para 1)', r.status === 422, r.status);
 
       r = await api(`/clients/${caixaId}/inventory/pairs`, {
         method: 'PUT',

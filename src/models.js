@@ -107,12 +107,17 @@ scrtReportSchema.index({ client: 1, periodKey: 1, sourceKey: 1 }, { unique: true
  */
 /**
  * Ajuste manual do par Licença ↔ S&S, quando o casamento automático erra.
- * `licPid: null` significa "este S&S não casa com nenhuma licença".
+ * O par é registro a registro (um PID de S&S costuma ter dezenas, um por
+ * bump/renovação), e o registro é identificado por PID + SW Serial — o
+ * serial sozinho não serve, pois se repete entre PIDs diferentes.
+ * `licPid`/`licSerial` nulos significam "este S&S não casa com nenhuma licença".
  */
 const pairOverrideSchema = new mongoose.Schema(
   {
     ssPid: { type: String, required: true },
+    ssSerial: { type: String, required: true },
     licPid: { type: String, default: null },
+    licSerial: { type: String, default: null },
   },
   { _id: false }
 );

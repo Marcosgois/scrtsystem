@@ -768,10 +768,11 @@ router.put('/clients/:id/inventory', asyncHandler(async (req, res) => {
 }));
 
 /**
- * Ajustes manuais do par Licença ↔ S&S. Um ajuste por PID de S&S:
- * `licPid` com valor força o par; `licPid: null` desfaz o par automático.
- * Fica separado do PUT do inventário para não reenviar milhares de produtos
- * a cada clique.
+ * Ajustes manuais do par Licença ↔ S&S. O par é registro a registro, e o
+ * registro é identificado por PID + SW Serial (o serial se repete entre PIDs).
+ * Um ajuste por registro de S&S: licença preenchida força o par; nula desfaz
+ * o par automático. Fica separado do PUT do inventário para não reenviar
+ * milhares de produtos a cada clique.
  */
 router.put('/clients/:id/inventory/pairs', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
@@ -780,12 +781,35 @@ router.put('/clients/:id/inventory/pairs', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Envie "pairOverrides" como lista.' });
   }
 
-  const porSs = new Map(); // um ajuste por PID de S&S; o último enviado vale
+  const texto = (v) => (v == null ? '' : String(v).trim());
+  const porSs = new Map(); // um ajuste por registro de S&S; o último vale
+  const licUsados = new Set(); // 1:1 — cada licença aceita um S&S só
   for (const o of recebidos) {
-    const ssPid = String((o && o.ssPid) || '').trim();
-    if (!ssPid) return res.status(400).json({ error: 'Cada ajuste precisa do "ssPid".' });
-    const licPid = o.licPid == null ? null : String(o.licPid).trim();
-    porSs.set(ssPid, { ssPid, licPid: licPid || null });
+    const ssPid = texto(o && o.ssPid);
+    const ssSerial = texto(o && o.ssSerial);
+    if (!ssPid || !ssSerial) {
+      return res.status(400).json({ error: 'Cada ajuste precisa de "ssPid" e "ssSerial".' });
+    }
+    const licPid = texto(o && o.licPid);
+    const licSerial = texto(o && o.licSerial);
+    if (Boolean(licPid) !== Boolean(licSerial)) {
+      return res.status(400).json({ error: 'Informe "licPid" e "licSerial" juntos, ou nenhum dos dois.' });
+    }
+    if (licPid) {
+      const chaveLic = `${licPid}|${licSerial}`;
+      if (licUsados.has(chaveLic)) {
+        return res.status(422).json({
+          error: `A licença ${licPid} (serial ${licSerial}) foi indicada para mais de um S&S — o par é 1 para 1.`,
+        });
+      }
+      licUsados.add(chaveLic);
+    }
+    porSs.set(`${ssPid}|${ssSerial}`, {
+      ssPid,
+      ssSerial,
+      licPid: licPid || null,
+      licSerial: licSerial || null,
+    });
   }
 
   const inventory = await Inventory.findOneAndUpdate(

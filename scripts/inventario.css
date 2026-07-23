@@ -424,7 +424,23 @@
     .tfp-pair-opt:last-child { border-bottom: none; }
     .tfp-pair-opt:hover { background: var(--blue-light); }
     .tfp-pair-opt strong { flex: 0 0 84px; font-variant-numeric: tabular-nums; }
-    .tfp-pair-opt span { color: var(--text-secondary); }
+    .tfp-pair-opt span { flex: 1; color: var(--text-secondary); }
+    .tfp-pair-cfg {
+      flex: 0 0 auto;
+      font-style: normal;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    /* Config Value igual ao do S&S: é o par provável. */
+    .tfp-pair-cfg.igual {
+      padding: 1px 6px;
+      color: #0e6027;
+      background: var(--success-light);
+      border-radius: 2px;
+      font-weight: 600;
+    }
     .tfp-pair-empty { margin: 0; padding: 12px; font-size: 12px; color: var(--text-muted); }
     .tfp-pair-actions { display: flex; justify-content: flex-end; }
 

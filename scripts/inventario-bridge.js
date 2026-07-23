@@ -492,6 +492,14 @@
     map.get(k).push(v);
   }
 
+  /**
+   * Identidade de um registro. PID + SW Serial, porque o serial se repete
+   * entre PIDs diferentes (na CAIXA há 49 seriais repetidos).
+   */
+  function recKey(p) {
+    return `${p.productId}|${p.swSerial}`;
+  }
+
   /** Quantidade do produto: soma dos Config Values das features. */
   function configTotal(p) {
     return (p.features || []).reduce((a, f) => a + (f.numericValue || 0), 0);
@@ -576,115 +584,110 @@
     return { score, blocked: raroSobrando || sobraDosDoisLados };
   }
 
-  /** Agrupa registros por PID, guardando tokens e chaves "data|quantidade". */
-  function groupByPid(list) {
-    const m = new Map();
-    list.forEach((p) => {
-      let e = m.get(p.productId);
-      if (!e) {
-        e = { pid: p.productId, recs: [], tokens: familyTokens(p.description), keys: new Set() };
-        m.set(p.productId, e);
-      }
-      e.recs.push(p);
-      const date = String(p.effDate || '').trim();
-      const cfg = configTotal(p);
-      if (date && date !== '-' && cfg > 0) e.keys.add(`${date}|${cfg}`);
-    });
-    return m;
-  }
-
   /**
-   * Casa cada PID de S&S com o PID de licença mais provável.
-   * Devolve Map: pidDaLicenca -> [{ pid, recs, basis }].
+   * Casa REGISTRO a REGISTRO, 1 para 1.
+   *
+   * Um PID de S&S costuma ter dezenas de registros (bumps e renovações), cada
+   * um com o seu Config Value: o 5655E90 da CAIXA tem 37. Pendurar todos numa
+   * licença daria a impressão de que o produto tem vários S&S, o que não é o
+   * caso — cada registro de licença tem o SEU registro de S&S.
+   *
+   * Regra: mesmo Config Value (exato, obrigatório) + nome compatível. A mesma
+   * Eff. Date é desempate, não requisito. Cada registro de S&S é usado uma vez.
+   * Ex.: 5655DT2 (cfg 477 e cfg 8164) casa com os dois registros do 5655E90
+   * que têm exatamente esses valores — e só com eles.
+   *
+   * Devolve { byLic: Map(registroLicença -> {rec, basis}), usedSs: Set }.
    */
   function pairLicenceWithSS(data) {
-    const lic = groupByPid(data.filter((p) => p.category !== 'SS'));
-    const ss = groupByPid(data.filter((p) => p.category === 'SS'));
-    if (!lic.size || !ss.size) return new Map();
+    const licRecs = data.filter((p) => p.category !== 'SS');
+    const ssRecs = data.filter((p) => p.category === 'SS');
+    const par = { byLic: new Map(), usedSs: new Set() };
+    if (!licRecs.length || !ssRecs.length) return applyOverrides(par, licRecs, ssRecs);
+
     const weights = buildTokenWeights(data);
     // Acima deste peso, o termo identifica o produto (aparece em poucos itens).
     const distinctiveMin = 0.45 * Math.log(data.length + 1);
 
-    // Índices por token/prefixo e por data|quantidade: evita comparar todos
-    // contra todos (o inventário de um cliente grande passa de 6 mil linhas).
-    const byToken = new Map();
-    const byKey = new Map();
-    lic.forEach((l) => {
-      const seen = new Set();
-      l.tokens.forEach((t) => {
-        [t, t.slice(0, 3)].forEach((ix) => {
-          if (seen.has(ix)) return;
-          seen.add(ix);
-          push(byToken, ix, l);
+    // Índice dos S&S pelo Config Value — é o eixo obrigatório do casamento.
+    const ssPorCfg = new Map();
+    ssRecs.forEach((s) => push(ssPorCfg, configTotal(s), s));
+
+    const cacheTokens = new Map();
+    const tokensDe = (p) => {
+      if (!cacheTokens.has(p.productId)) cacheTokens.set(p.productId, familyTokens(p.description));
+      return cacheTokens.get(p.productId);
+    };
+    const mesmaData = (a, b) => {
+      const x = String(a.effDate || '').trim();
+      return x !== '' && x !== '-' && x === String(b.effDate || '').trim();
+    };
+
+    // Duas passadas: primeiro quem também bate a data (evidência mais forte),
+    // para que esses pares não sejam "roubados" por um registro de outra data.
+    [true, false].forEach((exigirData) => {
+      licRecs.forEach((l) => {
+        if (par.byLic.has(l)) return;
+        const cfg = configTotal(l);
+        if (!cfg) return; // sem Config Value não há o que casar
+        let melhor = null;
+        (ssPorCfg.get(cfg) || []).forEach((s) => {
+          if (par.usedSs.has(s)) return; // 1:1
+          const comData = mesmaData(s, l);
+          if (exigirData && !comData) return;
+          const fam = compareFamily(tokensDe(s), tokensDe(l), weights, distinctiveMin);
+          if (fam.blocked || fam.score < FAM_MIN) return;
+          if (!melhor || fam.score > melhor.score) melhor = { rec: s, score: fam.score, comData };
+        });
+        if (!melhor) return;
+        par.usedSs.add(melhor.rec);
+        par.byLic.set(l, {
+          rec: melhor.rec,
+          basis: melhor.comData
+            ? 'mesmo Config Value, mesma Eff. Date e nome compatível'
+            : 'mesmo Config Value e nome compatível',
         });
       });
-      l.keys.forEach((k) => push(byKey, k, l));
     });
 
-    const pairs = new Map();
-    ss.forEach((s) => {
-      const cand = new Set();
-      s.tokens.forEach((t) => {
-        (byToken.get(t) || []).forEach((l) => cand.add(l));
-        (byToken.get(t.slice(0, 3)) || []).forEach((l) => cand.add(l));
-      });
-      s.keys.forEach((k) => (byKey.get(k) || []).forEach((l) => cand.add(l)));
-
-      let best = null;
-      let ties = 0;
-      cand.forEach((l) => {
-        const fam = compareFamily(s.tokens, l.tokens, weights, distinctiveMin);
-        const sameKey = [...s.keys].some((k) => l.keys.has(k));
-        // Um termo distintivo sobrando de qualquer lado derruba o par, venha
-        // ele da família ou de data+quantidade: "IMS HALDB Toolkit" não é o
-        // mesmo produto que "IMS ETO Support" só porque a data e a quantidade
-        // coincidem. Aqui um par errado (dizer que há suporte quando não há)
-        // custa mais caro do que um par a menos.
-        if (fam.blocked) return;
-        const porFamilia = fam.score >= FAM_MIN;
-        const porDataQtd = sameKey && fam.score >= FAM_WEAK;
-        if (!porFamilia && !porDataQtd) return;
-        const score = fam.score * 2 + (sameKey ? 1 : 0);
-        if (!best || score > best.score) {
-          best = { lic: l, score, fam: fam.score, porFamilia, sameKey };
-          ties = 1;
-        } else if (score === best.score) {
-          ties++;
-        }
-      });
-      if (!best) return;
-      // Aceito só por data+quantidade e há empate: não dá para afirmar o par.
-      if (!best.porFamilia && ties > 1) return;
-
-      const basis = best.porFamilia
-        ? (best.sameKey ? 'família do produto, Eff. Date e Config Value' : 'família do produto')
-        : 'Eff. Date + Config Value';
-      push(pairs, best.lic.pid, { pid: s.pid, recs: s.recs, basis });
-    });
-
-    return applyOverrides(pairs, lic, ss);
+    return applyOverrides(par, licRecs, ssRecs);
   }
 
-  /** Ajustes manuais vencem o automático: desfazem um par ou forçam outro. */
-  function applyOverrides(pairs, lic, ss) {
-    const ajuste = new Map(pairOverrides.map((o) => [o.ssPid, o.licPid]));
-    if (!ajuste.size) return pairs;
+  /**
+   * Ajustes manuais vencem o automático. Identidade do registro = PID + SW
+   * Serial: o serial sozinho não serve, porque se repete entre PIDs diferentes
+   * (na CAIXA, W00011K é 5698A50 e também 5770AF4).
+   */
+  function applyOverrides(par, licRecs, ssRecs) {
+    if (!pairOverrides.length) return par;
+    const ajuste = new Map(pairOverrides.map((o) => [
+      `${o.ssPid}|${o.ssSerial}`,
+      o.licPid && o.licSerial ? `${o.licPid}|${o.licSerial}` : null,
+    ]));
 
-    // Tira do automático todo S&S que o usuário ajustou.
-    [...pairs.keys()].forEach((licPid) => {
-      const resto = pairs.get(licPid).filter((m) => !ajuste.has(m.pid));
-      if (resto.length) pairs.set(licPid, resto);
-      else pairs.delete(licPid);
+    // Solta os pares automáticos que envolvem um S&S ajustado.
+    [...par.byLic.entries()].forEach(([l, m]) => {
+      if (ajuste.has(recKey(m.rec))) {
+        par.byLic.delete(l);
+        par.usedSs.delete(m.rec);
+      }
     });
 
-    // Recria os que ele mandou casar (licPid null = "não casar").
-    ajuste.forEach((licPid, ssPid) => {
-      if (!licPid) return;
-      const s = ss.get(ssPid);
-      if (!s || !lic.has(licPid)) return; // PID saiu do inventário ou do filtro
-      push(pairs, licPid, { pid: ssPid, recs: s.recs, basis: 'ajuste manual', manual: true });
+    const ssPorChave = new Map(ssRecs.map((s) => [recKey(s), s]));
+    const licPorChave = new Map(licRecs.map((l) => [recKey(l), l]));
+
+    // Refaz os que o usuário mandou casar (licença nula = "não casar").
+    ajuste.forEach((chaveLic, chaveSs) => {
+      if (!chaveLic) return;
+      const s = ssPorChave.get(chaveSs);
+      const l = licPorChave.get(chaveLic);
+      if (!s || !l) return; // registro saiu do inventário ou do filtro atual
+      const anterior = par.byLic.get(l); // 1:1 — a licença solta o par antigo
+      if (anterior) par.usedSs.delete(anterior.rec);
+      par.byLic.set(l, { rec: s, basis: 'ajuste manual', manual: true });
+      par.usedSs.add(s);
     });
-    return pairs;
+    return par;
   }
 
   /** Grava os ajustes no banco e redesenha. */
@@ -705,26 +708,43 @@
     renderAllTables();
   }
 
-  /** Define (ou remove) o ajuste de um PID de S&S. */
-  function setOverride(ssPid, licPid) {
-    pairOverrides = pairOverrides.filter((o) => o.ssPid !== ssPid);
-    if (licPid !== undefined) pairOverrides.push({ ssPid, licPid: licPid || null });
+  /**
+   * Define (ou remove) o ajuste de um registro de S&S.
+   * `lic` = registro de licença, `null` para não casar, `undefined` para
+   * apagar o ajuste e voltar ao automático.
+   */
+  function setOverride(ssPid, ssSerial, lic) {
+    pairOverrides = pairOverrides.filter((o) => !(o.ssPid === ssPid && o.ssSerial === ssSerial));
+    // 1:1 — se essa licença já estava presa a outro S&S à mão, solta o anterior.
+    if (lic) {
+      pairOverrides = pairOverrides.filter(
+        (o) => !(o.licPid === lic.productId && o.licSerial === lic.swSerial)
+      );
+    }
+    if (lic !== undefined) {
+      pairOverrides.push({
+        ssPid,
+        ssSerial,
+        licPid: lic ? lic.productId : null,
+        licSerial: lic ? lic.swSerial : null,
+      });
+    }
     savePairOverrides();
   }
 
-  window.tfpUnpairSS = function (evt, ssPid) {
+  window.tfpUnpairSS = function (evt, ssPid, ssSerial) {
     evt.stopPropagation();
-    setOverride(ssPid, null); // null = não casar com ninguém
+    setOverride(ssPid, ssSerial, null); // não casa com ninguém
   };
 
-  window.tfpAutoPairSS = function (evt, ssPid) {
+  window.tfpAutoPairSS = function (evt, ssPid, ssSerial) {
     evt.stopPropagation();
-    setOverride(ssPid, undefined); // sem ajuste = volta ao automático
+    setOverride(ssPid, ssSerial, undefined); // sem ajuste = volta ao automático
   };
 
-  window.tfpPickLicence = function (evt, ssPid) {
+  window.tfpPickLicence = function (evt, ssPid, ssSerial) {
     evt.stopPropagation();
-    openPairPicker(ssPid);
+    openPairPicker(ssPid, ssSerial);
   };
 
   // ── Seletor da licença (usado pelo botão "Casar…") ───────────────────────
@@ -755,11 +775,15 @@
     });
   }
 
-  function openPairPicker(ssPid) {
+  function openPairPicker(ssPid, ssSerial) {
     ensurePairPicker();
-    pickerSs = ssPid;
-    const s = (globalInventoryData || []).find((p) => p.productId === ssPid);
-    document.getElementById('tfp-pair-sub').textContent = ssPid + (s ? ` — ${s.description}` : '');
+    const s = (globalInventoryData || []).find(
+      (p) => p.productId === ssPid && p.swSerial === ssSerial
+    );
+    pickerSs = s || null;
+    document.getElementById('tfp-pair-sub').textContent = s
+      ? `${s.productId} · serial ${s.swSerial} · ${s.effDate || 's/ data'} · Config Value ${configTotal(s)} — ${s.description}`
+      : ssSerial;
     const busca = document.getElementById('tfp-pair-search');
     busca.value = '';
     renderPairOptions();
@@ -777,24 +801,34 @@
 
   function renderPairOptions() {
     const termo = (document.getElementById('tfp-pair-search').value || '').trim().toLowerCase();
-    const licencas = new Map(); // PID -> descrição (uma entrada por PID)
-    (globalInventoryData || []).forEach((p) => {
-      if (p.category !== 'SS' && !licencas.has(p.productId)) licencas.set(p.productId, p.description || '');
+    const alvoCfg = pickerSs ? configTotal(pickerSs) : null;
+
+    // Lista REGISTROS de licença (não PIDs): o par é registro a registro.
+    let lista = (globalInventoryData || []).filter((p) => p.category !== 'SS');
+    if (termo) {
+      lista = lista.filter((p) =>
+        p.productId.toLowerCase().includes(termo)
+        || String(p.description || '').toLowerCase().includes(termo)
+        || String(p.swSerial || '').toLowerCase().includes(termo));
+    }
+    // Os de Config Value igual ao do S&S vêm primeiro — é o par provável.
+    lista.sort((a, b) => {
+      const ia = configTotal(a) === alvoCfg ? 0 : 1;
+      const ib = configTotal(b) === alvoCfg ? 0 : 1;
+      if (ia !== ib) return ia - ib;
+      return String(a.description).localeCompare(String(b.description), 'pt-BR');
     });
 
-    let lista = [...licencas.entries()];
-    if (termo) {
-      lista = lista.filter(([pid, desc]) =>
-        pid.toLowerCase().includes(termo) || String(desc).toLowerCase().includes(termo));
-    }
-    lista.sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'pt-BR'));
-
     const el = document.getElementById('tfp-pair-list');
-    const corte = lista.slice(0, MAX_OPCOES);
-    el.innerHTML = corte.map(([pid, desc]) =>
-      `<button type="button" class="tfp-pair-opt" data-pid="${escHtml(pid)}">`
-      + `<strong>${escHtml(pid)}</strong><span>${escHtml(desc)}</span></button>`).join('')
-      || '<p class="tfp-pair-empty">Nenhuma licença encontrada.</p>';
+    el.innerHTML = lista.slice(0, MAX_OPCOES).map((p) => {
+      const cfg = configTotal(p);
+      const igual = cfg === alvoCfg;
+      return `<button type="button" class="tfp-pair-opt" data-key="${escHtml(recKey(p))}">`
+        + `<strong>${escHtml(p.productId)}</strong>`
+        + `<span>${escHtml(p.description)}</span>`
+        + `<em class="tfp-pair-cfg${igual ? ' igual' : ''}" title="${igual ? 'Config Value igual ao do S&S' : 'Config Value diferente do S&S'}">`
+        + `${escHtml(p.swSerial)} · ${escHtml(p.effDate || 's/ data')} · cfg ${cfg}</em></button>`;
+    }).join('') || '<p class="tfp-pair-empty">Nenhuma licença encontrada.</p>';
     if (lista.length > MAX_OPCOES) {
       el.insertAdjacentHTML('beforeend',
         `<p class="tfp-pair-empty">Mostrando ${MAX_OPCOES} de ${lista.length} — refine a busca.</p>`);
@@ -802,10 +836,10 @@
 
     el.querySelectorAll('.tfp-pair-opt').forEach((b) => {
       b.addEventListener('click', () => {
-        const licPid = b.dataset.pid;
-        const ssPid = pickerSs;
+        const lic = (globalInventoryData || []).find((p) => recKey(p) === b.dataset.key);
+        const ss = pickerSs;
         closePairPicker();
-        if (ssPid) setOverride(ssPid, licPid);
+        if (ss && lic) setOverride(ss.productId, ss.swSerial, lic);
       });
     });
   }
@@ -813,9 +847,12 @@
   /** Botões de ajuste manual, só nas linhas de S&S da visão "Todos". */
   function pairControls(prod, paired) {
     if (prod.category !== 'SS') return '';
-    const ajustado = pairOverrides.some((o) => o.ssPid === prod.productId);
+    const ajustado = pairOverrides.some(
+      (o) => o.ssPid === prod.productId && o.ssSerial === prod.swSerial
+    );
+    const args = `'${escHtml(prod.productId)}', '${escHtml(prod.swSerial)}'`;
     const btn = (fn, txt, title) =>
-      `<button type="button" class="tfp-pair-btn" onclick="${fn}(event, '${prod.productId}')"`
+      `<button type="button" class="tfp-pair-btn" onclick="${fn}(event, ${args})"`
       + ` title="${escHtml(title)}">${escHtml(txt)}</button>`;
 
     let html = paired
@@ -835,19 +872,21 @@
     row.className = `row-parent row-clickable${paired ? ' tfp-row-ss-pair' : ''}`;
     row.setAttribute('onclick', `openProductModal('${prod.productId}')`);
     row.title = paired
-      ? `S&S da licença ${paired.licPid} — casado por ${paired.basis}`
+      ? `S&S da licença ${paired.lic.productId} (serial ${paired.lic.swSerial})`
+        + ` — casado por ${paired.basis}`
       : 'Clique para abrir detalhes, carta de anúncio e VUE do produto';
 
     let categoria = prod.category === 'SS'
       ? '<span class="badge badge-ss">S&S Suporte</span>'
       : '<span class="badge badge-lic">Licença</span>';
     if (opts.coverage) {
-      const pids = opts.coverage.map((c) => c.pid).join(', ');
-      const como = opts.coverage[0].basis;
-      categoria += `<span class="badge tfp-badge-cov" title="Este produto também tem S&S: ${escHtml(pids)} (casado por ${escHtml(como)})">+ S&amp;S</span>`;
+      const s = opts.coverage.rec;
+      const detalhe = `Este produto também tem S&S: ${s.productId} (serial ${s.swSerial},`
+        + ` Config Value ${configTotal(s)}) — casado por ${opts.coverage.basis}`;
+      categoria += `<span class="badge tfp-badge-cov" title="${escHtml(detalhe)}">+ S&amp;S</span>`;
     }
     if (paired) {
-      categoria += `<span class="tfp-pair-note">da licença ${escHtml(paired.licPid)}</span>`;
+      categoria += `<span class="tfp-pair-note">da licença ${escHtml(paired.lic.productId)}</span>`;
     }
     categoria += pairControls(prod, Boolean(paired));
 
@@ -887,32 +926,23 @@
       return panelRenderHierarchical.call(this, data);
     }
 
-    let pairs;
+    let par;
     try {
-      pairs = pairLicenceWithSS(data);
+      par = pairLicenceWithSS(data);
     } catch (err) {
       console.warn('Pareamento Licença/S&S falhou; mostrando a tabela original.', err);
       return panelRenderHierarchical.call(this, data);
     }
-    if (!pairs.size) return panelRenderHierarchical.call(this, data);
-
-    const attached = new Set();
-    pairs.forEach((list) => list.forEach((m) => attached.add(m.pid)));
 
     tbody.innerHTML = '';
-    const done = new Set();
     data.forEach((prod) => {
       // S&S casado não aparece solto: entra logo abaixo da sua licença.
-      if (prod.category === 'SS' && attached.has(prod.productId)) return;
+      if (prod.category === 'SS' && par.usedSs.has(prod)) return;
 
-      const coverage = pairs.get(prod.productId) || null;
-      appendProductRows(tbody, prod, { coverage });
-
-      if (coverage && !done.has(prod.productId)) {
-        done.add(prod.productId);
-        coverage.forEach((m) => m.recs.forEach((r) => {
-          appendProductRows(tbody, r, { attachedTo: { licPid: prod.productId, basis: m.basis } });
-        }));
+      const cobertura = par.byLic.get(prod) || null;
+      appendProductRows(tbody, prod, { coverage: cobertura });
+      if (cobertura) {
+        appendProductRows(tbody, cobertura.rec, { attachedTo: { lic: prod, basis: cobertura.basis } });
       }
     });
   };
