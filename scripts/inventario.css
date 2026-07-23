@@ -340,6 +340,94 @@
       white-space: nowrap;
     }
 
+    /* Ajuste manual: separar um par errado ou casar o que ficou solto. */
+    .tfp-pair-btn {
+      margin-left: 6px;
+      padding: 1px 7px;
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: transparent;
+      border: 1px solid var(--border-strong);
+      border-radius: 2px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+    .tfp-pair-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--ibm-blue);
+      color: var(--ibm-blue);
+    }
+
+    .tfp-pair-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      background: rgba(22, 22, 22, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .tfp-pair-box {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: min(600px, 100%);
+      max-height: 80vh;
+      padding: 24px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+    }
+    .tfp-pair-box h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color); }
+    .tfp-pair-sub {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    #tfp-pair-search {
+      padding: 8px 12px;
+      font-family: var(--font);
+      font-size: 13px;
+      color: var(--text-color);
+      background: var(--card-bg);
+      border: 1px solid var(--border-strong);
+      border-radius: 2px;
+      outline: none;
+    }
+    #tfp-pair-search:focus { border-color: var(--ibm-blue); box-shadow: inset 0 0 0 1px var(--ibm-blue); }
+    .tfp-pair-list {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 2px;
+    }
+    .tfp-pair-opt {
+      display: flex;
+      gap: 12px;
+      align-items: baseline;
+      width: 100%;
+      padding: 8px 12px;
+      font-family: var(--font);
+      font-size: 12px;
+      text-align: left;
+      color: var(--text-color);
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+    }
+    .tfp-pair-opt:last-child { border-bottom: none; }
+    .tfp-pair-opt:hover { background: var(--blue-light); }
+    .tfp-pair-opt strong { flex: 0 0 84px; font-variant-numeric: tabular-nums; }
+    .tfp-pair-opt span { color: var(--text-secondary); }
+    .tfp-pair-empty { margin: 0; padding: 12px; font-size: 12px; color: var(--text-muted); }
+    .tfp-pair-actions { display: flex; justify-content: flex-end; }
+
     /* ── Modal de produto ────────────────────────────────────────────────── */
     /* Começa oculto; o JS troca para display:flex ao abrir o produto. */
     .modal-overlay {

@@ -519,10 +519,71 @@ async function main() {
       });
       check('inventário: lista vazia -> 422', r.status === 422, r.status);
 
+      // Ajustes manuais do par Licença ↔ S&S
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pairOverrides: [
+            { ssPid: '5698DGS', licPid: '5698DG3' }, // força o par
+            { ssPid: '5655W41', licPid: null }, // não casa com ninguém
+          ],
+        }),
+      });
+      check('pares: PUT grava os dois tipos de ajuste',
+        r.status === 200 && r.body.pairOverrides.length === 2, r.body);
+
+      r = await api(`/clients/${caixaId}/inventory`);
+      check('pares: GET do inventário devolve os ajustes',
+        r.body.pairOverrides.some((o) => o.ssPid === '5698DGS' && o.licPid === '5698DG3')
+        && r.body.pairOverrides.some((o) => o.ssPid === '5655W41' && o.licPid === null), r.body.pairOverrides);
+
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pairOverrides: [
+            { ssPid: '5698DGS', licPid: '5698DG3' },
+            { ssPid: '5698DGS', licPid: null }, // o último para o mesmo S&S vence
+          ],
+        }),
+      });
+      check('pares: um ajuste por PID de S&S (o último vence)',
+        r.body.pairOverrides.length === 1 && r.body.pairOverrides[0].licPid === null, r.body.pairOverrides);
+
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairOverrides: [] }),
+      });
+      check('pares: lista vazia limpa os ajustes',
+        r.status === 200 && r.body.pairOverrides.length === 0, r.body);
+
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairOverrides: [{ licPid: '5698DG3' }] }),
+      });
+      check('pares: ajuste sem ssPid -> 400', r.status === 400, r.status);
+
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairOverrides: 'nao-e-lista' }),
+      });
+      check('pares: pairOverrides inválido -> 400', r.status === 400, r.status);
+
       r = await api(`/clients/${caixaId}/inventory`, { method: 'DELETE' });
       check('inventário: DELETE remove', r.status === 200);
       r = await api(`/clients/${caixaId}/inventory`, { method: 'DELETE' });
       check('inventário: DELETE de novo -> 404', r.status === 404, r.status);
+
+      r = await api(`/clients/${caixaId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairOverrides: [] }),
+      });
+      check('pares: cliente sem inventário -> 404', r.status === 404, r.status);
     }
 
     // Ids inválidos

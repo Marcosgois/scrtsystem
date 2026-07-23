@@ -105,6 +105,18 @@ scrtReportSchema.index({ client: 1, periodKey: 1, sourceKey: 1 }, { unique: true
  * O parse acontece no navegador (app de inventário) e o resultado é persistido aqui;
  * `products` é Mixed de propósito, para acompanhar a evolução do parser sem migração.
  */
+/**
+ * Ajuste manual do par Licença ↔ S&S, quando o casamento automático erra.
+ * `licPid: null` significa "este S&S não casa com nenhuma licença".
+ */
+const pairOverrideSchema = new mongoose.Schema(
+  {
+    ssPid: { type: String, required: true },
+    licPid: { type: String, default: null },
+  },
+  { _id: false }
+);
+
 const inventorySchema = new mongoose.Schema(
   {
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, unique: true },
@@ -115,6 +127,7 @@ const inventorySchema = new mongoose.Schema(
     sourceFileName: String,
     reportUpdatedAt: String, // data/hora exibida pelo app (string já formatada)
     warnings: [String],
+    pairOverrides: { type: [pairOverrideSchema], default: [] },
   },
   { timestamps: true }
 );

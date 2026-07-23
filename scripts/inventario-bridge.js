@@ -14,9 +14,13 @@
 
   const ACTIVE_KEY = 'tfp_inventario_ultimo_cliente';
 
-  // Cache em memória: clientId (TFPSystem) -> { clientName, customerNumber, updatedAt, products }
+  // Cache em memória: clientId (TFPSystem) -> { clientName, customerNumber, updatedAt, products, pairOverrides }
   const invStore = {};
   window.tfpClients = [];
+
+  // Cliente na tela e seus ajustes manuais de par Licença↔S&S.
+  let activeClientId = null;
+  let pairOverrides = []; // [{ ssPid, licPid|null }]
 
   async function invApi(path, opts = {}) {
     const res = await fetch(`/api${path}`, opts);
@@ -74,6 +78,8 @@
       customerNumber: client.number,
       updatedAt,
       products,
+      // O PUT do inventário não mexe nos ajustes manuais; preserva o que havia.
+      pairOverrides: (invStore[clientId] && invStore[clientId].pairOverrides) || [],
     };
     setBadge(true);
     return result;
@@ -135,7 +141,8 @@
           clientName: inv.clientName || 'Não Identificado',
           customerNumber: inv.customerNumber || 'Não Identificado',
           updatedAt: inv.reportUpdatedAt || new Date(inv.updatedAt).toLocaleString('pt-BR'),
-          products: inv.products || [],
+          products: normalizeProducts(inv.products || []),
+          pairOverrides: inv.pairOverrides || [],
         };
         invStore[clientId] = item;
         if (inv.warnings && inv.warnings.length) showBanner(inv.warnings);
@@ -144,6 +151,8 @@
         return;
       }
     }
+    activeClientId = clientId;
+    pairOverrides = item.pairOverrides || [];
     globalInventoryData = item.products;
     clientInfo = { name: item.clientName, number: item.customerNumber };
     displayInventory(clientInfo, globalInventoryData, item.updatedAt);
@@ -293,6 +302,7 @@
           alert('O arquivo foi lido, mas nenhum produto foi encontrado. Confira se é o relatório IBM SW Material.');
           return;
         }
+        normalizeProducts(parsed.products); // grava já limpo e classificado
 
         const updatedAt = new Date().toLocaleString('pt-BR');
         let saved;
@@ -428,6 +438,41 @@
     window.addEventListener('scroll', () => { if (current) { current = null; tip.style.display = 'none'; } }, true);
   }
 
+  // ── Classificação Licença × S&S ──────────────────────────────────────────
+  // O painel marca como S&S qualquer descrição que contenha "SUPP", e isso
+  // pega licenças cujo nome tem "Support": "IMS ETO Support", "Tivoli Decision
+  // Support", "Device Supp Facilities (ICKDSF)". Aqui só valem os marcadores
+  // inequívocos de Subscription & Support.
+
+  /** "S&S" (inclusive colado, "VerifierS&S"), "Subscription…" ou "SNS". */
+  function isSupportItem(desc) {
+    const u = String(desc || '').toUpperCase();
+    // O (?![A-Z0-9]) evita casar o "S&S" de dentro de "TOOLS&SERVICES".
+    return /S\s*&\s*S(?![A-Z0-9])/.test(u) || u.includes('SUBSCRIPTION') || /\bSNS\b/.test(u);
+  }
+
+  /**
+   * Arruma os produtos recém-carregados — vale também para o que já está
+   * gravado, porque roda a cada carga:
+   *  - recalcula a categoria (Licença × S&S);
+   *  - troca NBSP (char 160) por espaço comum. O relatório da IBM vem cheio
+   *    deles, e por isso buscar "Data Gate" não achava "Data Gate for z/OS"
+   *    nem aqui nem no campo de busca do painel.
+   */
+  function normalizeProducts(products) {
+    const limpa = (s) => String(s == null ? '' : s).replace(/[ \s]+/g, ' ').trim();
+    (products || []).forEach((p) => {
+      p.description = limpa(p.description);
+      p.status = limpa(p.status);
+      (p.features || []).forEach((f) => {
+        f.description = limpa(f.description);
+        f.metric = limpa(f.metric);
+      });
+      p.category = isSupportItem(p.description) ? 'SS' : 'LICENCE';
+    });
+    return products || [];
+  }
+
   // ── Licença ↔ S&S: traz o suporte junto da licença ───────────────────────
   // Nos relatórios ESW da IBM a licença e o seu S&S NUNCA compartilham o mesmo
   // PID (ex.: 5698DG3 "Data Gate for z/OS" ↔ 5698DGS "Data Gate for z/OS S&S"),
@@ -439,6 +484,13 @@
   const FAM_STOPWORDS = new Set(['for', 'and', 'the', 'of', 'ibm', 'zos', 'os', 'sw', 'v', 'ver', 'version', 'tiv', 'tivoli']);
   const FAM_MIN = 0.6; // semelhança mínima de família para casar sem data/quantidade
   const FAM_WEAK = 0.3; // piso de família mesmo quando data e quantidade batem
+
+  /** Acrescenta um valor à lista da chave (usado pelos índices e pelos pares). */
+  function push(map, k, v) {
+    if (!k) return;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(v);
+  }
 
   /** Quantidade do produto: soma dos Config Values das features. */
   function configTotal(p) {
@@ -557,11 +609,6 @@
     // contra todos (o inventário de um cliente grande passa de 6 mil linhas).
     const byToken = new Map();
     const byKey = new Map();
-    const push = (map, k, v) => {
-      if (!k) return;
-      if (!map.has(k)) map.set(k, []);
-      map.get(k).push(v);
-    };
     lic.forEach((l) => {
       const seen = new Set();
       l.tokens.forEach((t) => {
@@ -614,7 +661,170 @@
         : 'Eff. Date + Config Value';
       push(pairs, best.lic.pid, { pid: s.pid, recs: s.recs, basis });
     });
+
+    return applyOverrides(pairs, lic, ss);
+  }
+
+  /** Ajustes manuais vencem o automático: desfazem um par ou forçam outro. */
+  function applyOverrides(pairs, lic, ss) {
+    const ajuste = new Map(pairOverrides.map((o) => [o.ssPid, o.licPid]));
+    if (!ajuste.size) return pairs;
+
+    // Tira do automático todo S&S que o usuário ajustou.
+    [...pairs.keys()].forEach((licPid) => {
+      const resto = pairs.get(licPid).filter((m) => !ajuste.has(m.pid));
+      if (resto.length) pairs.set(licPid, resto);
+      else pairs.delete(licPid);
+    });
+
+    // Recria os que ele mandou casar (licPid null = "não casar").
+    ajuste.forEach((licPid, ssPid) => {
+      if (!licPid) return;
+      const s = ss.get(ssPid);
+      if (!s || !lic.has(licPid)) return; // PID saiu do inventário ou do filtro
+      push(pairs, licPid, { pid: ssPid, recs: s.recs, basis: 'ajuste manual', manual: true });
+    });
     return pairs;
+  }
+
+  /** Grava os ajustes no banco e redesenha. */
+  async function savePairOverrides() {
+    if (!activeClientId) return;
+    try {
+      const r = await invApi(`/clients/${activeClientId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairOverrides }),
+      });
+      pairOverrides = r.pairOverrides || [];
+      if (invStore[activeClientId]) invStore[activeClientId].pairOverrides = pairOverrides;
+    } catch (err) {
+      alert(`Não foi possível salvar o ajuste: ${err.message}`);
+      return;
+    }
+    renderAllTables();
+  }
+
+  /** Define (ou remove) o ajuste de um PID de S&S. */
+  function setOverride(ssPid, licPid) {
+    pairOverrides = pairOverrides.filter((o) => o.ssPid !== ssPid);
+    if (licPid !== undefined) pairOverrides.push({ ssPid, licPid: licPid || null });
+    savePairOverrides();
+  }
+
+  window.tfpUnpairSS = function (evt, ssPid) {
+    evt.stopPropagation();
+    setOverride(ssPid, null); // null = não casar com ninguém
+  };
+
+  window.tfpAutoPairSS = function (evt, ssPid) {
+    evt.stopPropagation();
+    setOverride(ssPid, undefined); // sem ajuste = volta ao automático
+  };
+
+  window.tfpPickLicence = function (evt, ssPid) {
+    evt.stopPropagation();
+    openPairPicker(ssPid);
+  };
+
+  // ── Seletor da licença (usado pelo botão "Casar…") ───────────────────────
+
+  let pickerSs = null;
+
+  function ensurePairPicker() {
+    if (document.getElementById('tfp-pair-modal')) return;
+    const el = document.createElement('div');
+    el.id = 'tfp-pair-modal';
+    el.className = 'tfp-pair-modal';
+    el.style.display = 'none';
+    el.innerHTML =
+      '<div class="tfp-pair-box" role="dialog" aria-modal="true" aria-labelledby="tfp-pair-title">'
+      + '<h3 id="tfp-pair-title">Casar S&amp;S com uma licença</h3>'
+      + '<p class="tfp-pair-sub" id="tfp-pair-sub"></p>'
+      + '<input type="text" id="tfp-pair-search" placeholder="Buscar por PID ou descrição" autocomplete="off">'
+      + '<div class="tfp-pair-list" id="tfp-pair-list"></div>'
+      + '<div class="tfp-pair-actions"><button type="button" class="tfp-pair-btn" id="tfp-pair-cancel">Cancelar</button></div>'
+      + '</div>';
+    document.body.appendChild(el);
+
+    el.addEventListener('click', (e) => { if (e.target === el) closePairPicker(); });
+    document.getElementById('tfp-pair-cancel').addEventListener('click', closePairPicker);
+    document.getElementById('tfp-pair-search').addEventListener('input', renderPairOptions);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && el.style.display !== 'none') closePairPicker();
+    });
+  }
+
+  function openPairPicker(ssPid) {
+    ensurePairPicker();
+    pickerSs = ssPid;
+    const s = (globalInventoryData || []).find((p) => p.productId === ssPid);
+    document.getElementById('tfp-pair-sub').textContent = ssPid + (s ? ` — ${s.description}` : '');
+    const busca = document.getElementById('tfp-pair-search');
+    busca.value = '';
+    renderPairOptions();
+    document.getElementById('tfp-pair-modal').style.display = 'flex';
+    busca.focus();
+  }
+
+  function closePairPicker() {
+    const el = document.getElementById('tfp-pair-modal');
+    if (el) el.style.display = 'none';
+    pickerSs = null;
+  }
+
+  const MAX_OPCOES = 60;
+
+  function renderPairOptions() {
+    const termo = (document.getElementById('tfp-pair-search').value || '').trim().toLowerCase();
+    const licencas = new Map(); // PID -> descrição (uma entrada por PID)
+    (globalInventoryData || []).forEach((p) => {
+      if (p.category !== 'SS' && !licencas.has(p.productId)) licencas.set(p.productId, p.description || '');
+    });
+
+    let lista = [...licencas.entries()];
+    if (termo) {
+      lista = lista.filter(([pid, desc]) =>
+        pid.toLowerCase().includes(termo) || String(desc).toLowerCase().includes(termo));
+    }
+    lista.sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'pt-BR'));
+
+    const el = document.getElementById('tfp-pair-list');
+    const corte = lista.slice(0, MAX_OPCOES);
+    el.innerHTML = corte.map(([pid, desc]) =>
+      `<button type="button" class="tfp-pair-opt" data-pid="${escHtml(pid)}">`
+      + `<strong>${escHtml(pid)}</strong><span>${escHtml(desc)}</span></button>`).join('')
+      || '<p class="tfp-pair-empty">Nenhuma licença encontrada.</p>';
+    if (lista.length > MAX_OPCOES) {
+      el.insertAdjacentHTML('beforeend',
+        `<p class="tfp-pair-empty">Mostrando ${MAX_OPCOES} de ${lista.length} — refine a busca.</p>`);
+    }
+
+    el.querySelectorAll('.tfp-pair-opt').forEach((b) => {
+      b.addEventListener('click', () => {
+        const licPid = b.dataset.pid;
+        const ssPid = pickerSs;
+        closePairPicker();
+        if (ssPid) setOverride(ssPid, licPid);
+      });
+    });
+  }
+
+  /** Botões de ajuste manual, só nas linhas de S&S da visão "Todos". */
+  function pairControls(prod, paired) {
+    if (prod.category !== 'SS') return '';
+    const ajustado = pairOverrides.some((o) => o.ssPid === prod.productId);
+    const btn = (fn, txt, title) =>
+      `<button type="button" class="tfp-pair-btn" onclick="${fn}(event, '${prod.productId}')"`
+      + ` title="${escHtml(title)}">${escHtml(txt)}</button>`;
+
+    let html = paired
+      ? btn('tfpUnpairSS', 'Separar', 'Este S&S não é desta licença — desfazer o par')
+      : btn('tfpPickLicence', 'Casar…', 'Escolher manualmente a licença deste S&S');
+    if (ajustado) {
+      html += btn('tfpAutoPairSS', 'auto', 'Descartar o ajuste manual e voltar ao casamento automático');
+    }
+    return html;
   }
 
   /** Desenha a linha do produto (e suas features) na visão hierárquica. */
@@ -639,6 +849,7 @@
     if (paired) {
       categoria += `<span class="tfp-pair-note">da licença ${escHtml(paired.licPid)}</span>`;
     }
+    categoria += pairControls(prod, Boolean(paired));
 
     row.innerHTML =
       `<td><strong>${escHtml(prod.productId)}</strong></td>` +

@@ -767,6 +767,36 @@ router.put('/clients/:id/inventory', asyncHandler(async (req, res) => {
   res.status(existing ? 200 : 201).json({ replaced: Boolean(existing), inventory, warnings });
 }));
 
+/**
+ * Ajustes manuais do par Licença ↔ S&S. Um ajuste por PID de S&S:
+ * `licPid` com valor força o par; `licPid: null` desfaz o par automático.
+ * Fica separado do PUT do inventário para não reenviar milhares de produtos
+ * a cada clique.
+ */
+router.put('/clients/:id/inventory/pairs', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const recebidos = req.body.pairOverrides;
+  if (!Array.isArray(recebidos)) {
+    return res.status(400).json({ error: 'Envie "pairOverrides" como lista.' });
+  }
+
+  const porSs = new Map(); // um ajuste por PID de S&S; o último enviado vale
+  for (const o of recebidos) {
+    const ssPid = String((o && o.ssPid) || '').trim();
+    if (!ssPid) return res.status(400).json({ error: 'Cada ajuste precisa do "ssPid".' });
+    const licPid = o.licPid == null ? null : String(o.licPid).trim();
+    porSs.set(ssPid, { ssPid, licPid: licPid || null });
+  }
+
+  const inventory = await Inventory.findOneAndUpdate(
+    { client: req.params.id },
+    { $set: { pairOverrides: [...porSs.values()] } },
+    { new: true }
+  ).lean();
+  if (!inventory) return res.status(404).json({ error: 'Este cliente ainda não tem inventário carregado.' });
+  res.json({ pairOverrides: inventory.pairOverrides || [] });
+}));
+
 router.delete('/clients/:id/inventory', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const deleted = await Inventory.findOneAndDelete({ client: req.params.id });
