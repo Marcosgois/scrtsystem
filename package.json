@@ -1,0 +1,29 @@
+{
+  "name": "tfpsystem",
+  "version": "1.0.0",
+  "description": "Sistema de acompanhamento de consumo TFP (Tailored Fit Pricing) - upload de relatórios SCRT por cliente com dashboard de MSUs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "demo": "node scripts/demo.js",
+    "test:parser": "node test/parser.test.js",
+    "test:e2e": "node test/e2e.test.js",
+    "build:inventario": "node scripts/build-inventario.js",
+    "test:migration": "node test/migration.test.js",
+    "test:forecast": "node test/forecast.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "mongodb-memory-server": "^10.1.3",
+    "mongoose": "^8.9.5",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "chart.js": "^4.4.7"
+  }
+}

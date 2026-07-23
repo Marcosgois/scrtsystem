@@ -1,0 +1,30 @@
+# Dependências e artefatos locais
+node_modules/
+.env
+.DS_Store
+~$*.xlsx
+
+# Banco MongoDB local (dados da aplicação)
+data/
+
+# Gerado por `npm run build:inventario`
+public/inventario.html
+
+# ─────────────────────────────────────────────────────────────────────────
+# DADOS REAIS DE CLIENTES — não versionar (privacidade / dados de terceiros)
+# SCRTs, inventários e planilhas de CAIXA, BB, BRB e Itaú ficam só na máquina.
+# ─────────────────────────────────────────────────────────────────────────
+SCRT/
+scrt/
+*.xlsx
+*.htm
+
+# Mockups/versões antigas com dados reais embutidos
+consumo_tfp_caixa_v0.7.html
+app_inventario_esw_v0.12.html
+
+# Pasta de inventário: mantém só o app-fonte do painel; exclui os relatórios reais
+Inventario/*
+inventario/*
+!Inventario/app_inventario_esw.html
+!inventario/app_inventario_esw.html

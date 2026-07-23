@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Analítico de Inventário zSystems - IBM</title>
+  <style>
+    :root {
+      --ibm-blue: #0f62fe;
+      --ibm-blue-hover: #0043ce;
+      --bg-color: #f4f6f8;
+      --text-color: #161616;
+      --card-bg: #ffffff;
+      --border-color: #e0e0e0;
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    /* Header & Botão */
+    .header-card {
+      background: var(--card-bg);
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-card h1 {
+      margin: 0 0 6px 0;
+      font-size: 1.5rem;
+      color: var(--ibm-blue);
+    }
+
+    .header-card p {
+      margin: 0;
+      color: #525252;
+      font-size: 0.9rem;
+    }
+
+    /* Info do Cliente no Cabeçalho */
+    .client-card {
+      background: var(--card-bg);
+      padding: 16px 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+      display: flex;
+      gap: 40px;
+      border-left: 5px solid var(--ibm-blue);
+    }
+
+    .client-info-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .client-info-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: #525252;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .client-info-value {
+      font-size: 1.15rem;
+      font-weight: bold;
+      color: var(--text-color);
+    }
+
+    .btn-inventario {
+      background-color: var(--ibm-blue);
+      color: #ffffff;
+      border: none;
+      padding: 12px 22px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-inventario:hover {
+      background-color: var(--ibm-blue-hover);
+    }
+
+    .btn-expand-records {
+      background: #0f62fe;
+      color: #ffffff;
+      border: none;
+      padding: 4px 12px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      border-radius: 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+    .btn-expand-records:hover {
+      background: #0043ce;
+      transform: scale(1.04);
+    }
+
+    /* Cards KPI */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      padding: 18px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      border-left: 4px solid var(--ibm-blue);
+    }
+
+    .kpi-card.licence { border-left-color: #8a3ffc; }
+    .kpi-card.ss { border-left-color: #198038; }
+
+    .kpi-card .title {
+      font-size: 0.8rem;
+      color: #525252;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .kpi-card .value {
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: var(--text-color);
+    }
+
+    /* Filtros e Abas */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      background: var(--card-bg);
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    .btn-filter {
+      padding: 6px 14px;
+      border: 1px solid var(--border-color);
+      background: #f4f4f4;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-filter.active {
+      background: var(--ibm-blue);
+      color: white;
+      border-color: var(--ibm-blue);
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .tab-btn {
+      padding: 10px 20px;
+      border: none;
+      background: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #525252;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+
+    .tab-btn.active {
+      color: var(--ibm-blue);
+      border-bottom-color: var(--ibm-blue);
+    }
+
+    .tab-content {
+      display: none;
+      background: var(--card-bg);
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Tabelas */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    th, td {
+      border: 1px solid var(--border-color);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 0.88rem;
+    }
+
+    th {
+      background-color: #393939;
+      color: #ffffff;
+      font-weight: 600;
+      user-select: none;
+    }
+
+    th.sortable { cursor: pointer; }
+    th.sortable:hover { background-color: #525252; }
+    th.sortable::after { content: ' ↕'; font-size: 0.75rem; opacity: 0.6; }
+    th.sort-asc::after { content: ' ▲'; opacity: 1; color: #a6c8ff; }
+    th.sort-desc::after { content: ' ▼'; opacity: 1; color: #a6c8ff; }
+
+    .row-parent { background-color: #edf5ff; font-weight: 600; }
+    .row-child { background-color: #ffffff; }
+    .row-child:hover { background-color: #f9f9f9; }
+
+    .badge {
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      display: inline-block;
+    }
+
+    .badge-ss { background-color: #defbe6; color: #0e6027; }
+    .badge-lic { background-color: #e8daff; color: #6929c4; }
+    .val-highlight { color: var(--ibm-blue); font-weight: bold; }
+
+    .row-clickable { cursor: pointer; transition: background-color 0.15s ease; }
+    .row-clickable:hover { background-color: #d0e2ff !important; }
+
+    /* Modal Styling */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(4px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .modal-container {
+      background: var(--card-bg);
+      width: 100%;
+      max-width: 860px;
+      max-height: 90vh;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: modalFadeIn 0.25s ease-out;
+    }
+
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: translateY(-15px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .modal-header {
+      padding: 20px 24px;
+      background: #161616;
+      color: #ffffff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid var(--ibm-blue);
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-close-btn {
+      background: none;
+      border: none;
+      color: #ffffff;
+      font-size: 1.5rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    .modal-close-btn:hover { background: #393939; }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .modal-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .modal-card {
+      background: #f4f6f8;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .modal-card-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #525252;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .modal-card-val {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: var(--text-color);
+    }
+
+    .ai-summary-box {
+      background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+      border: 1px solid #a6c8ff;
+      border-left: 5px solid var(--ibm-blue);
+      padding: 18px;
+      border-radius: 8px;
+    }
+
+    .ai-summary-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--ibm-blue);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ai-summary-text {
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: #262626;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- Header -->
+    <div class="header-card">
+      <div>
+        <h1>Gestão & Análise de Inventário zSystems</h1>
+        <p>Processamento Local de Inventário IBM SW Material</p>
+      </div>
+
+      <input 
+        type="file" 
+        id="fileInputInventario" 
+        accept=".html,.htm" 
+        style="display: none;" 
+      />
+    </div>
+
+    <!-- Seletor de Cliente Principal -->
+    <div class="client-select-card" style="background: var(--card-bg); padding: 18px 24px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid var(--ibm-blue);">
+      <div style="display:flex; align-items:center; gap:16px;">
+        <label for="selectCustomer" style="font-weight:700; font-size:0.95rem; color:var(--text-color); display:flex; align-items:center; gap:6px;">
+          <span>👤</span> Selecionar Cliente:
+        </label>
+        <select id="selectCustomer" style="padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.95rem; background: #f4f6f8; font-weight: 600; color: var(--text-color); cursor: pointer; min-width: 320px;" onchange="onCustomerSelectChanged()">
+          <!-- Opções geradas dinamicamente via JS -->
+        </select>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button type="button" class="btn-inventario" style="background: #393939; font-size: 0.9rem;" onclick="goHome()" title="Retornar à tela inicial">
+          🏠 Home
+        </button>
+        <span id="savedStorageBadge" style="font-size:0.8rem; color:#198038; font-weight:600; background:#defbe6; padding:6px 12px; border-radius:16px; display:none;">💾 Salvo Localmente</span>
+        <button type="button" id="btnCarregarInventario" class="btn-inventario">
+          🔄 Atualizar / Fazer Carga
+        </button>
+      </div>
+    </div>
+
+    <!-- Card de Boas-Vindas / Seleção Inicial de Cliente -->
+    <div id="emptyStateSection" style="display: block; background: var(--card-bg); padding: 50px 30px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; border: 2px dashed #b5b5b5;">
+      <div style="font-size: 3.5rem; margin-bottom: 12px;">🏢</div>
+      <h2 style="margin: 0 0 8px 0; color: var(--ibm-blue); font-size: 1.4rem;">Selecione um Cliente ou Carregue um Inventário</h2>
+      <p style="color: #525252; max-width: 580px; margin: 0 auto 24px auto; font-size: 0.95rem; line-height: 1.5;">
+        Para iniciar a análise, escolha um cliente já cadastrado no menu superior ou faça a <strong>carga do relatório de inventário IBM zSystems (SW Material HTML/HTM)</strong>.
+      </p>
+      
+      <div style="display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+        <button type="button" class="btn-inventario" style="font-size: 0.95rem; padding: 12px 24px; background: #393939;" onclick="focarSeletorCliente()">
+          👤 Selecionar Cliente no Menu
+        </button>
+        <button type="button" class="btn-inventario" style="font-size: 0.95rem; padding: 12px 24px;" onclick="document.getElementById('fileInputInventario').click()">
+          📄 Carregar Novo Inventário
+        </button>
+      </div>
+    </div>
+
+    <!-- Seção do Cliente (Cabeçalho com Detalhes) -->
+    <div id="clientHeaderSection" class="client-card" style="display: none;">
+      <div class="client-info-group">
+        <span class="client-info-label">Nome do Cliente (Customer Name)</span>
+        <span class="client-info-value" id="hdrClientName">Não Identificado</span>
+      </div>
+      <div class="client-info-group">
+        <span class="client-info-label">Customer Number (No.)</span>
+        <span class="client-info-value" id="hdrCustomerNumber">Não Identificado</span>
+      </div>
+      <div class="client-info-group">
+        <span class="client-info-label">Última Atualização</span>
+        <span class="client-info-value" id="hdrLastUpdated" style="font-size: 0.95rem; color: #525252;">-</span>
+      </div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+        <button type="button" class="btn-inventario" style="background:#da1e28; color:white; font-size:0.85rem; padding:8px 14px;" onclick="deleteActiveCustomerRecord()" title="Excluir o inventário deste cliente do histórico">
+          🗑️ Apagar Este Registro
+        </button>
+      </div>
+    </div>
+
+    <!-- Painel Analítico -->
+    <div id="analyticsSection" style="display: none;">
+      
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="title">Total de Registros</div>
+          <div class="value" id="kpiTotalProducts">0</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: #0043ce;">
+          <div class="title">PIDs Únicos Consolidados</div>
+          <div class="value" id="kpiUniquePids">0</div>
+        </div>
+        <div class="kpi-card licence">
+          <div class="title">Licenças (Inicia '5')</div>
+          <div class="value" id="kpiTotalLicence">0</div>
+        </div>
+        <div class="kpi-card ss">
+          <div class="title">S&S (Suporte)</div>
+          <div class="value" id="kpiTotalSS">0</div>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros -->
+      <div class="filter-bar" style="display: flex; flex-direction: column; gap: 14px; align-items: flex-start; text-align: left;">
+        
+        <!-- Linha 1: Tipo de Licença e Range de Data (Alinhados à Esquerda) -->
+        <div style="display: flex; align-items: center; justify-content: flex-start; gap: 16px; flex-wrap: wrap; width: 100%;">
+          <!-- Tipo de Licença (Alinhado à Esquerda) -->
+          <div style="display: flex; align-items: center; justify-content: flex-start; gap: 8px; background: #ffffff; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <span style="font-size:0.85rem; font-weight:700; color:#393939; text-align: left;">Tipo de Licença:</span>
+            <button class="btn-filter active" onclick="setCategoryFilter('ALL', event)">Todos</button>
+            <button class="btn-filter" onclick="setCategoryFilter('LICENCE', event)">Apenas Licenças</button>
+            <button class="btn-filter" onclick="setCategoryFilter('SS', event)">Apenas S&S</button>
+          </div>
+
+          <!-- Frame Range de Data (Eff. Date) (Alinhado à Esquerda) -->
+          <div style="display: flex; align-items: center; justify-content: flex-start; gap: 8px; background: #ffffff; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <span style="font-size:0.85rem; font-weight:700; color:#393939; text-align: left;">📅 Range Eff. Date:</span>
+            <input type="date" id="dtStartEffDate" style="padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.8rem;" onchange="onFilterChanged()" title="Data Inicial do Effective Date" />
+            <span style="font-size: 0.8rem; color: #6e6e6e;">até</span>
+            <input type="date" id="dtEndEffDate" style="padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.8rem;" onchange="onFilterChanged()" title="Data Final do Effective Date" />
+            <button type="button" style="padding: 4px 8px; font-size: 0.75rem; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight:600;" onclick="clearDateFilter()">Limpar</button>
+          </div>
+        </div>
+
+        <!-- FRAME SEPARADO ABAIXO DE "TIPO DE LICENÇA": Status do Produto (ECUS, INAC, AVLB, EDEL, SLBP, ESTO, QUBP, QUVC, YREM) -->
+        <div class="status-filter-frame" style="width: 100%; box-sizing: border-box; background: #ffffff; padding: 12px 18px; border-radius: 8px; border: 1px solid var(--border-color); border-left: 5px solid #0f62fe; box-shadow: 0 1px 4px rgba(0,0,0,0.04);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <span style="font-size:0.85rem; font-weight:700; color:#0f62fe; display:flex; align-items:center; gap:6px;">
+              <span>🏷️</span> Status do Produto (Filtrar por Status Válidos IBM):
+            </span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button type="button" style="padding: 3px 10px; font-size: 0.75rem; background: #edf5ff; color: #0f62fe; border: 1px solid #a6c8ff; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick="selectAllStatuses(true)">☑️ Selecionar Todos</button>
+              <button type="button" style="padding: 3px 10px; font-size: 0.75rem; background: #f4f4f4; color: #525252; border: 1px solid #ccc; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick="selectAllStatuses(false)">☐ Desmarcar Todos</button>
+              <button type="button" style="padding: 3px 10px; font-size: 0.75rem; background: #e8daff; color: #6929c4; border: 1px solid #d4bbff; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick="resetStatusToECUS()">⭐ Apenas ECUS (Padrão)</button>
+            </div>
+          </div>
+          
+          <div id="statusCheckboxContainer" style="display: flex; align-items: center; justify-content: flex-start; gap: 10px; flex-wrap: wrap; min-height: 28px;">
+            <!-- Checkboxes dos 9 status válidos gerados via JS -->
+          </div>
+        </div>
+
+        <!-- Linha 3: Campo de Busca Alinhado à Esquerda -->
+        <div style="display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%;">
+          <input 
+            type="text" 
+            id="txtSearchInput" 
+            placeholder="🔍 Buscar por PID, Descrição, Status ou Serial..." 
+            style="padding: 8px 16px; border: 1px solid var(--border-color); border-radius: 20px; font-size: 0.85rem; width: 400px; max-width: 100%; outline: none;" 
+            oninput="onSearchInputChanged()" 
+          />
+        </div>
+      </div>
+
+      <!-- Abas Alinhadas com Botão de Exportação no Lado Direito -->
+      <div class="nav-tabs" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--border-color); margin-bottom: 20px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="tab-btn active" onclick="switchTab('tabVisaoGeral', event)">Visão Hierárquica (SW Material)</button>
+          <button class="tab-btn" onclick="switchTab('tabConsolidado', event)">Consolidado por PID</button>
+        </div>
+
+        <!-- Botão de Exportação Alinhado no Lado Direito com as Abas -->
+        <div style="position: relative; margin-bottom: 6px;">
+          <button type="button" class="btn-filter" style="background:#198038; color:white; border-color:#198038; font-weight:bold; padding: 8px 18px;" onclick="toggleExportMenu(event)">
+            📥 Exportar Relatório ▾
+          </button>
+          <div id="exportDropdownMenu" style="display:none; position:absolute; right:0; top:42px; background:white; border:1px solid #ccc; border-radius:8px; box-shadow:0 6px 16px rgba(0,0,0,0.18); z-index:100; min-width:340px; overflow:hidden;">
+            <button type="button" style="display:block; width:100%; text-align:left; padding:12px 16px; border:none; background:none; font-size:0.85rem; font-weight:600; cursor:pointer; color:#161616; border-bottom:1px solid #eee;" onclick="exportConsolidatedByVU()">
+              📊 1. Consolidado por PID (com Value Units)
+            </button>
+            <button type="button" style="display:block; width:100%; text-align:left; padding:12px 16px; border:none; background:none; font-size:0.85rem; font-weight:600; cursor:pointer; color:#161616; border-bottom:1px solid #eee;" onclick="exportConsolidatedByYear()">
+              📅 2. Consolidado por PID e Ano (Eff. Date)
+            </button>
+            <button type="button" style="display:block; width:100%; text-align:left; padding:12px 16px; border:none; background:none; font-size:0.85rem; font-weight:600; cursor:pointer; color:#161616;" onclick="exportHierarchicalCSV()">
+              📑 3. Visão Hierárquica Detalhada (SW Material)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aba 1: Hierárquica -->
+      <div id="tabVisaoGeral" class="tab-content active">
+        <h3>SW Material - Produtos e Features Capturadas <span style="font-size: 0.8rem; font-weight: normal; color: #6e6e6e;">(Clique em qualquer linha para ver detalhes por IA)</span></h3>
+        <table id="tblHierarquica">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 0)">PID / Feature</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 1)">SW Serial</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 2)">Effective Date (Data Efetivação)</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 3)">Descrição do Produto</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 4)">Categoria</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 5)">Status</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 6)">Métrica</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 7)">Config. Value (Qtd)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Aba 2: Consolidado -->
+      <div id="tabConsolidado" class="tab-content">
+        <h3>Consolidação de SW Material por Código PID <span style="font-size: 0.8rem; font-weight: normal; color: #6e6e6e;">(Agrupa PIDs duplicados e soma quantidades/VUs)</span></h3>
+        <table id="tblConsolidado">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 0)">PID</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 1)">Descrição do Produto</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 2)">Total de Registros</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 3)">SW Seriais</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 4)">Tipo de Licença</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 5)">Status</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 6)">Total Value Units (VUs)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Modal de Detalhes do Produto -->
+  <div id="productDetailModal" class="modal-overlay" onclick="closeModalOnOverlay(event)">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2>
+          <span>📦</span>
+          <span id="mdlTitle">Detalhes do Produto</span>
+        </h2>
+        <button type="button" class="modal-close-btn" onclick="closeProductModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        
+        <!-- Grid Resumo do Produto -->
+        <div class="modal-grid-2">
+          <div class="modal-card">
+            <div class="modal-card-title">🔑 Identificação do PID</div>
+            <div class="modal-card-val" id="mdlPidCode">-</div>
+            <div style="font-size: 0.85rem; color: #525252; margin-top: 4px;" id="mdlSwSerial">Serial: -</div>
+          </div>
+          <div class="modal-card">
+            <div class="modal-card-title">📊 Licenciamento & Categoria</div>
+            <div class="modal-card-val" id="mdlCategory">-</div>
+            <div style="font-size: 0.85rem; color: var(--ibm-blue); margin-top: 4px;" id="mdlTotalVU">Total VUs: -</div>
+          </div>
+        </div>
+
+        <!-- O que Faz / Resumo por IA -->
+        <div class="ai-summary-box">
+          <div class="ai-summary-title">🤖 Resumo Inteligente por IA (O que este Produto Faz)</div>
+          <p class="ai-summary-text" id="mdlAiSummary">Carregando informações...</p>
+        </div>
+
+        <!-- Seções VUE e Carta de Anúncio -->
+        <div class="modal-grid-2">
+          <div class="modal-card">
+            <div class="modal-card-title">📜 Carta de Anúncio & Termos (IBM CSOL Portal)</div>
+            <div style="font-size:0.9rem; font-weight:600; color:var(--text-color);" id="mdlAnnouncement">IBM zSystems Announcement</div>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+              <a id="mdlAnnouncementCsolLink" href="https://www.ibm.com/support/customer/csol/terms/" target="_blank" style="color:var(--ibm-blue); font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                🏛️ Consultar no Portal IBM CSOL (Terms) →
+              </a>
+              <a id="mdlAnnouncementLink" href="#" target="_blank" style="color:#525252; font-size:0.82rem; text-decoration:underline;">
+                🔍 Buscar Carta de Anúncio Mais Atual →
+              </a>
+            </div>
+          </div>
+          <div class="modal-card">
+            <div class="modal-card-title">🧮 VUE (Value Unit Exhibit & Precificação)</div>
+            <div style="font-size:0.9rem; font-weight:600; color:var(--text-color);" id="mdlVueCode">VUE Code: VUE007</div>
+            <div style="font-size:0.82rem; color:#525252; margin-top:4px;" id="mdlVueDesc">Régua de conversão MSU x Value Units aplicada a Mainframes IBM zSystems.</div>
+          </div>
+        </div>
+
+        <!-- Tabela de Sub-features -->
+        <div>
+          <h4 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 0.95rem;">Features Capturadas no Inventário</h4>
+          <table id="tblModalFeatures" style="margin-top: 0;">
+            <thead>
+              <tr style="background:#525252;">
+                <th>Código Feature</th>
+                <th>Descrição da Feature</th>
+                <th>Métrica</th>
+                <th>Qtd Configurada</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <!-- Tabela de Registros do PID e Effective Dates -->
+        <div style="margin-top: 24px;">
+          <h4 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
+            <span>📅 Registros do PID & Effective Dates</span>
+          </h4>
+          <table id="tblModalRecords" style="margin-top: 0;">
+            <thead>
+              <tr style="background:#0f62fe; color:white;">
+                <th>SW Serial</th>
+                <th>Effective Date (Data Efetivação)</th>
+                <th>PO Number</th>
+                <th>Categoria</th>
+                <th>Status</th>
+                <th>VUs do Registro</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let globalInventoryData = [];
+    let clientInfo = { name: "Não Identificado", number: "Não Identificado" };
+    let currentCategoryFilter = 'ALL';
+    let currentSortStates = {};
+
+    const STORAGE_KEY = 'ibm_zsystems_inventories_v3';
+    const ACTIVE_CUST_KEY = 'ibm_zsystems_active_cust_v3';
+
+    // GATILHO DO BOTÃO DE CARREGAR / ATUALIZAR INVENTÁRIO
+    document.getElementById('btnCarregarInventario').addEventListener('click', () => {
+      document.getElementById('fileInputInventario').click();
+    });
+
+    document.getElementById('fileInputInventario').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const parsedResult = parseIBMLicenseReport(evt.target.result);
+        
+        globalInventoryData = parsedResult.products;
+        clientInfo = parsedResult.client;
+        const updatedAt = new Date().toLocaleString('pt-BR');
+
+        // Salva cliente no armazenamento multi-cliente
+        saveCustomerInventory(clientInfo, globalInventoryData, updatedAt);
+
+        // Atualiza a lista de clientes no dropdown
+        populateCustomerDropdown(clientInfo.number);
+
+        // Exibe o inventário na tela
+        displayInventory(clientInfo, globalInventoryData, updatedAt);
+      };
+
+      reader.readAsText(file);
+      this.value = '';
+    });
+
+    function getStoredInventories() {
+      try {
+        let store = localStorage.getItem(STORAGE_KEY);
+        if (store) return JSON.parse(store);
+
+        // Migração automática de v1 para v2 se existir
+        const oldStore = localStorage.getItem('ibm_zsystems_inventory_cache_v1');
+        if (oldStore) {
+          const oldData = JSON.parse(oldStore);
+          if (oldData && oldData.client && oldData.products) {
+            const custNum = oldData.client.number !== 'Não Identificado' ? oldData.client.number : 'default';
+            const newStore = {};
+            newStore[custNum] = {
+              customerNumber: oldData.client.number,
+              clientName: oldData.client.name,
+              updatedAt: oldData.updatedAt || new Date().toLocaleString('pt-BR'),
+              products: oldData.products
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(newStore));
+            localStorage.setItem(ACTIVE_CUST_KEY, custNum);
+            return newStore;
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao ler armazenamento de inventários:', err);
+      }
+      return {};
+    }
+
+    function saveCustomerInventory(client, products, updatedAt) {
+      try {
+        const store = getStoredInventories();
+        const custId = client.number !== 'Não Identificado' ? client.number : `cust_${Date.now()}`;
+        
+        store[custId] = {
+          customerNumber: client.number,
+          clientName: client.name,
+          updatedAt: updatedAt,
+          products: products
+        };
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        localStorage.setItem(ACTIVE_CUST_KEY, custId);
+        
+        const badge = document.getElementById('savedStorageBadge');
+        if (badge) badge.style.display = 'inline-block';
+      } catch (err) {
+        console.warn('Erro ao salvar inventário:', err);
+      }
+    }
+
+    function populateCustomerDropdown(selectedCustId = null) {
+      const select = document.getElementById('selectCustomer');
+      select.innerHTML = '';
+
+      const store = getStoredInventories();
+      const keys = Object.keys(store);
+
+      // Opção neutra padrão
+      const optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.innerText = keys.length === 0 ? '-- Nenhum Cliente Cadastrado --' : '-- Selecione o Cliente --';
+      select.appendChild(optDefault);
+
+      keys.forEach(custId => {
+        const item = store[custId];
+        const opt = document.createElement('option');
+        opt.value = custId;
+        opt.innerText = `${item.clientName} (No. ${item.customerNumber})`;
+        select.appendChild(opt);
+      });
+
+      // Opção extra para carregar novo inventário
+      const optAdd = document.createElement('option');
+      optAdd.value = 'ADD_NEW';
+      optAdd.innerText = '➕ Carregar Novo Inventário / Adicionar Cliente...';
+      select.appendChild(optAdd);
+
+      if (selectedCustId && store[selectedCustId]) {
+        select.value = selectedCustId;
+        loadCustomerData(selectedCustId);
+      } else {
+        select.value = '';
+        showEmptyState();
+      }
+    }
+
+    function focarSeletorCliente() {
+      const sel = document.getElementById('selectCustomer');
+      if (sel) {
+        sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        sel.focus();
+        if (typeof sel.showPicker === 'function') {
+          try { sel.showPicker(); } catch (e) {}
+        }
+        sel.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+        sel.style.borderColor = '#0f62fe';
+        sel.style.boxShadow = '0 0 0 4px rgba(15, 98, 254, 0.4)';
+        setTimeout(() => {
+          sel.style.borderColor = '';
+          sel.style.boxShadow = '';
+        }, 2200);
+      }
+    }
+
+    function onCustomerSelectChanged() {
+      const select = document.getElementById('selectCustomer');
+      const val = select.value;
+
+      if (!val) {
+        showEmptyState();
+      } else if (val === 'ADD_NEW' || val === 'NEW_LOAD') {
+        showEmptyState();
+        document.getElementById('fileInputInventario').click();
+      } else {
+        localStorage.setItem(ACTIVE_CUST_KEY, val);
+        loadCustomerData(val);
+      }
+    }
+
+    function loadCustomerData(custId) {
+      const store = getStoredInventories();
+      const item = store[custId];
+      if (!item) {
+        showEmptyState();
+        return;
+      }
+
+      globalInventoryData = item.products;
+      clientInfo = { name: item.clientName, number: item.customerNumber };
+      displayInventory(clientInfo, globalInventoryData, item.updatedAt);
+
+      const badge = document.getElementById('savedStorageBadge');
+      if (badge) badge.style.display = 'inline-block';
+    }
+
+    function showEmptyState() {
+      document.getElementById('clientHeaderSection').style.display = 'none';
+      document.getElementById('analyticsSection').style.display = 'none';
+      document.getElementById('emptyStateSection').style.display = 'block';
+      const badge = document.getElementById('savedStorageBadge');
+      if (badge) badge.style.display = 'none';
+    }
+
+    function displayInventory(client, products, updatedAt) {
+      document.getElementById('emptyStateSection').style.display = 'none';
+
+      document.getElementById('hdrClientName').innerText = client.name;
+      document.getElementById('hdrCustomerNumber').innerText = client.number;
+      if (document.getElementById('hdrLastUpdated')) {
+        document.getElementById('hdrLastUpdated').innerText = updatedAt;
+      }
+      document.getElementById('clientHeaderSection').style.display = 'flex';
+
+      renderStatusCheckboxes(products);
+      updateKPIs(products);
+      renderAllTables();
+
+      document.getElementById('analyticsSection').style.display = 'block';
+    }
+
+    const ALLOWED_STATUSES = ['ECUS', 'INAC', 'AVLB', 'EDEL', 'SLBP', 'ESTO', 'QUBP', 'QUVC', 'YREM'];
+
+    function renderStatusCheckboxes(products = globalInventoryData) {
+      const container = document.getElementById('statusCheckboxContainer');
+      if (!container) return;
+
+      const existingChecked = new Set(
+        Array.from(container.querySelectorAll('.chk-status-item:checked')).map(c => c.value.toUpperCase())
+      );
+
+      const isInitialState = container.children.length === 0;
+
+      container.innerHTML = '';
+
+      ALLOWED_STATUSES.forEach(st => {
+        const isChecked = isInitialState ? (st === 'ECUS') : existingChecked.has(st);
+        const label = document.createElement('label');
+        label.style.cssText = `
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: ${st === 'ECUS' ? '#0f62fe' : '#393939'};
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          background: ${st === 'ECUS' ? '#edf5ff' : '#ffffff'};
+          border: 1px solid ${st === 'ECUS' ? '#a6c8ff' : '#d0d0d0'};
+          border-radius: 6px;
+          user-select: none;
+          transition: all 0.15s ease;
+        `;
+
+        label.innerHTML = `
+          <input type="checkbox" class="chk-status-item" value="${st}" ${isChecked ? 'checked' : ''} onchange="onFilterChanged()" />
+          <span>${st}</span> ${st === 'ECUS' ? '⭐' : ''}
+        `;
+        container.appendChild(label);
+      });
+    }
+
+    function selectAllStatuses(selectAll = true) {
+      document.querySelectorAll('.chk-status-item').forEach(chk => {
+        chk.checked = selectAll;
+      });
+      onFilterChanged();
+    }
+
+    function resetStatusToECUS() {
+      document.querySelectorAll('.chk-status-item').forEach(chk => {
+        chk.checked = (chk.value.toUpperCase() === 'ECUS');
+      });
+      onFilterChanged();
+    }
+
+    // Carrega dados salvos assim que a página é aberta
+    window.addEventListener('DOMContentLoaded', () => {
+      populateCustomerDropdown();
+    });
+
+    // PARSER COM EXTRAÇÃO ROBUSTA DE CABEÇALHO E REGRAS ESTRITAS (SW Material)
+    function parseIBMLicenseReport(htmlContent) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, 'text/html');
+      
+      let clientName = "";
+      let customerNumber = "";
+
+      // --- EXTRAÇÃO ROBUSTA DE NOME E CÓDIGO DO CLIENTE ---
+      function cleanHeaderValue(val) {
+        if (!val) return "";
+        let cleaned = val.replace(/\u00a0/g, ' ').replace(/^[:\s.-]+/, '').trim();
+        // Remove eventuais rótulos residuais que tenham vindo no mesmo texto
+        cleaned = cleaned.replace(/(?:customer\s*no|customer\s*name|cust\s*no|customer\s*\#).*/i, '');
+        return cleaned.trim();
+      }
+
+      function isHeaderLabel(txt) {
+        if (!txt) return true;
+        const clean = txt.replace(/\u00a0/g, ' ').trim().replace(/[:.-]+$/, '').trim().toLowerCase();
+        return ['name', 'customer name', 'cust name', 'customer no', 'customer no.', 'customer num', 'customer number', 'customer #', 'cust no', 'cust no.', 'sap customer no', 'sap customer no.'].includes(clean);
+      }
+
+      const allRows = Array.from(doc.querySelectorAll('tr'));
+
+      // Estratégia 1: Mapeamento de Tabela com Linha de Títulos de Coluna (Row N) e Linha de Dados (Row N+1)
+      allRows.forEach((row, rowIndex) => {
+        const cells = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.replace(/\u00a0/g, ' ').trim());
+        let custNoColIndex = -1;
+        let nameColIndex = -1;
+
+        cells.forEach((cellText, colIndex) => {
+          if (custNoColIndex === -1 && /(?:customer|cust)\.?\s*(?:no|num|number|\#)/i.test(cellText)) {
+            if (!/sap\s*customer/i.test(cellText)) { // Ignora a coluna de SAP Customer No.
+              custNoColIndex = colIndex;
+            }
+          }
+
+          if (nameColIndex === -1 && (/(?:^(?:customer\s*|cust\s*)?name\b)/i.test(cellText) || cellText.toLowerCase() === 'name')) {
+            if (!/(?:product|feature|machine|type|file|system|contact|vendor|sap)\s*name/i.test(cellText)) {
+              nameColIndex = colIndex;
+            }
+          }
+        });
+
+        if ((custNoColIndex !== -1 || nameColIndex !== -1) && allRows[rowIndex + 1]) {
+          const nextRowCells = Array.from(allRows[rowIndex + 1].querySelectorAll('td, th')).map(c => c.textContent.replace(/\u00a0/g, ' ').trim());
+
+          if (!customerNumber && custNoColIndex !== -1 && nextRowCells[custNoColIndex]) {
+            const val = cleanHeaderValue(nextRowCells[custNoColIndex]);
+            if (val && !isHeaderLabel(val)) customerNumber = val;
+          }
+
+          if (!clientName && nameColIndex !== -1 && nextRowCells[nameColIndex]) {
+            const val = cleanHeaderValue(nextRowCells[nameColIndex]);
+            if (val && !isHeaderLabel(val)) clientName = val;
+          }
+        }
+      });
+
+      // Estratégia 2: Percorrer células da tabela buscando pares de chave-valor individuais
+      if (!customerNumber || !clientName) {
+        allRows.forEach((row, rowIndex) => {
+          const cells = Array.from(row.querySelectorAll('td, th'));
+          
+          cells.forEach((cell, colIndex) => {
+            const cellText = cell.textContent.replace(/\u00a0/g, ' ').trim();
+            
+            // --- CUSTOMER NUMBER / CUSTOMER NO. ---
+            if (!customerNumber && /(?:customer|cust)\.?\s*(?:no|num|number|\#)\.?:?/i.test(cellText)) {
+              if (!/sap\s*customer/i.test(cellText)) {
+                if (cellText.includes(':')) {
+                  const val = cellText.split(':').slice(1).join(':').trim();
+                  if (val && !isHeaderLabel(val)) customerNumber = cleanHeaderValue(val);
+                }
+                if (!customerNumber && cell.nextElementSibling) {
+                  const nextVal = cell.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+                  if (nextVal && !isHeaderLabel(nextVal)) customerNumber = cleanHeaderValue(nextVal);
+                }
+              }
+            }
+
+            // --- CUSTOMER NAME / NAME ---
+            if (!clientName) {
+              const isNameLabel = (/(?:^(?:customer\s*|cust\s*)?name\s*:?$)/i.test(cellText) || 
+                                  /^name\s*:?/i.test(cellText) || 
+                                  /customer\s*name/i.test(cellText)) && 
+                                 !/(?:product|feature|machine|type|file|system|contact|vendor|sap)\s*name/i.test(cellText);
+              
+              if (isNameLabel) {
+                if (cellText.includes(':')) {
+                  const val = cellText.split(':').slice(1).join(':').trim();
+                  if (val && !isHeaderLabel(val)) clientName = cleanHeaderValue(val);
+                }
+                if (!clientName && cell.nextElementSibling) {
+                  const nextVal = cell.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+                  if (nextVal && !isHeaderLabel(nextVal)) clientName = cleanHeaderValue(nextVal);
+                }
+              }
+            }
+          });
+        });
+      }
+
+      // Estratégia 3: Se não encontrou em tabelas, busca em elementos de bloco (div, p, span, li)
+      if (!customerNumber || !clientName) {
+        const blocks = Array.from(doc.querySelectorAll('div, p, span, li, dt, dd, b, strong'));
+        blocks.forEach(el => {
+          const txt = el.textContent.replace(/\u00a0/g, ' ').trim();
+          
+          if (!customerNumber && /(?:customer|cust)\.?\s*(?:no|num|number|\#)\.?:?/i.test(txt)) {
+            if (!/sap\s*customer/i.test(txt)) {
+              if (txt.includes(':')) {
+                const val = txt.split(':').slice(1).join(':').trim();
+                if (val && !isHeaderLabel(val)) customerNumber = cleanHeaderValue(val);
+              } else if (el.nextElementSibling) {
+                const nextVal = el.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+                if (nextVal && !isHeaderLabel(nextVal)) customerNumber = cleanHeaderValue(nextVal);
+              }
+            }
+          }
+          
+          if (!clientName && /(?:^(?:customer\s*|cust\s*)?name\s*:?)/i.test(txt) && !/(?:product|feature|machine|type|file|system|contact|vendor|sap)\s*name/i.test(txt)) {
+            if (txt.includes(':')) {
+              const val = txt.split(':').slice(1).join(':').trim();
+              if (val && !isHeaderLabel(val)) clientName = cleanHeaderValue(val);
+            } else if (el.nextElementSibling) {
+              const nextVal = el.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+              if (nextVal && !isHeaderLabel(nextVal)) clientName = cleanHeaderValue(nextVal);
+            }
+          }
+        });
+      }
+
+      // Estratégia 4: Expressões Regulares de Fallback no texto completo do documento
+      const fullText = (doc.body ? doc.body.textContent : doc.documentElement.textContent).replace(/\u00a0/g, ' ');
+
+      if (!customerNumber) {
+        const numMatch = fullText.match(/(?:customer|cust)\.?\s*(?:no|num|number|\#)\.?:?\s*([0-9A-Z]{5,15})/i);
+        if (numMatch) customerNumber = cleanHeaderValue(numMatch[1]);
+      }
+
+      if (!clientName) {
+        const nameMatch = fullText.match(/(?:customer\s*name|cust\s*name)\s*[:.-]?\s*([^\r\n\t<]+)/i) ||
+                          fullText.match(/\bName\s*[:.-]\s*([^\r\n\t<]+)/i);
+        if (nameMatch) {
+          clientName = cleanHeaderValue(nameMatch[1]);
+        }
+      }
+
+      // --- EXTRAÇÃO DOS PRODUTOS (SW MATERIAL + PREFIXOS 5 / S) ---
+      const products = [];
+      let currentProduct = null;
+
+      const rows = doc.querySelectorAll('tr');
+
+      rows.forEach(row => {
+        const cols = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.trim());
+
+        if (cols.length < 3) return;
+
+        const codeOrFeature = cols[0] || "";
+        const swSerial = cols[1] || "";
+        const description = cols[2] || "";
+        const metric = cols[3] || "";
+        const configVal = cols[4] || "";
+        let extractedEffDate = "-";
+        // 1. Tentar coluna 5 ("Eff. Dat")
+        if (cols[5] && cols[5].trim() !== "" && cols[5].trim() !== "-") {
+          extractedEffDate = cols[5].trim();
+        }
+        // 2. Tentar encontrar padrão de data em qualquer célula da linha
+        if (extractedEffDate === "-" || !/\d{2}[\./-]\d{2}[\./-]\d{4}|\d{4}[\./-]\d{2}[\./-]\d{2}/.test(extractedEffDate)) {
+          for (let i = 0; i < cols.length; i++) {
+            const cellText = cols[i] ? cols[i].trim() : "";
+            const match = cellText.match(/\d{2}\.\d{2}\.\d{4}/) || cellText.match(/\d{2}\/\d{2}\/\d{4}/) || cellText.match(/\d{4}-\d{2}-\d{2}/);
+            if (match) {
+              extractedEffDate = match[0];
+              break;
+            }
+          }
+        }
+
+        let extractedPO = "-";
+        cols.forEach(c => {
+          if (extractedPO === "-" && /^\d{8,12}$/.test(c.trim())) {
+            extractedPO = c.trim();
+          }
+        });
+        if (extractedPO === "-" && cols[8] && cols[8].trim() !== "" && cols[8].trim() !== "-") {
+          extractedPO = cols[8].trim();
+        }
+
+        let extractedStatus = "-";
+        cols.forEach(c => {
+          if (extractedStatus === "-") {
+            const candidate = c.trim().toUpperCase();
+            if (ALLOWED_STATUSES.includes(candidate)) {
+              extractedStatus = candidate;
+            }
+          }
+        });
+
+        // Regra: Apenas linhas com SW Serial que começam com '5'
+        if (swSerial !== "") {
+          if (codeOrFeature.startsWith("5")) {
+            const descUpper = description.toUpperCase();
+            const isSS = descUpper.includes("S&S") || descUpper.includes("SUBSCRIPTION") || descUpper.includes("SUPP");
+
+            currentProduct = {
+              productId: codeOrFeature,
+              swSerial: swSerial,
+              description: description,
+              category: isSS ? 'SS' : 'LICENCE',
+              effDate: extractedEffDate,
+              poNumber: extractedPO,
+              status: extractedStatus,
+              features: []
+            };
+            products.push(currentProduct);
+          } else {
+            currentProduct = null; // Ignora se não iniciar com '5'
+          }
+        } 
+        // Regra: Features que começam com 'S'
+        else if (currentProduct) {
+          if (codeOrFeature.startsWith("S")) {
+            const rawNum = configVal.replace(/,/g, '');
+            const numericVal = parseInt(rawNum, 10) || 0;
+
+            currentProduct.features.push({
+              featureCode: codeOrFeature,
+              description: description,
+              metric: metric,
+              configValue: configVal,
+              numericValue: numericVal
+            });
+          }
+        }
+      });
+
+      return {
+        client: { 
+          name: clientName || "Não Identificado", 
+          number: customerNumber || "Não Identificado" 
+        },
+        products: products
+      };
+    }
+
+    function updateKPIs(data) {
+      let totalLicence = 0;
+      let totalSS = 0;
+      let totalVU = 0;
+      const uniquePids = new Set();
+
+      data.forEach(p => {
+        if (p.productId) uniquePids.add(p.productId);
+        if (p.category === 'SS') totalSS++;
+        else totalLicence++;
+
+        p.features.forEach(f => {
+          if (f.metric.toLowerCase().includes("value unit") || f.metric.toLowerCase().includes("vu")) {
+            totalVU += f.numericValue;
+          }
+        });
+      });
+
+      document.getElementById('kpiTotalProducts').innerText = data.length;
+      document.getElementById('kpiUniquePids').innerText = uniquePids.size;
+      document.getElementById('kpiTotalLicence').innerText = totalLicence;
+      document.getElementById('kpiTotalSS').innerText = totalSS;
+    }
+
+    function goHome() {
+      const select = document.getElementById('selectCustomer');
+      if (select) select.value = '';
+      localStorage.removeItem(ACTIVE_CUST_KEY);
+      showEmptyState();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function deleteActiveCustomerRecord() {
+      const select = document.getElementById('selectCustomer');
+      const activeCustId = select ? select.value : null;
+
+      if (!activeCustId || activeCustId === 'ADD_NEW') {
+        alert('Nenhum cliente selecionado para apagar.');
+        return;
+      }
+
+      const store = getStoredInventories();
+      const item = store[activeCustId];
+      const name = item ? item.clientName : activeCustId;
+      const num = item ? item.customerNumber : '';
+
+      const confirmMsg = `Tem certeza que deseja APAGAR PERMANENTEMENTE o registro do cliente:\n\n"${name}" (No. ${num})?\n\nEsta ação excluirá o histórico local deste cliente.`;
+
+      if (confirm(confirmMsg)) {
+        delete store[activeCustId];
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        } catch (err) {
+          console.warn('Erro ao atualizar storage após exclusão:', err);
+        }
+        localStorage.removeItem(ACTIVE_CUST_KEY);
+        populateCustomerDropdown(null);
+        goHome();
+        alert(`O registro de "${name}" foi apagado com sucesso.`);
+      }
+    }
+
+    function parseEffDateToISO(effDateStr) {
+      if (!effDateStr || effDateStr === '-') return null;
+      const cleaned = effDateStr.trim();
+      
+      const ptMatch = cleaned.match(/^(\d{2})[\./-](\d{2})[\./-](\d{4})$/);
+      if (ptMatch) {
+        return `${ptMatch[3]}-${ptMatch[2]}-${ptMatch[1]}`;
+      }
+
+      const isoMatch = cleaned.match(/^(\d{4})[\./-](\d{2})[\./-](\d{2})$/);
+      if (isoMatch) {
+        return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+      }
+
+      return null;
+    }
+
+    function extractYearFromEffDate(effDateStr) {
+      if (!effDateStr || effDateStr === '-') return 'Sem Data';
+      const iso = parseEffDateToISO(effDateStr);
+      if (iso) return iso.substring(0, 4);
+      return 'Sem Data';
+    }
+
+    function clearDateFilter() {
+      const dtStart = document.getElementById('dtStartEffDate');
+      const dtEnd = document.getElementById('dtEndEffDate');
+      if (dtStart) dtStart.value = '';
+      if (dtEnd) dtEnd.value = '';
+      onFilterChanged();
+    }
+
+    let searchQuery = '';
+
+    function onSearchInputChanged() {
+      searchQuery = document.getElementById('txtSearchInput').value.trim().toLowerCase();
+      renderAllTables();
+    }
+
+    function onFilterChanged() {
+      renderAllTables();
+    }
+
+    function getFilteredData() {
+      const checkedBoxes = Array.from(document.querySelectorAll('.chk-status-item:checked')).map(c => c.value.toUpperCase());
+      const dtStartVal = document.getElementById('dtStartEffDate') ? document.getElementById('dtStartEffDate').value : '';
+      const dtEndVal = document.getElementById('dtEndEffDate') ? document.getElementById('dtEndEffDate').value : '';
+
+      return globalInventoryData.filter(p => {
+        // 1. Tipo de Licença (antiga Categoria)
+        const matchesCategory = (currentCategoryFilter === 'ALL') || (p.category === currentCategoryFilter);
+        if (!matchesCategory) return false;
+
+        // 2. Filtro por Checkboxes de Status
+        if (checkedBoxes.length > 0) {
+          const pStatus = (p.status || '').trim().toUpperCase();
+          if (!checkedBoxes.includes(pStatus)) return false;
+        } else {
+          return false; // Se nenhuma box estiver marcada, oculta
+        }
+
+        // 3. Range de Data (Eff. Date)
+        if (dtStartVal || dtEndVal) {
+          const pDateISO = parseEffDateToISO(p.effDate);
+          if (!pDateISO) {
+            return false;
+          }
+          if (dtStartVal && pDateISO < dtStartVal) return false;
+          if (dtEndVal && pDateISO > dtEndVal) return false;
+        }
+
+        // 4. Busca Textual
+        if (!searchQuery) return true;
+
+        const inPid = p.productId.toLowerCase().includes(searchQuery);
+        const inDesc = p.description.toLowerCase().includes(searchQuery);
+        const inSerial = p.swSerial.toLowerCase().includes(searchQuery);
+        const inStatus = (p.status || '').toLowerCase().includes(searchQuery);
+        const inFeatures = p.features.some(f => f.featureCode.toLowerCase().includes(searchQuery) || f.description.toLowerCase().includes(searchQuery));
+
+        return inPid || inDesc || inSerial || inStatus || inFeatures;
+      });
+    }
+
+    function setCategoryFilter(filterType, evt) {
+      currentCategoryFilter = filterType;
+      document.querySelectorAll('.btn-filter').forEach(btn => {
+        if (btn.id !== 'txtSearchInput' && !btn.textContent.includes('Exportar')) btn.classList.remove('active');
+      });
+      evt.target.classList.add('active');
+      renderAllTables();
+    }
+
+    function toggleExportMenu(evt) {
+      if (evt) evt.stopPropagation();
+      const menu = document.getElementById('exportDropdownMenu');
+      if (menu) {
+        menu.style.display = (menu.style.display === 'none' || !menu.style.display) ? 'block' : 'none';
+      }
+    }
+
+    document.addEventListener('click', (evt) => {
+      const menu = document.getElementById('exportDropdownMenu');
+      if (menu && !evt.target.closest('#exportDropdownMenu') && !evt.target.textContent.includes('Exportar Relatório')) {
+        menu.style.display = 'none';
+      }
+    });
+
+    function exportConsolidatedByVU() {
+      const filtered = getFilteredData();
+      if (!filtered || filtered.length === 0) {
+        alert('Nenhum dado disponível para exportar com os filtros atuais.');
+        return;
+      }
+
+      const cName = `"${clientInfo.name.replace(/"/g, '""')}"`;
+      const cNum = `"${clientInfo.number.replace(/"/g, '""')}"`;
+
+      let csv = 'Customer Name;Customer Number;PID;Descrição do Produto;Total de Registros;SW Seriais;Tipo de Licença;Status;Total Value Units (VUs)\n';
+
+      const map = {};
+      filtered.forEach(prod => {
+        const pid = prod.productId;
+        if (!map[pid]) {
+          map[pid] = {
+            productId: prod.productId,
+            description: prod.description,
+            category: prod.category,
+            statuses: [],
+            serials: [],
+            count: 0,
+            totalVU: 0
+          };
+        }
+        map[pid].count += 1;
+        if (prod.swSerial && prod.swSerial !== '-' && !map[pid].serials.includes(prod.swSerial)) {
+          map[pid].serials.push(prod.swSerial);
+        }
+        if (prod.status && prod.status !== '-' && !map[pid].statuses.includes(prod.status)) {
+          map[pid].statuses.push(prod.status);
+        }
+        prod.features.forEach(f => {
+          map[pid].totalVU += f.numericValue;
+        });
+      });
+
+      Object.values(map).forEach(item => {
+        const serials = `"${item.serials.join(', ').replace(/"/g, '""')}"`;
+        const catLabel = item.category === 'SS' ? 'S&S Suporte' : 'Licença';
+        const statusText = item.statuses.length > 0 ? item.statuses.join(', ') : '-';
+        csv += `${cName};${cNum};"${item.productId}";"${item.description.replace(/"/g, '""')}";${item.count};${serials};"${catLabel}";"${statusText}";${item.totalVU}\n`;
+      });
+
+      downloadCSV(csv, `inventario_${clientInfo.number}_consolidado_PID_VUs_${new Date().toISOString().slice(0,10)}.csv`);
+    }
+
+    function exportConsolidatedByYear() {
+      const filtered = getFilteredData();
+      if (!filtered || filtered.length === 0) {
+        alert('Nenhum dado disponível para exportar com os filtros atuais.');
+        return;
+      }
+
+      const cName = `"${clientInfo.name.replace(/"/g, '""')}"`;
+      const cNum = `"${clientInfo.number.replace(/"/g, '""')}"`;
+
+      let csv = 'Customer Name;Customer Number;PID;Ano (Eff. Date);Descrição do Produto;Total de Registros;SW Seriais;Tipo de Licença;Status;Total Value Units (VUs)\n';
+
+      const map = {};
+      filtered.forEach(prod => {
+        const year = extractYearFromEffDate(prod.effDate);
+        const key = `${prod.productId}_${year}`;
+
+        if (!map[key]) {
+          map[key] = {
+            productId: prod.productId,
+            year: year,
+            description: prod.description,
+            category: prod.category,
+            statuses: [],
+            serials: [],
+            count: 0,
+            totalVU: 0
+          };
+        }
+        map[key].count += 1;
+        if (prod.swSerial && prod.swSerial !== '-' && !map[key].serials.includes(prod.swSerial)) {
+          map[key].serials.push(prod.swSerial);
+        }
+        if (prod.status && prod.status !== '-' && !map[key].statuses.includes(prod.status)) {
+          map[key].statuses.push(prod.status);
+        }
+        prod.features.forEach(f => {
+          map[key].totalVU += f.numericValue;
+        });
+      });
+
+      const list = Object.values(map);
+      list.sort((a, b) => a.productId.localeCompare(b.productId) || a.year.localeCompare(b.year));
+
+      list.forEach(item => {
+        const serials = `"${item.serials.join(', ').replace(/"/g, '""')}"`;
+        const catLabel = item.category === 'SS' ? 'S&S Suporte' : 'Licença';
+        const statusText = item.statuses.length > 0 ? item.statuses.join(', ') : '-';
+        csv += `${cName};${cNum};"${item.productId}";"${item.year}";"${item.description.replace(/"/g, '""')}";${item.count};${serials};"${catLabel}";"${statusText}";${item.totalVU}\n`;
+      });
+
+      downloadCSV(csv, `inventario_${clientInfo.number}_consolidado_Ano_${new Date().toISOString().slice(0,10)}.csv`);
+    }
+
+    function exportHierarchicalCSV() {
+      const filtered = getFilteredData();
+      if (!filtered || filtered.length === 0) {
+        alert('Nenhum dado disponível para exportar.');
+        return;
+      }
+
+      const cName = `"${clientInfo.name.replace(/"/g, '""')}"`;
+      const cNum = `"${clientInfo.number.replace(/"/g, '""')}"`;
+
+      let csv = 'Customer Name;Customer Number;PID/Feature;SW Serial;Effective Date;Descrição;Tipo de Licença;Status;Métrica;Config Value\n';
+      filtered.forEach(p => {
+        const catLabel = p.category === 'SS' ? 'S&S Suporte' : 'Licença';
+        csv += `${cName};${cNum};"${p.productId}";"${p.swSerial}";"${p.effDate}";"${p.description.replace(/"/g, '""')}";"${catLabel}";"${p.status}";"-";"-"\n`;
+        p.features.forEach(f => {
+          csv += `${cName};${cNum};"  ↳ ${f.featureCode}";"-";"-";"${f.description.replace(/"/g, '""')}";"-";"-";"${f.metric}";"${f.configValue}"\n`;
+        });
+      });
+
+      downloadCSV(csv, `inventario_${clientInfo.number}_hierarquico_${new Date().toISOString().slice(0,10)}.csv`);
+    }
+
+    function downloadCSV(csvContent, filename) {
+      const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      const menu = document.getElementById('exportDropdownMenu');
+      if (menu) menu.style.display = 'none';
+    }
+
+    function getProductKnowledge(productId, description) {
+      const rawPid = (productId || "").toUpperCase().trim();
+      const cleanPid = rawPid.replace(/[^A-Z0-9]/g, '');
+      const desc = (description || "").toUpperCase().trim();
+
+      // 1. Mapeamento direto e preciso por Código PID (normalizado sem traços/espaços)
+      const pidCatalog = {
+        // --- Db2 Utilities & Tools ---
+        "5648D68": {
+          summary: "O **IBM Db2 Utilities Suite for z/OS (S&S)** provê suporte e subscrição para o conjunto completo de utilitários essenciais do Db2 (LOAD, REORG, UNLOAD, CHECK, RECOVER, COPY), otimizados para alta disponibilidade e integridade do banco de dados no mainframe.",
+          vueCode: "VUE007 (Db2 Utilities Exhibit)",
+          vueDesc: "Licenciamento por Value Units (VUs) para utilitários z/OS.",
+          announcement: "IBM Db2 Utilities Suite for z/OS Announcement (ENUS215-001)"
+        },
+        "5655DB2": {
+          summary: "O **IBM Db2 for z/OS** é o sistema gerenciador de banco de dados relacional (RDBMS) enterprise carro-chefe da IBM para mainframes. Oferece alta disponibilidade, segurança criptográfica e processamento analítico e transacional em larga escala.",
+          vueCode: "VUE007 (Db2 Core Exhibit)",
+          vueDesc: "Métrica por Value Units (VUs) calculada sobre a capacidade em MSUs.",
+          announcement: "IBM Db2 for z/OS Software Announcement (ENUS215-001)"
+        },
+        "5655DT2": {
+          summary: "O **IBM Db2 Administration Tool for z/OS V12** simplifica a gestão de objetos, esquemas, autorizações e alteração de estruturas no Db2, automatizando tarefas de administração de banco de dados no z/OS.",
+          vueCode: "VUE007 (Db2 Admin Tools Exhibit)",
+          vueDesc: "Licenciamento por Value Units alocado à capacidade z/OS.",
+          announcement: "IBM Db2 Administration Tool for z/OS V12 Announcement (ENUS216-105)"
+        },
+        "5655E90": {
+          summary: "O **IBM Db2 Administration Tool for z/OS S&S** provê suporte técnico contínuo e direito a novas versões para a ferramenta de administração de banco de dados Db2.",
+          vueCode: "VUE007 (Db2 Admin Tools Exhibit)",
+          vueDesc: "Suporte e Subscrição em Value Units.",
+          announcement: "IBM Db2 Administration Tool S&S Announcement (ENUS216-105)"
+        },
+        "5655AB4": {
+          summary: "O **IBM Db2 Query Workload Tuner for z/OS** provê recomendações automatizadas de otimização de consultas SQL, estatísticas de catálogo e indexação para melhorar o desempenho de aplicações Db2.",
+          vueCode: "VUE007 (Db2 Tuning Tools Exhibit)",
+          vueDesc: "Métrica por Value Units calculada sobre os recursos do mainframe.",
+          announcement: "IBM Db2 Query Workload Tuner for z/OS Announcement (ENUS214-040)"
+        },
+        "5655DRQ": {
+          summary: "O **IBM InfoSphere Data Replication for Db2 for z/OS** realiza captura e replicação de alterações de dados em tempo real (CDC) entre o Db2 no mainframe e outros bancos corporativos com latência mínima.",
+          vueCode: "VUE007 (Data Replication Exhibit)",
+          vueDesc: "Licenciamento baseado em Value Units para replicação de dados.",
+          announcement: "IBM InfoSphere Data Replication for Db2 Announcement (ENUS213-180)"
+        },
+        "5655DRS": {
+          summary: "O **IBM InfoSphere Data Replication for z/OS S&S** é o serviço de suporte e subscrição para soluções de replicação de dados IBM zSystems.",
+          vueCode: "VUE007 (Data Replication Exhibit)",
+          vueDesc: "Suporte e Subscrição por Value Units.",
+          announcement: "IBM InfoSphere Data Replication S&S Announcement (ENUS213-180)"
+        },
+
+        // --- CICS Suite ---
+        "5655Y04": {
+          summary: "O **IBM CICS Transaction Server for z/OS V5.x** é o servidor de aplicações corporativo de ultra-alta velocidade projetado para processar bilhões de transações online e em lote por dia com resiliência máxima.",
+          vueCode: "VUE001 (CICS TS Exhibit)",
+          vueDesc: "Métrica por Value Units (VUs) de execução online no z/OS.",
+          announcement: "IBM CICS Transaction Server for z/OS Announcement (ENUS220-142)"
+        },
+
+        // --- Integration & MQ ---
+        "5655AB1": {
+          summary: "O **IBM Integration Bus for z/OS V10 (App Connect)** é o barramento de integração corporativo (ESB) que conecta aplicações mainframe z/OS com microsserviços REST/JSON e nuvem.",
+          vueCode: "VUE007 (Integration Middleware Exhibit)",
+          vueDesc: "Métrica por Value Units atrelada às MSUs configuradas.",
+          announcement: "IBM Integration Bus for z/OS Announcement (ENUS215-045)"
+        },
+        "5655F81": {
+          summary: "O **IBM WebSphere MQ / Support for z/OS S&S** provê suporte e subscrição para a infraestrutura de mensageria corporativa assíncrona garantida entre aplicações z/OS e sistemas distribuídos.",
+          vueCode: "VUE007 (MQ Middleware Exhibit)",
+          vueDesc: "Licenciamento por Value Units para servidores de mensagens.",
+          announcement: "IBM WebSphere MQ for z/OS Announcement (ENUS221-310)"
+        },
+
+        // --- OMEGAMON & Monitoring ---
+        "5608S83": {
+          summary: "A suíte **IBM Tivoli OMEGAMON for Messaging for z/OS S&S** provê monitoramento profundo de desempenho em tempo real e diagnósticos automatizados para ambientes de mensageria IBM MQ no z/OS.",
+          vueCode: "VUE020 (Tivoli Management Suite Exhibit)",
+          vueDesc: "Régua de Value Units calculada sobre os recursos z/OS monitorados.",
+          announcement: "IBM Tivoli OMEGAMON Performance Management Announcement (ENUS219-088)"
+        },
+
+        // --- z/OS Core ---
+        "5650ZOS": {
+          summary: "O **IBM z/OS Operating System** é o sistema operacional de 64 bits de missão crítica da IBM. Desenvolvido para computação resiliente a falhas (99.999% uptime), suporta workloads de IA e contêineres zCX.",
+          vueCode: "VUE027 (z/OS Platform Core Exhibit)",
+          vueDesc: "Tabela de precificação por Value Units derivada do modelo de capacidade z/Architecture.",
+          announcement: "IBM z/OS Operating System Announcement (ENUS222-015)"
+        }
+      };
+
+      if (pidCatalog[cleanPid]) {
+        const item = pidCatalog[cleanPid];
+        return {
+          summary: item.summary,
+          vueCode: item.vueCode,
+          vueDesc: item.vueDesc,
+          announcement: item.announcement
+        };
+      }
+
+      // 2. Se não estiver no catálogo direto por código PID, avalia termos específicos na descrição
+      let summary = "";
+      let vueCode = "VUE007";
+      let vueDesc = "Régua padrão de conversão de MSUs para Value Units (VUs) em softwares IBM zSystems.";
+      let announcement = `Carta de Anúncio IBM zSystems (${rawPid})`;
+
+      if (desc.includes("DB2 ADMINISTRATION TOOL") || desc.includes("DB2 ADMIN TOOL")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) é uma ferramenta especializada de administração e gestão de esquemas do banco de dados IBM Db2 no z/OS.`;
+        vueCode = "VUE007 (Db2 Admin Tools Exhibit)";
+        vueDesc = "Métrica de Value Units para ferramentas de gerenciamento Db2.";
+        announcement = `IBM Db2 Administration Tool Announcement (${rawPid})`;
+      } else if (desc.includes("DB2 QUERY WORKLOAD TUNER") || desc.includes("QUERY WORKLOAD TUNER")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) provê diagnósticos inteligentes e recomendações de otimização de consultas SQL no IBM Db2 for z/OS.`;
+        vueCode = "VUE007 (Db2 Tuning Tools Exhibit)";
+        vueDesc = "Licenciamento por Value Units para suíte de otimização de banco de dados.";
+        announcement = `IBM Db2 Query Workload Tuner Announcement (${rawPid})`;
+      } else if (desc.includes("DB2 UTILITIES") || desc.includes("UTILITIES SUITE")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) reúne os utilitários de alta performance (REORG, LOAD, UNLOAD, CHECK) para manutenção de tabelas Db2.`;
+        vueCode = "VUE007 (Db2 Utilities Exhibit)";
+        vueDesc = "Métrica por Value Units atrelada ao licenciamento de utilitários.";
+        announcement = `IBM Db2 Utilities Suite Announcement (${rawPid})`;
+      } else if (desc.includes("DATA REP") || desc.includes("DATA REPLICATION")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) realiza replicação de dados e alteração em tempo real (CDC) no ambiente IBM zSystems.`;
+        vueCode = "VUE007 (Data Replication Exhibit)";
+        vueDesc = "Métrica de Value Units associada à replicação de dados z/OS.";
+        announcement = `IBM Data Replication Announcement (${rawPid})`;
+      } else if (desc.includes("INTEGRATION BUS") || desc.includes("APP CONNECT")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) é o barramento de integração corporativo (ESB) para conexão de sistemas z/OS com APIs e nuvem.`;
+        vueCode = "VUE007 (Integration Middleware Exhibit)";
+        vueDesc = "Value Units calculadas sobre a capacidade do servidor de integração.";
+        announcement = `IBM Integration Bus Announcement (${rawPid})`;
+      } else if (desc.includes("CICS")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) faz parte da família IBM CICS Transaction Server para processamento de transações de alto volume no z/OS.`;
+        vueCode = "VUE001 (CICS TS Exhibit)";
+        vueDesc = "Métrica por Value Units (VUs) de execução online no z/OS.";
+        announcement = `IBM CICS Announcement (${rawPid})`;
+      } else if (desc.includes("OMEGAMON")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) pertence à linha IBM OMEGAMON de monitoramento contínuo e gestão de desempenho z/OS.`;
+        vueCode = "VUE020 (Tivoli Management Suite Exhibit)";
+        vueDesc = "Régua de Value Units calculada sobre a infraestrutura z/OS monitorada.";
+        announcement = `IBM OMEGAMON Announcement (${rawPid})`;
+      } else if (desc.includes("WEBSPHERE") || desc.includes("MQ")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) integra a plataforma IBM MQ / WebSphere para mensagens corporativas assíncronas de missão crítica.`;
+        vueCode = "VUE007 (WebSphere Middleware Exhibit)";
+        vueDesc = "Licenciamento por Value Units para servidores de mensagens.";
+        announcement = `IBM WebSphere / MQ Announcement (${rawPid})`;
+      } else if (desc.includes("Z/OS")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) é um componente do ecossistema do sistema operacional IBM z/OS para mainframes zSystems.`;
+        vueCode = "VUE027 (z/OS Platform Core Exhibit)";
+        vueDesc = "Métrica de Value Units derivada do modelo de capacidade z/Architecture.";
+        announcement = `IBM z/OS Announcement (${rawPid})`;
+      } else {
+        const catText = desc.includes("S&S") || desc.includes("SUPP") || desc.includes("SUBSCRIPTION") ? "Suporte e Subscrição (S&S)" : "Licença de Software";
+        summary = `O produto **${description}** (Código PID: ${rawPid}) é um componente de software especializado da IBM para mainframes zSystems, classificado na categoria **${catText}**. Ele atua no ecossistema z/OS garantindo resiliência, disponibilidade e conformidade de infraestrutura.`;
+        vueCode = "VUE007 (IBM zSystems Standard)";
+        vueDesc = "Métrica por Value Units (VUs) associada aos recursos computacionais configurados no servidor zSystems.";
+        announcement = `Carta de Anúncio Oficial IBM zSystems (${rawPid})`;
+      }
+
+      return { summary, vueCode, vueDesc, announcement };
+    }
+
+    function openProductModal(productId) {
+      const allInstances = globalInventoryData.filter(p => p.productId === productId);
+      if (allInstances.length === 0) return;
+
+      const firstProd = allInstances[0];
+      const serialsList = [...new Set(allInstances.map(p => p.swSerial).filter(s => s && s !== '-'))];
+      
+      const knowledge = getProductKnowledge(firstProd.productId, firstProd.description);
+
+      // Consolidar VUs e Sub-features de todas as instâncias do PID
+      let totalVUConsolidated = 0;
+      const featuresMap = {};
+
+      allInstances.forEach(p => {
+        p.features.forEach(f => {
+          totalVUConsolidated += f.numericValue;
+          if (!featuresMap[f.featureCode]) {
+            featuresMap[f.featureCode] = {
+              featureCode: f.featureCode,
+              description: f.description,
+              metric: f.metric,
+              numericValue: 0
+            };
+          }
+          featuresMap[f.featureCode].numericValue += f.numericValue;
+        });
+      });
+
+      const consolidatedFeatures = Object.values(featuresMap);
+      const countBadgeText = allInstances.length > 1 ? ` (${allInstances.length} Ocorrências Consolidadas)` : '';
+
+      document.getElementById('mdlTitle').innerText = `${firstProd.productId} - ${firstProd.description}${countBadgeText}`;
+      document.getElementById('mdlPidCode').innerText = `${firstProd.productId}${countBadgeText}`;
+      
+      const serialsDisplay = serialsList.length > 0 ? serialsList.join(', ') : 'Não informado';
+      document.getElementById('mdlSwSerial').innerText = `Seriais (${serialsList.length}): ${serialsDisplay}`;
+      
+      const isSS = firstProd.category === 'SS';
+      document.getElementById('mdlCategory').innerHTML = isSS ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>';
+      document.getElementById('mdlTotalVU').innerText = `Total VUs Consolidadas: ${totalVUConsolidated > 0 ? totalVUConsolidated.toLocaleString('pt-BR') : '-'}`;
+      
+      document.getElementById('mdlAiSummary').innerHTML = knowledge.summary;
+      document.getElementById('mdlAnnouncement').innerText = knowledge.announcement;
+      
+      const cleanPidCode = firstProd.productId.replace(/[^A-Z0-9]/g, '');
+      const csolUrl = `https://www.ibm.com/support/customer/csol/terms/?q=${encodeURIComponent(cleanPidCode)}`;
+      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent('site:ibm.com "announcement letter" ' + firstProd.productId + ' ' + firstProd.description)}`;
+      
+      const csolLink = document.getElementById('mdlAnnouncementCsolLink');
+      if (csolLink) {
+        csolLink.href = csolUrl;
+        csolLink.innerText = `🏛️ Consultar no Portal IBM CSOL (Termos de ${firstProd.productId}) →`;
+      }
+
+      const annLink = document.getElementById('mdlAnnouncementLink');
+      if (annLink) {
+        annLink.href = searchUrl;
+        annLink.innerText = `🔍 Buscar Carta de Anúncio Mais Atual (${firstProd.productId}) →`;
+      }
+
+      document.getElementById('mdlVueCode').innerText = knowledge.vueCode;
+      document.getElementById('mdlVueDesc').innerText = knowledge.vueDesc;
+
+      // Preenche a tabela de sub-features no modal
+      const tbodyModal = document.querySelector('#tblModalFeatures tbody');
+      tbodyModal.innerHTML = '';
+      
+      if (consolidatedFeatures.length === 0) {
+        tbodyModal.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#6e6e6e;">Nenhuma sub-feature capturada para este PID.</td></tr>';
+      } else {
+        consolidatedFeatures.forEach(f => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><strong>↳ ${f.featureCode}</strong></td>
+            <td>${f.description}</td>
+            <td>${f.metric}</td>
+            <td class="val-highlight">${f.numericValue > 0 ? f.numericValue.toLocaleString('pt-BR') : '-'}</td>
+          `;
+          tbodyModal.appendChild(row);
+        });
+      }
+
+      // Preenche a tabela de registros (com Effective Date e Status) no modal
+      const tbodyRecords = document.querySelector('#tblModalRecords tbody');
+      if (tbodyRecords) {
+        tbodyRecords.innerHTML = '';
+        allInstances.forEach(p => {
+          const row = document.createElement('tr');
+          const vuCount = p.features.reduce((s, f) => s + f.numericValue, 0);
+          row.innerHTML = `
+            <td><strong>${p.swSerial}</strong></td>
+            <td style="color:#0f62fe; font-weight:700;">📅 ${p.effDate || '-'}</td>
+            <td>${p.poNumber || '-'}</td>
+            <td>${p.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+            <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${p.status || '-'}</span></td>
+            <td class="val-highlight">${vuCount > 0 ? vuCount.toLocaleString('pt-BR') : '-'}</td>
+          `;
+          tbodyRecords.appendChild(row);
+        });
+      }
+
+      document.getElementById('productDetailModal').style.display = 'flex';
+    }
+
+    function closeProductModal() {
+      document.getElementById('productDetailModal').style.display = 'none';
+    }
+
+    function closeModalOnOverlay(evt) {
+      if (evt.target.id === 'productDetailModal') {
+        closeProductModal();
+      }
+    }
+
+    document.addEventListener('keydown', (evt) => {
+      if (evt.key === 'Escape') closeProductModal();
+    });
+
+    function toggleExpandPIDRow(evt, pid) {
+      if (evt) evt.stopPropagation();
+      const subRow = document.getElementById(`expand-row-${pid}`);
+      const btn = document.getElementById(`btn-expand-${pid}`);
+      
+      if (!subRow) return;
+
+      const isHidden = subRow.style.display === 'none' || !subRow.style.display;
+      if (isHidden) {
+        subRow.style.display = 'table-row';
+        if (btn) btn.innerHTML = `${btn.dataset.count}x 🔼 Recolher`;
+      } else {
+        subRow.style.display = 'none';
+        if (btn) btn.innerHTML = `${btn.dataset.count}x 📂 Expandir`;
+      }
+    }
+
+    function renderAllTables() {
+      const filtered = getFilteredData();
+      renderHierarchicalTable(filtered);
+      renderConsolidatedTable(filtered);
+    }
+
+    function renderHierarchicalTable(data) {
+      const tbody = document.querySelector('#tblHierarquica tbody');
+      tbody.innerHTML = '';
+
+      data.forEach(prod => {
+        const pRow = document.createElement('tr');
+        pRow.className = 'row-parent row-clickable';
+        pRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+        pRow.title = "Clique para abrir detalhes, carta de anúncio e VUE do produto";
+        pRow.innerHTML = `
+          <td><strong>${prod.productId}</strong></td>
+          <td>${prod.swSerial}</td>
+          <td style="color:#0f62fe; font-weight:600;">📅 ${prod.effDate || '-'}</td>
+          <td>${prod.description}</td>
+          <td>${prod.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${prod.status || '-'}</span></td>
+          <td>-</td>
+          <td>-</td>
+        `;
+        tbody.appendChild(pRow);
+
+        prod.features.forEach(feat => {
+          const fRow = document.createElement('tr');
+          fRow.className = 'row-child row-clickable';
+          fRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+          fRow.title = "Clique para abrir detalhes do produto pai";
+          fRow.innerHTML = `
+            <td style="padding-left: 28px;">↳ ${feat.featureCode}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${feat.description}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${feat.metric}</td>
+            <td class="val-highlight">${feat.configValue}</td>
+          `;
+          tbody.appendChild(fRow);
+        });
+      });
+    }
+
+    let currentConsolidatedMap = {};
+    let expandedSortStates = {};
+
+    function sortExpandedPIDRecords(evt, pid, colIdx) {
+      if (evt) evt.stopPropagation();
+      
+      if (!expandedSortStates[pid]) {
+        expandedSortStates[pid] = { colIdx: colIdx, asc: true };
+      } else if (expandedSortStates[pid].colIdx === colIdx) {
+        expandedSortStates[pid].asc = !expandedSortStates[pid].asc;
+      } else {
+        expandedSortStates[pid] = { colIdx: colIdx, asc: true };
+      }
+
+      renderSubRecordsTable(pid);
+    }
+
+    function renderSubRecordsTable(pid) {
+      const container = document.getElementById(`sub-records-container-${pid}`);
+      if (!container) return;
+
+      const item = currentConsolidatedMap[pid];
+      if (!item) return;
+
+      const sortState = expandedSortStates[pid] || { colIdx: 2, asc: true };
+      const records = [...item.records];
+
+      records.sort((a, b) => {
+        let valA, valB;
+        if (sortState.colIdx === 1) { valA = a.swSerial; valB = b.swSerial; }
+        else if (sortState.colIdx === 2) { valA = a.effDate; valB = b.effDate; }
+        else if (sortState.colIdx === 3) { valA = a.poNumber; valB = b.poNumber; }
+        else if (sortState.colIdx === 4) { valA = a.category; valB = b.category; }
+        else if (sortState.colIdx === 5) { valA = a.status; valB = b.status; }
+        else if (sortState.colIdx === 6) { valA = a.vuCount; valB = b.vuCount; }
+
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return sortState.asc ? valA - valB : valB - valA;
+        }
+        return sortState.asc 
+          ? String(valA || '').localeCompare(String(valB || ''), 'pt-BR', { numeric: true })
+          : String(valB || '').localeCompare(String(valA || ''), 'pt-BR', { numeric: true });
+      });
+
+      const getSortIcon = (idx) => {
+        if (sortState.colIdx !== idx) return '↕';
+        return sortState.asc ? '▲' : '▼';
+      };
+
+      container.innerHTML = `
+        <table style="width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
+          <thead>
+            <tr style="background: #393939; color: #ffffff; font-size: 0.78rem; text-transform: uppercase;">
+              <th style="padding: 6px 10px; text-align: left;">#</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 1)">SW Serial ${getSortIcon(1)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 2)">Effective Date ${getSortIcon(2)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 3)">PO Number ${getSortIcon(3)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 4)">Categoria ${getSortIcon(4)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 5)">Status ${getSortIcon(5)}</th>
+              <th style="padding: 6px 10px; text-align: right; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 6)">VUs da Instância ${getSortIcon(6)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${records.map((rec, idx) => `
+              <tr style="border-bottom: 1px solid #e0e0e0; font-size: 0.85rem;">
+                <td style="padding: 6px 10px; color: #6e6e6e;">${idx + 1}</td>
+                <td style="padding: 6px 10px;"><strong>${rec.swSerial}</strong></td>
+                <td style="padding: 6px 10px; color: #0f62fe; font-weight: 700;">📅 ${rec.effDate}</td>
+                <td style="padding: 6px 10px; color: #525252;">${rec.poNumber}</td>
+                <td style="padding: 6px 10px;">${rec.category === 'SS' ? '<span class="badge badge-ss">S&S</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+                <td style="padding: 6px 10px;"><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${rec.status}</span></td>
+                <td style="padding: 6px 10px; text-align: right; font-weight: bold; color: #161616;">${rec.vuCount > 0 ? rec.vuCount.toLocaleString('pt-BR') : '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderConsolidatedTable(data) {
+      const tbody = document.querySelector('#tblConsolidado tbody');
+      tbody.innerHTML = '';
+
+      const consolidatedMap = {};
+
+      data.forEach(prod => {
+        const pid = prod.productId;
+        if (!consolidatedMap[pid]) {
+          consolidatedMap[pid] = {
+            productId: prod.productId,
+            description: prod.description,
+            category: prod.category,
+            records: [],
+            serials: [],
+            statuses: [],
+            count: 0,
+            totalVU: 0,
+            featuresMap: {}
+          };
+        }
+
+        consolidatedMap[pid].count += 1;
+        consolidatedMap[pid].records.push({
+          swSerial: prod.swSerial,
+          effDate: prod.effDate || '-',
+          poNumber: prod.poNumber || '-',
+          category: prod.category,
+          status: prod.status || '-',
+          vuCount: prod.features.reduce((s, f) => s + f.numericValue, 0)
+        });
+
+        if (prod.swSerial && prod.swSerial !== '-' && !consolidatedMap[pid].serials.includes(prod.swSerial)) {
+          consolidatedMap[pid].serials.push(prod.swSerial);
+        }
+
+        if (prod.status && prod.status !== '-' && !consolidatedMap[pid].statuses.includes(prod.status)) {
+          consolidatedMap[pid].statuses.push(prod.status);
+        }
+
+        prod.features.forEach(f => {
+          consolidatedMap[pid].totalVU += f.numericValue;
+          if (!consolidatedMap[pid].featuresMap[f.featureCode]) {
+            consolidatedMap[pid].featuresMap[f.featureCode] = {
+              featureCode: f.featureCode,
+              description: f.description,
+              metric: f.metric,
+              numericValue: 0
+            };
+          }
+          consolidatedMap[pid].featuresMap[f.featureCode].numericValue += f.numericValue;
+        });
+      });
+
+      currentConsolidatedMap = consolidatedMap;
+      let consolidatedList = Object.values(consolidatedMap);
+
+      if (currentSortState.tableId === 'tblConsolidado') {
+        const { columnIndex, asc } = currentSortState;
+        consolidatedList.sort((a, b) => {
+          let valA, valB;
+          if (columnIndex === 0) { valA = a.productId; valB = b.productId; }
+          else if (columnIndex === 1) { valA = a.description; valB = b.description; }
+          else if (columnIndex === 2) { valA = a.count; valB = b.count; }
+          else if (columnIndex === 3) { valA = a.serials.join(', '); valB = b.serials.join(', '); }
+          else if (columnIndex === 4) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 5) { valA = a.statuses.join(', '); valB = b.statuses.join(', '); }
+          else if (columnIndex === 6) { valA = a.totalVU; valB = b.totalVU; }
+
+          if (typeof valA === 'number' && typeof valB === 'number') {
+            return asc ? valA - valB : valB - valA;
+          }
+          return asc 
+            ? String(valA || '').localeCompare(String(valB || ''), 'pt-BR', { numeric: true })
+            : String(valB || '').localeCompare(String(valA || ''), 'pt-BR', { numeric: true });
+        });
+      }
+
+      if (consolidatedList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#6e6e6e;">Nenhum produto encontrado.</td></tr>';
+        return;
+      }
+
+      consolidatedList.forEach(item => {
+        const serialsText = item.serials.length > 0 
+          ? (item.serials.length <= 2 ? item.serials.join(', ') : `${item.serials[0]} (+${item.serials.length - 1})`)
+          : '-';
+
+        const statusText = item.statuses.length > 0
+          ? (item.statuses.length <= 2 ? item.statuses.join(', ') : `${item.statuses[0]} (+${item.statuses.length - 1})`)
+          : '-';
+
+        const row = document.createElement('tr');
+        row.className = 'row-clickable';
+        row.setAttribute('onclick', `openProductModal('${item.productId}')`);
+        row.title = `Clique na linha para ver modal completo ou clique no botão de Total de Registros para expandir`;
+        row.innerHTML = `
+          <td><strong>${item.productId}</strong></td>
+          <td>${item.description}</td>
+          <td>
+            <button type="button" id="btn-expand-${item.productId}" data-count="${item.count}" class="btn-expand-records" onclick="toggleExpandPIDRow(event, '${item.productId}')" title="Clique para expandir e ver Effective Date dos ${item.count} registros">
+              ${item.count}x 📂 Expandir
+            </button>
+          </td>
+          <td><span title="${item.serials.join(', ')}">${serialsText}</span></td>
+          <td>${item.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;" title="${item.statuses.join(', ')}">${statusText}</span></td>
+          <td class="val-highlight" data-value="${item.totalVU}">${item.totalVU > 0 ? item.totalVU.toLocaleString('pt-BR') : '-'}</td>
+        `;
+        tbody.appendChild(row);
+
+        const expRow = document.createElement('tr');
+        expRow.id = `expand-row-${item.productId}`;
+        expRow.style.display = 'none';
+        expRow.innerHTML = `
+          <td colspan="7" style="padding: 12px 18px; background: #f0f4f9; border-bottom: 2px solid #0f62fe;">
+            <div style="font-weight: 700; font-size: 0.85rem; color: #0f62fe; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <span>📅 Registros Individuais do PID ${item.productId} (Clique nos cabeçalhos para ordenar)</span>
+              <span style="font-weight: normal; font-size: 0.8rem; color: #525252;">${item.count} registro(s)</span>
+            </div>
+            <div id="sub-records-container-${item.productId}"></div>
+          </td>
+        `;
+        tbody.appendChild(expRow);
+        renderSubRecordsTable(item.productId);
+      });
+    }
+
+    let currentSortState = { tableId: null, columnIndex: null, asc: true };
+
+    function sortTable(tableId, columnIndex) {
+      if (currentSortState.tableId === tableId && currentSortState.columnIndex === columnIndex) {
+        currentSortState.asc = !currentSortState.asc;
+      } else {
+        currentSortState = { tableId, columnIndex, asc: true };
+      }
+
+      const isAsc = currentSortState.asc;
+
+      globalInventoryData.sort((a, b) => {
+        let valA, valB;
+
+        if (tableId === 'tblHierarquica') {
+          if (columnIndex === 0) { valA = a.productId; valB = b.productId; }
+          else if (columnIndex === 1) { valA = a.swSerial; valB = b.swSerial; }
+          else if (columnIndex === 2) { valA = a.effDate; valB = b.effDate; }
+          else if (columnIndex === 3) { valA = a.description; valB = b.description; }
+          else if (columnIndex === 4) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 5) { valA = a.status; valB = b.status; }
+          else if (columnIndex === 6) { valA = a.features[0] ? a.features[0].metric : ''; valB = b.features[0] ? b.features[0].metric : ''; }
+          else if (columnIndex === 7) { 
+            valA = a.features.reduce((sum, f) => sum + f.numericValue, 0); 
+            valB = b.features.reduce((sum, f) => sum + f.numericValue, 0); 
+          }
+        } else if (tableId === 'tblConsolidado') {
+          if (columnIndex === 0) { valA = a.productId; valB = b.productId; }
+          else if (columnIndex === 1) { valA = a.description; valB = b.description; }
+          else if (columnIndex === 2) { valA = a.swSerial; valB = b.swSerial; }
+          else if (columnIndex === 3) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 4) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 5) { valA = a.status; valB = b.status; }
+          else if (columnIndex === 6) { 
+            valA = a.features.reduce((sum, f) => sum + f.numericValue, 0); 
+            valB = b.features.reduce((sum, f) => sum + f.numericValue, 0); 
+          }
+        }
+
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return isAsc ? valA - valB : valB - valA;
+        } else {
+          return isAsc 
+            ? String(valA || '').localeCompare(String(valB || ''), 'pt-BR', { numeric: true })
+            : String(valB || '').localeCompare(String(valA || ''), 'pt-BR', { numeric: true });
+        }
+      });
+
+      // Atualiza ícones nos cabeçalhos
+      document.querySelectorAll('th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+      const table = document.getElementById(tableId);
+      if (table) {
+        const headers = table.querySelectorAll('th');
+        if (headers[columnIndex]) {
+          headers[columnIndex].classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+        }
+      }
+
+      renderAllTables();
+    }
+
+    function switchTab(tabId, evt) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      evt.target.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+  </script>
+
+</body>
+</html>

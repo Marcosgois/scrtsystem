@@ -1,0 +1,126 @@
+'use strict';
+
+const mongoose = require('mongoose');
+
+// Agrupamento de LPARs definido pelo usuário (ex.: "Produção" = P0, P4, PC…).
+// Uma LPAR pertence a no máximo um grupo; a visão agrupada soma o consumo dos membros.
+const lparGroupSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    lpars: [String],
+  },
+  { _id: false }
+);
+
+const clientSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true, unique: true },
+    // Baseline mensal contratual (MSUs) — opcional; habilita as comparações no dashboard.
+    monthlyBaselineMsu: { type: Number, default: null },
+    lparGroups: { type: [lparGroupSchema], default: [] },
+    notes: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+
+const machineSchema = new mongoose.Schema(
+  {
+    identifier: String,
+    customerNumber: String,
+    serialNumber: String,
+    typeModel: String,
+    ratedCapacityMsus: Number,
+    peakUtilizationMsus: Number,
+    msuConsumed: Number,
+    modelChanged: String,
+    excludeData: String,
+    missingLparData: String,
+    missingCpcData: String,
+  },
+  { _id: false }
+);
+
+const containerSchema = new mongoose.Schema(
+  {
+    identifier: String,
+    name: String,
+    totalMsu: Number,
+    perMachineMsu: [Number],
+  },
+  { _id: false }
+);
+
+// Dados por LPAR: uso (seção ==N7) + picos de 4HRA (seção ==N5) do SCRT.
+const lparSchema = new mongoose.Schema(
+  {
+    name: String,
+    machine: String,
+    os: String,
+    msuConsumed: Number, // N7: Total MSU Consumed
+    peakHourMsu: Number, // N7: Peak Hour Consumption
+    peakHourAt: String,
+    peak4hraMsu: Number, // N5: Highest
+    peak4hraAt: String,
+    secondPeak4hraMsu: Number, // N5: 2nd Highest
+    secondPeak4hraAt: String,
+  },
+  { _id: false }
+);
+
+const scrtReportSchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    periodKey: { type: String, required: true }, // "2026-06"
+    periodLabel: { type: String, required: true }, // "Jun/2026"
+    periodStart: Date,
+    periodEnd: Date,
+    periodDays: Number,
+    customerName: String,
+    scrtToolRelease: String,
+    runDateTime: String,
+    submitter: { name: String, email: String, phone: String },
+    processorsInMultiplex: Number,
+    machines: [machineSchema],
+    containers: [containerSchema],
+    lpars: [lparSchema],
+    // Consumo mensal oficial do sistema: soma de "Machine MSU Consumed".
+    totalMsuConsumed: { type: Number, required: true },
+    containersTotalMsu: Number,
+    warnings: [String],
+    sourceFileName: String,
+    // Identidade física do relatório: seriais das máquinas, ordenados.
+    // Dois SCRTs do mesmo mês com máquinas diferentes (ex.: sites SCN e SIG)
+    // convivem e são somados; reenviar o mesmo conjunto substitui o anterior.
+    sourceKey: { type: String, required: true },
+    siteLabel: String, // rótulo amigável da origem (ex.: "SIG"), derivado do arquivo
+  },
+  { timestamps: true }
+);
+
+// Um relatório por cliente/mês/origem — o mês é a soma das origens.
+scrtReportSchema.index({ client: 1, periodKey: 1, sourceKey: 1 }, { unique: true });
+
+/**
+ * Inventário de software zSystems (relatório IBM SW Material) por cliente.
+ * O parse acontece no navegador (app de inventário) e o resultado é persistido aqui;
+ * `products` é Mixed de propósito, para acompanhar a evolução do parser sem migração.
+ */
+const inventorySchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, unique: true },
+    customerNumber: String, // número do cliente no relatório IBM
+    clientName: String, // nome como veio no relatório
+    products: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    productCount: Number,
+    sourceFileName: String,
+    reportUpdatedAt: String, // data/hora exibida pelo app (string já formatada)
+    warnings: [String],
+  },
+  { timestamps: true }
+);
+
+const Client = mongoose.model('Client', clientSchema);
+const ScrtReport = mongoose.model('ScrtReport', scrtReportSchema);
+const Inventory = mongoose.model('Inventory', inventorySchema);
+
+module.exports = { Client, ScrtReport, Inventory };

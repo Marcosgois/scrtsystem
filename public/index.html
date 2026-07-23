@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TFPSystem — Consumo TFP por Cliente</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="vendor/chart.umd.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">TFP</div>
+      <div>
+        <h1>TFPSystem</h1>
+        <p>Consumo Mainframe · Tailored Fit Pricing (SCRT)</p>
+      </div>
+      <nav class="module-nav" aria-label="Módulos">
+        <a href="/" class="active" aria-current="page">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo (SCRT)
+        </a>
+        <a href="/inventario">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          Inventário
+        </a>
+      </nav>
+    </div>
+    <div class="topbar-actions">
+      <label class="client-select-wrap" for="client-select">
+        <span class="client-select-label">Cliente</span>
+        <select id="client-select" aria-label="Selecionar cliente"></select>
+      </label>
+      <button class="btn btn-ghost" id="btn-new-client" title="Cadastrar novo cliente">+ Novo cliente</button>
+      <button class="btn btn-primary" id="btn-upload" title="Enviar relatório SCRT (.csv)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 11V2M8 2L4.5 5.5M8 2l3.5 3.5M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Subir SCRT
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="container" id="main">
+
+  <!-- Estado vazio: nenhum cliente -->
+  <section class="empty-state hidden" id="empty-clients">
+    <div class="empty-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 20h18M4 20V9.5L12 4l8 5.5V20M9 20v-5.5h6V20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h2>Nenhum cliente cadastrado</h2>
+    <p>Cadastre o primeiro cliente para começar a subir os relatórios SCRT.</p>
+    <button class="btn btn-primary" id="btn-empty-new-client">+ Cadastrar cliente</button>
+  </section>
+
+  <!-- Estado vazio: cliente sem relatórios -->
+  <section class="empty-state hidden" id="empty-reports">
+    <div class="empty-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5L14 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 3v4.5h4.5M8.5 12h7M8.5 16h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h2>Nenhum SCRT enviado para <span id="empty-reports-client"></span></h2>
+    <p>Arraste o arquivo .csv do SCRT para esta tela ou clique em "Subir SCRT".</p>
+    <button class="btn btn-primary" id="btn-empty-upload">Subir SCRT</button>
+  </section>
+
+  <!-- Dashboard -->
+  <div class="hidden" id="dashboard">
+
+    <div class="client-header">
+      <div>
+        <h2 id="dash-client-name"></h2>
+        <p class="muted" id="dash-client-sub"></p>
+      </div>
+      <div class="client-header-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-edit-baseline">Definir baseline</button>
+        <button class="btn btn-danger-ghost btn-sm" id="btn-delete-client">Excluir cliente</button>
+      </div>
+    </div>
+
+    <div class="banner banner-warning hidden" id="dash-warnings"></div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card reveal">
+        <h3 id="kpi-month-title">Consumo do mês</h3>
+        <div class="value" id="kpi-month-value">–</div>
+        <div class="subtitle"><span class="delta" id="kpi-month-mom"></span> vs mês anterior</div>
+      </div>
+      <div class="kpi-card reveal">
+        <h3>Crescimento ano-a-ano</h3>
+        <div class="value" id="kpi-yty-value">–</div>
+        <div class="subtitle" id="kpi-yty-sub">vs mesmo mês do ano anterior</div>
+      </div>
+      <div class="kpi-card reveal">
+        <h3>Média · últimos 12 meses</h3>
+        <div class="value" id="kpi-avg-value">–</div>
+        <div class="subtitle" id="kpi-avg-sub">–</div>
+      </div>
+      <div class="kpi-card reveal">
+        <h3>Acumulado · últimos 12 meses</h3>
+        <div class="value value-accent" id="kpi-acc-value">–</div>
+        <div class="subtitle" id="kpi-acc-sub">soma dos meses disponíveis</div>
+      </div>
+      <div class="kpi-card reveal" id="kpi-baseline-card">
+        <h3>Baseline mensal</h3>
+        <div class="value" id="kpi-baseline-value">–</div>
+        <div class="subtitle" id="kpi-baseline-sub">defina o baseline do contrato</div>
+      </div>
+    </div>
+
+    <!-- Gráfico -->
+    <div class="card reveal">
+      <div class="card-header">
+        <div>
+          <h2>Evolução mensal do consumo (MSUs)</h2>
+          <p class="muted">Consumo = soma de "Machine MSU Consumed" · clique em um mês para focar tudo nele</p>
+        </div>
+        <div class="chart-toggles" role="group" aria-label="Opções do gráfico">
+          <div class="segmented" role="group" aria-label="Modo do gráfico">
+            <button type="button" class="seg-btn active" data-chart-mode="monthly">Mensal</button>
+            <button type="button" class="seg-btn" data-chart-mode="groups">Por grupo</button>
+            <button type="button" class="seg-btn" data-chart-mode="acc12">Acumulado 12M</button>
+          </div>
+          <label class="toggle" id="toggle-trend-wrap"><input type="checkbox" id="toggle-trend" checked> Tendência</label>
+          <label class="toggle"><input type="checkbox" id="toggle-baseline" checked> Baseline</label>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="msuChart" role="img" aria-label="Gráfico de barras do consumo mensal de MSUs. Os mesmos dados estão na tabela de histórico abaixo."></canvas>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- Histórico -->
+      <div class="card reveal">
+        <div class="card-header">
+          <h2>Histórico mensal</h2>
+          <span class="muted small">clique em um mês para ver as máquinas</span>
+        </div>
+        <div class="table-responsive">
+          <table id="history-table" data-sort-table="history">
+            <thead>
+              <tr>
+                <th data-sort="periodKey">Mês</th>
+                <th class="num" data-sort="totalMsuConsumed">Consumo (MSU)</th>
+                <th class="num" data-sort="momPct">MoM</th>
+                <th class="num" data-sort="ytyPct">YTY</th>
+                <th class="num" data-sort="acc12">Acum. 12M</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Máquinas do mês -->
+      <div class="card reveal">
+        <div class="card-header">
+          <div>
+            <h2 id="machines-title">Máquinas</h2>
+            <p class="muted">clique em uma máquina para filtrar as LPARs dela</p>
+          </div>
+          <span class="tag tag-history" id="machines-period"></span>
+        </div>
+        <div class="table-responsive">
+          <table id="machines-table" data-sort-table="machines">
+            <thead>
+              <tr>
+                <th data-sort="identifier">Máquina</th>
+                <th data-sort="typeModel">Tipo-Modelo</th>
+                <th class="num" data-sort="ratedCapacityMsus">Capacidade</th>
+                <th class="num" data-sort="peakUtilizationMsus">Pico</th>
+                <th class="num" data-sort="msuConsumed">MSU Consumido</th>
+                <th class="num" data-sort="msuConsumed">% do total</th>
+              </tr>
+            </thead>
+            <tbody id="machines-tbody"></tbody>
+          </table>
+        </div>
+        <div class="report-meta muted small" id="report-meta"></div>
+      </div>
+    </div>
+
+    <!-- Capacity planning: projeção de consumo -->
+    <div class="card reveal" id="forecast-card">
+      <div class="card-header">
+        <div>
+          <h2 id="forecast-title">Capacity planning</h2>
+          <p class="muted">Projeção do consumo para os próximos anos, a partir do histórico</p>
+        </div>
+        <div class="forecast-controls">
+          <label class="compare-select-wrap">
+            <span class="muted small">método</span>
+            <select id="forecast-method" aria-label="Método de projeção">
+              <option value="linear">Regressão linear</option>
+              <option value="sarima">SARIMA</option>
+            </select>
+          </label>
+          <label class="compare-select-wrap">
+            <span class="muted small">horizonte</span>
+            <select id="forecast-years" aria-label="Horizonte da projeção">
+              <option value="1">1 ano</option>
+              <option value="2">2 anos</option>
+              <option value="3">3 anos</option>
+              <option value="4">4 anos</option>
+              <option value="5">5 anos</option>
+            </select>
+          </label>
+          <button class="btn btn-primary btn-sm" id="btn-forecast">Projetar</button>
+        </div>
+      </div>
+
+      <div id="forecast-empty" class="muted small">
+        Clique em <strong>Projetar</strong> para estimar o consumo futuro.
+      </div>
+
+      <div id="forecast-body" class="hidden">
+        <div class="banner banner-warning hidden" id="forecast-notes"></div>
+        <div class="forecast-model muted small" id="forecast-model"></div>
+
+        <div class="chart-container" style="height: 320px;">
+          <canvas id="forecastChart" role="img"
+                  aria-label="Gráfico do consumo histórico e projetado. Os mesmos números estão na tabela de anos abaixo."></canvas>
+        </div>
+
+        <h3 class="compare-subtitle" style="margin-top: 18px;">Consolidado por ano</h3>
+        <div class="table-responsive">
+          <table id="forecast-years-table">
+            <thead>
+              <tr>
+                <th>Ano</th>
+                <th>Composição</th>
+                <th class="num">Consumo total (MSU)</th>
+                <th class="num">Crescimento</th>
+                <th class="num">Baseline anual</th>
+                <th class="num">% do baseline</th>
+              </tr>
+            </thead>
+            <tbody id="forecast-years-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparativo mês a mês: quem puxou o consumo -->
+    <div class="card reveal" id="compare-card">
+      <div class="card-header">
+        <div>
+          <h2 id="compare-title">Comparativo mês a mês</h2>
+          <p class="muted">Quem puxou o consumo: primeiro a máquina, depois a LPAR dentro dela</p>
+        </div>
+        <label class="compare-select-wrap">
+          <span class="muted small">comparar com</span>
+          <select id="compare-base" aria-label="Mês de comparação"></select>
+        </label>
+      </div>
+
+      <div id="compare-empty" class="muted small hidden">
+        É preciso ter pelo menos dois meses do cliente para comparar.
+      </div>
+
+      <div id="compare-body">
+        <div class="compare-summary" id="compare-summary"></div>
+
+        <div class="two-col compare-grid">
+          <div>
+            <h3 class="compare-subtitle">
+              Por máquina
+              <span class="muted small">clique para ver as LPARs dela</span>
+            </h3>
+            <div class="table-responsive">
+              <table data-sort-table="compareMachines">
+                <thead>
+                  <tr>
+                    <th data-sort="identifier">Máquina</th>
+                    <th class="num" id="th-machine-base" data-sort="baseMsu">Mês base</th>
+                    <th class="num" id="th-machine-target" data-sort="targetMsu">Mês alvo</th>
+                    <th class="num" data-sort="delta">Variação</th>
+                    <th class="num" data-sort="contribPct">Contribuição</th>
+                  </tr>
+                </thead>
+                <tbody id="compare-machines-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="compare-subtitle">
+              <span id="compare-lpar-title">Por LPAR</span>
+              <button type="button" class="machine-chip hidden" id="compare-machine-chip" title="Remover filtro de máquina"></button>
+            </h3>
+            <div class="table-responsive">
+              <table data-sort-table="compareLpars">
+                <thead>
+                  <tr>
+                    <th data-sort="name">LPAR</th>
+                    <th data-sort="machine">Máquina</th>
+                    <th class="num" id="th-lpar-base" data-sort="baseMsu">Mês base</th>
+                    <th class="num" id="th-lpar-target" data-sort="targetMsu">Mês alvo</th>
+                    <th class="num" data-sort="delta">Variação</th>
+                    <th class="num" data-sort="contribPct">Contribuição</th>
+                  </tr>
+                </thead>
+                <tbody id="compare-lpars-tbody"></tbody>
+              </table>
+            </div>
+            <p class="muted small hidden" id="compare-lpar-unavailable" style="padding-top: 10px;">
+              Um dos meses comparados não traz as seções de LPAR (N5/N7), então não dá para detalhar por LPAR.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Consumo por LPAR (seções N7 e N5 do SCRT) -->
+    <div class="card reveal">
+      <div class="card-header">
+        <div>
+          <h2>
+            <span id="lpar-title">Consumo por LPAR</span>
+            <button type="button" class="machine-chip hidden" id="lpar-machine-chip" title="Remover filtro de máquina"></button>
+          </h2>
+          <p class="muted">Seção N7 (Total MSU Consumed por LPAR) e seção N5 (picos de 4HRA)</p>
+        </div>
+        <div class="lpar-controls">
+          <div class="segmented" role="group" aria-label="Visão das LPARs">
+            <button type="button" class="seg-btn active" data-lpar-view="exploded">Explodida</button>
+            <button type="button" class="seg-btn" data-lpar-view="grouped">Agrupada</button>
+          </div>
+          <div class="segmented" role="group" aria-label="Seção do SCRT">
+            <button type="button" class="seg-btn active" data-lpar-tab="n7">Uso (N7)</button>
+            <button type="button" class="seg-btn" data-lpar-tab="n5">Picos 4HRA (N5)</button>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-manage-groups" title="Criar e editar grupos de LPARs">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="5.5" cy="4" r="1.8" fill="currentColor"/><circle cx="10.5" cy="8" r="1.8" fill="currentColor"/><circle cx="6.5" cy="12" r="1.8" fill="currentColor"/></svg>
+            Grupos
+          </button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table id="lpar-table" data-sort-table="lpars">
+          <thead id="lpar-thead"></thead>
+          <tbody id="lpar-tbody"></tbody>
+        </table>
+      </div>
+      <p class="muted small hidden" id="lpar-empty" style="padding-top: 10px;">
+        O SCRT deste mês não traz as seções de LPAR (N5/N7).
+      </p>
+      <p class="muted small hidden" id="lpar-groups-hint" style="padding-top: 10px;">
+        Nenhum grupo definido ainda — use <strong>Grupos</strong> para agrupar LPARs (ex.: P0, P4, PC…).
+      </p>
+    </div>
+
+  </div>
+</main>
+
+<!-- Overlay de drag & drop -->
+<div class="drop-overlay hidden" id="drop-overlay">
+  <div class="drop-box">
+    <div class="drop-icon">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h2>Solte o arquivo SCRT aqui</h2>
+    <p id="drop-client-hint"></p>
+  </div>
+</div>
+
+<!-- Modal: novo cliente -->
+<div class="modal-backdrop hidden" id="modal-client">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-client-title">
+    <h2 id="modal-client-title">Novo cliente</h2>
+    <label class="field">
+      <span>Nome do cliente *</span>
+      <input type="text" id="input-client-name" placeholder="Ex.: CAIXA, BRB…" maxlength="120">
+    </label>
+    <label class="field">
+      <span>Baseline mensal (MSUs) — opcional</span>
+      <input type="number" id="input-client-baseline" placeholder="Ex.: 19366655" min="0">
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-client">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: baseline -->
+<div class="modal-backdrop hidden" id="modal-baseline">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-baseline-title">
+    <h2 id="modal-baseline-title">Baseline mensal do contrato</h2>
+    <p class="muted small">Usado para comparar o consumo de cada mês com o teto contratual. Deixe vazio para remover.</p>
+    <label class="field">
+      <span>Baseline mensal (MSUs)</span>
+      <input type="number" id="input-baseline" placeholder="Ex.: 19366655" min="0">
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-baseline">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: confirmação -->
+<div class="modal-backdrop hidden" id="modal-confirm">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-confirm-title">
+    <h2 id="modal-confirm-title">Confirmar</h2>
+    <p id="modal-confirm-text"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirm-yes">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: grupos de LPARs -->
+<div class="modal-backdrop hidden" id="modal-groups">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-groups-title">
+    <h2 id="modal-groups-title">Grupos de LPARs</h2>
+    <p class="muted small">Cada LPAR pode pertencer a um único grupo. Na visão agrupada, o consumo (N7) é somado por grupo; LPARs sem grupo continuam aparecendo individualmente.</p>
+
+    <div id="groups-list" class="groups-list"></div>
+
+    <div class="groups-form">
+      <label class="field">
+        <span id="group-form-label">Novo grupo</span>
+        <input type="text" id="input-group-name" placeholder="Ex.: Produção, Desenvolvimento…" maxlength="60">
+      </label>
+      <div class="field">
+        <span>LPARs do grupo <span class="muted" id="group-lpar-count"></span></span>
+        <div class="lpar-checks" id="group-lpar-checks"></div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost hidden" id="btn-delete-group">Excluir grupo</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-ghost" data-close-modal>Fechar</button>
+      <button class="btn btn-primary" id="btn-save-group">Salvar grupo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: resultado do upload -->
+<div class="modal-backdrop hidden" id="modal-upload-result">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-upload-title">
+    <h2 id="modal-upload-title">SCRT processado</h2>
+    <div id="upload-result-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" data-close-modal>OK</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".csv,text/csv" hidden>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

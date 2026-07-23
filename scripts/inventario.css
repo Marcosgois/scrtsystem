@@ -1,0 +1,576 @@
+    /* ======================================================================
+       Módulo de Inventário — mesmo sistema visual do módulo de Consumo:
+       superfícies planas com bordas de 1px, raios discretos, tipografia densa
+       com numerais tabulares e paleta neutra restrita (base IBM Carbon).
+       As classes originais do painel foram preservadas.
+       ====================================================================== */
+    :root {
+      --gray-10: #f4f4f4;
+      --gray-20: #e0e0e0;
+      --gray-30: #c6c6c6;
+      --gray-50: #8d8d8d;
+      --gray-60: #6f6f6f;
+      --gray-70: #525252;
+      --gray-100: #161616;
+
+      --ibm-blue: #0f62fe;
+      --ibm-blue-hover: #0353e9;
+      --blue-light: #edf5ff;
+      --bg-color: #f4f4f4;
+      --card-bg: #ffffff;
+      --surface-subtle: #fafafa;
+      --surface-hover: #f2f4f8;
+      --border-color: #e0e0e0;
+      --border-strong: #c6c6c6;
+      --text-color: #161616;
+      --text-secondary: #525252;
+      --text-muted: #6f6f6f;
+
+      --success: #198038;
+      --success-light: #defbe6;
+      --danger: #da1e28;
+      --accent: #6929c4;
+      --accent-light: #f6f2ff;
+
+      --radius: 4px;
+      --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-size: 15px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+
+    svg { flex-shrink: 0; }
+
+    /* ── Cabeçalho da página ─────────────────────────────────────────────── */
+    .header-card {
+      background: transparent;
+      padding: 0 0 16px;
+      border-radius: 0;
+      box-shadow: none;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .header-card h1 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      color: var(--text-color);
+    }
+    .header-card p { margin: 3px 0 0; color: var(--text-secondary); font-size: 13px; }
+
+    /* ── Seletor de cliente ──────────────────────────────────────────────── */
+    .client-select-card {
+      background: var(--card-bg) !important;
+      border: 1px solid var(--border-color);
+      border-left: 2px solid var(--ibm-blue) !important;
+      border-radius: var(--radius) !important;
+      box-shadow: none !important;
+      padding: 12px 16px !important;
+      margin-bottom: 18px !important;
+    }
+    .client-select-card label {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-muted) !important;
+    }
+    #selectCustomer {
+      padding: 7px 11px !important;
+      border-radius: var(--radius) !important;
+      border: 1px solid var(--border-strong) !important;
+      font-family: var(--font);
+      font-size: 13px !important;
+      background: var(--surface-subtle) !important;
+      font-weight: 500 !important;
+      color: var(--text-color) !important;
+      cursor: pointer;
+    }
+    #selectCustomer:focus { outline: 2px solid var(--ibm-blue); outline-offset: -1px; }
+
+    #savedStorageBadge {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #0e6027 !important;
+      background: var(--success-light) !important;
+      padding: 4px 9px !important;
+      border-radius: 2px !important;
+    }
+
+    .btn-inventario {
+      background: var(--ibm-blue);
+      color: #fff;
+      border: 1px solid transparent;
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .btn-inventario:hover { background: var(--ibm-blue-hover); }
+
+    /* ── Cartão do cliente ───────────────────────────────────────────────── */
+    .client-card {
+      background: var(--card-bg);
+      padding: 14px 18px;
+      border: 1px solid var(--border-color);
+      border-left: 2px solid var(--ibm-blue);
+      border-radius: var(--radius);
+      box-shadow: none;
+      margin-bottom: 18px;
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+    .client-info-group { display: flex; flex-direction: column; gap: 4px; }
+    .client-info-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .client-info-value { font-size: 15px; font-weight: 600; color: var(--text-color); }
+
+    /* ── KPIs ────────────────────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1px;
+      background: var(--border-color);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .kpi-card {
+      background: var(--card-bg);
+      padding: 16px 18px;
+      border-radius: 0;
+      box-shadow: none;
+      border-left: none;
+    }
+    .kpi-card .title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+    .kpi-card .value {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      color: var(--text-color);
+      font-variant-numeric: tabular-nums;
+    }
+    /* acentos por categoria, aplicados como faixa superior discreta */
+    .kpi-card.licence { box-shadow: inset 0 2px 0 var(--ibm-blue); }
+    .kpi-card.ss { box-shadow: inset 0 2px 0 var(--success); }
+
+    /* ── Barra de filtros ────────────────────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 18px;
+      box-shadow: none;
+    }
+    .btn-filter {
+      background: var(--card-bg);
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      padding: 6px 13px;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+    }
+    .btn-filter:hover { background: var(--surface-hover); color: var(--text-color); }
+    .btn-filter.active { background: var(--ibm-blue); color: #fff; border-color: var(--ibm-blue); }
+
+    #txtSearchInput {
+      padding: 7px 11px !important;
+      border: 1px solid var(--border-strong) !important;
+      border-radius: var(--radius) !important;
+      font-family: var(--font);
+      font-size: 13px !important;
+      background: var(--surface-subtle);
+      min-width: 260px;
+    }
+    #txtSearchInput:focus { outline: 2px solid var(--ibm-blue); outline-offset: -1px; background: #fff; }
+
+    /* ── Abas ────────────────────────────────────────────────────────────── */
+    .nav-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 0;
+      background: transparent;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 11px 18px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+    }
+    .tab-btn:hover { color: var(--text-color); background: var(--surface-hover); }
+    .tab-btn.active { color: var(--ibm-blue); border-bottom-color: var(--ibm-blue); }
+
+    .tab-content {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      padding: 18px 20px;
+      box-shadow: none;
+    }
+
+    /* ── Tabelas ─────────────────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+    th, td {
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+      background: var(--surface-subtle);
+      font-weight: 500;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border-bottom: 1px solid var(--border-strong);
+      white-space: nowrap;
+    }
+
+    th.sortable { cursor: pointer; user-select: none; transition: background 0.12s ease, color 0.12s ease; }
+    th.sortable:hover { background: var(--surface-hover); color: var(--text-color); }
+
+    .row-clickable { cursor: pointer; transition: background 0.1s ease; }
+    .row-clickable:hover { background: var(--surface-hover); }
+    .row-parent td { font-weight: 500; }
+    .row-child td { background: var(--surface-subtle); }
+    .row-child td:first-child { padding-left: 32px; }
+
+    .val-highlight { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .btn-expand-records {
+      background: transparent;
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      border-radius: var(--radius);
+      padding: 2px 8px;
+      font-size: 11px;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .btn-expand-records:hover { background: var(--surface-hover); border-color: var(--ibm-blue); color: var(--ibm-blue); }
+
+    /* ── Badges de categoria ─────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 2px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+    .badge-lic { background: var(--blue-light); color: #0043ce; }
+    .badge-ss { background: var(--success-light); color: #0e6027; }
+
+    /* ── Modal de produto ────────────────────────────────────────────────── */
+    /* Começa oculto; o JS troca para display:flex ao abrir o produto. */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(22, 22, 22, 0.5);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+      max-width: 900px;
+      width: 100%;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--surface-subtle);
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+    .modal-header h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color); }
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      font-size: 20px;
+      line-height: 1;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: var(--radius);
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .modal-close-btn:hover { background: var(--gray-20); color: var(--text-color); }
+    .modal-body { padding: 20px 22px; overflow-y: auto; }
+    .modal-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 760px) { .modal-grid-2 { grid-template-columns: 1fr; } }
+    .modal-card {
+      background: var(--surface-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .modal-card-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+    .modal-card-val { font-size: 14px; font-weight: 500; color: var(--text-color); }
+
+    .ai-summary-box {
+      background: var(--accent-light);
+      border: 1px solid #d9c7ff;
+      border-left: 2px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-top: 16px;
+    }
+    .ai-summary-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 500;
+      color: #491d8b;
+      margin-bottom: 8px;
+    }
+    .ai-summary-text { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+  
+    /* ── Elementos da versão nova do painel ──────────────────────────────── */
+
+    /* Filtros (data / status) e menu de exportação */
+    .status-filter-frame { box-shadow: none !important; }
+
+    input[type="date"] {
+      font-family: var(--font);
+      font-size: 12.5px !important;
+      padding: 6px 9px !important;
+      border: 1px solid var(--border-strong) !important;
+      border-radius: var(--radius) !important;
+      background: var(--surface-subtle);
+      color: var(--text-color);
+    }
+    input[type="date"]:focus { outline: 2px solid var(--ibm-blue); outline-offset: -1px; }
+
+    /* Chips de status gerados pelo painel (estilo inline sobrescrito) */
+    #statusCheckboxContainer label {
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      border-radius: var(--radius) !important;
+      padding: 4px 9px !important;
+      border-color: var(--border-strong) !important;
+    }
+    #statusCheckboxContainer input { accent-color: var(--ibm-blue); }
+
+    /* Menu suspenso de exportação */
+    #exportDropdownMenu {
+      border: 1px solid var(--border-strong) !important;
+      border-radius: var(--radius) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14) !important;
+    }
+    #exportDropdownMenu button {
+      font-size: 12.5px !important;
+      font-weight: 500 !important;
+      color: var(--text-color) !important;
+      border-bottom: 1px solid var(--border-color) !important;
+      transition: background 0.12s ease;
+    }
+    #exportDropdownMenu button:last-child { border-bottom: none !important; }
+    #exportDropdownMenu button:hover { background: var(--surface-hover) !important; }
+
+    /* Indicadores de ordenação nas tabelas do painel */
+    th.sort-asc::after { content: ' ↑'; color: var(--ibm-blue); }
+    th.sort-desc::after { content: ' ↓'; color: var(--ibm-blue); }
+    th.sort-asc, th.sort-desc { color: var(--ibm-blue); background: var(--blue-light); }
+
+    /* Barra de ações do cabeçalho do cliente (início / excluir) */
+    .client-card button, .header-card button {
+      font-family: var(--font);
+      border-radius: var(--radius) !important;
+    }
+
+    /* ── Barra de módulos do TFPSystem ───────────────────────────────────── */
+    .tfp-topbar {
+      background: #161616;
+      color: #fff;
+      position: sticky;
+      top: 0;
+      z-index: 500;
+      border-bottom: 1px solid #393939;
+    }
+    .tfp-topbar-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 0 20px;
+      min-height: 52px;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .tfp-brand { display: flex; align-items: stretch; gap: 18px; }
+    .tfp-brand > div { display: flex; align-items: center; }
+    .tfp-brand-mark {
+      align-self: center;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: #fff;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 1.4px;
+      border-radius: var(--radius);
+      padding: 5px 8px;
+    }
+    .tfp-brand h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+      color: #fff;
+      white-space: nowrap;
+      align-self: center;
+    }
+    .tfp-module-nav { display: flex; align-items: stretch; }
+    .tfp-module-nav a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.72);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+      white-space: nowrap;
+    }
+    .tfp-module-nav a:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+    .tfp-module-nav a.active {
+      color: #fff;
+      border-bottom-color: var(--ibm-blue);
+      background: rgba(255, 255, 255, 0.06);
+    }
+    @media (max-width: 900px) {
+      .tfp-module-nav { margin-left: 0; width: 100%; justify-content: center; }
+    }
+
+    /* Avisos vindos do servidor (ex.: inventário salvo em cliente divergente) */
+    .tfp-banner {
+      margin: 16px 0 -4px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      line-height: 1.55;
+      background: #fcf4d6;
+      border-left: 3px solid #f1c21b;
+      color: #8e6a00;
+    }
+
+    /* Botões com estilo inline do painel: padronizados pelo sistema visual.
+       Selecionados pelo onclick (estável entre versões do painel). */
+    button[onclick*="toggleExportMenu"],
+    button[onclick*="goHome"],
+    button[onclick*="deleteActiveCustomerRecord"] {
+      border-radius: var(--radius) !important;
+      font-family: var(--font);
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      padding: 8px 14px !important;
+    }
+    button[onclick*="toggleExportMenu"] {
+      background: var(--ibm-blue) !important;
+      border-color: var(--ibm-blue) !important;
+      color: #fff !important;
+    }
+    button[onclick*="goHome"] {
+      background: transparent !important;
+      color: var(--text-secondary) !important;
+      border: 1px solid var(--border-strong) !important;
+    }
+    button[onclick*="deleteActiveCustomerRecord"] {
+      background: transparent !important;
+      color: var(--danger) !important;
+      border: 1px solid var(--border-strong) !important;
+    }
+    button[onclick*="deleteActiveCustomerRecord"]:hover {
+      background: #fff1f1 !important;
+      border-color: var(--danger) !important;
+    }
+
+    /* Rótulos das barras de filtro em micro-label neutro */
+    .filter-bar > div > span:first-child,
+    .status-filter-frame span[style*="font-weight:700"],
+    .status-filter-frame span[style*="font-weight: 700"] {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-muted) !important;
+    }
+    .status-filter-frame { border-left: 2px solid var(--ibm-blue) !important; }
