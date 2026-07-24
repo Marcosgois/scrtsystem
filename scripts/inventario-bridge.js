@@ -949,9 +949,67 @@
     });
   };
 
+  /* ── Ocultar "MSU Registration" ─────────────────────────────
+   * Botão ao lado de "Exportar Relatório" que esconde os registros cuja
+   * métrica é "MSU Registration" (dominam o S&S e poluem a visão). */
+  const MSU_REG_KEY = 'tfp.inv.hideMsuReg';
+  let hideMsuReg = localStorage.getItem(MSU_REG_KEY) === '1';
+
+  const isMsuRegistration = (p) =>
+    (p.features || []).some((f) => /^\s*msu\s+registration\s*$/i.test(f.metric || ''));
+
+  // O painel usa getFilteredData nas tabelas e nas exportações — filtrar aqui
+  // faz o "ocultar" valer para os dois, como os demais filtros.
+  if (typeof window.getFilteredData === 'function') {
+    const origGetFiltered = window.getFilteredData;
+    window.getFilteredData = function () {
+      const data = origGetFiltered.apply(this, arguments);
+      return hideMsuReg ? data.filter((p) => !isMsuRegistration(p)) : data;
+    };
+  }
+
+  function updateMsuRegBtn() {
+    const btn = document.getElementById('tfp-hide-msureg');
+    if (!btn) return;
+    btn.classList.toggle('tfp-toggle-on', hideMsuReg);
+    btn.setAttribute('aria-pressed', hideMsuReg ? 'true' : 'false');
+    btn.textContent = hideMsuReg ? 'Mostrar MSU registration' : 'Ocultar MSU registration';
+  }
+
+  function injectMsuRegButton() {
+    if (document.getElementById('tfp-hide-msureg')) return;
+    const exportBtn = document.querySelector('[onclick*="toggleExportMenu"]');
+    if (!exportBtn) return;
+    const exportWrap = exportBtn.parentElement; // div position:relative
+    const parent = exportWrap.parentElement; // .nav-tabs (flex, space-between)
+    if (!parent) return;
+
+    // Agrupa [botão][exportar] à direita, lado a lado.
+    const group = document.createElement('div');
+    group.style.cssText = 'display:flex; align-items:center; gap:8px;';
+    parent.insertBefore(group, exportWrap);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'tfp-hide-msureg';
+    btn.className = 'btn-filter tfp-toggle';
+    btn.style.marginBottom = '6px';
+    btn.title = 'Esconder/mostrar os registros com métrica "MSU Registration"';
+    btn.addEventListener('click', () => {
+      hideMsuReg = !hideMsuReg;
+      localStorage.setItem(MSU_REG_KEY, hideMsuReg ? '1' : '0');
+      updateMsuRegBtn();
+      if (typeof window.renderAllTables === 'function') window.renderAllTables();
+    });
+    group.appendChild(btn);
+    group.appendChild(exportWrap); // move o "Exportar" pra dentro do grupo
+    updateMsuRegBtn();
+  }
+
   function init() {
     rebindUpload();
     setupStatusTooltips();
+    injectMsuRegButton();
     window.populateCustomerDropdown();
   }
 

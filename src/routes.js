@@ -889,9 +889,13 @@ router.get('/clients/:id/mlc', asyncHandler(async (req, res) => {
   const client = await Client.findById(req.params.id).lean();
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
 
-  const contract = client.mlcContract || null;
+  // O início do ano contratual é único por cliente: contractYearStart manda,
+  // e o startPeriodKey do MLC serve de base quando aquele não está definido.
+  const stored = client.mlcContract || null;
+  const effStart = client.contractYearStart || (stored && stored.startPeriodKey) || null;
+  const contract = stored ? { ...stored, startPeriodKey: effStart } : null;
   const consumo = await scrtConsumoByPeriod(client._id);
-  const view = contract ? computeMlcView(contract, consumo) : null;
+  const view = (contract && effStart) ? computeMlcView(contract, consumo) : null;
   const scrtMonths = Object.keys(consumo).sort();
 
   res.json({
@@ -912,9 +916,10 @@ router.put('/clients/:id/mlc', asyncHandler(async (req, res) => {
   const { error, contract } = sanitizeMlcContract(req.body || {});
   if (error) return res.status(400).json({ error });
 
+  // Unifica o início do ano contratual com o do dashboard (contractYearStart).
   const client = await Client.findByIdAndUpdate(
     req.params.id,
-    { $set: { mlcContract: contract } },
+    { $set: { mlcContract: contract, contractYearStart: contract.startPeriodKey } },
     { new: true }
   ).lean();
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });

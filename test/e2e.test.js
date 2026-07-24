@@ -669,6 +669,25 @@ async function main() {
       const jul = r.body.view.years[0].months.find((m) => m.periodKey === '2026-07');
       check('mlc: mês sem SCRT fica pendente', jul && jul.source === null && jul.monthlyWithGrowthRs === null, jul);
 
+      // Unificação: salvar o MLC sincroniza o contractYearStart do cliente…
+      r = await api(`/clients/${mlcId}/dashboard`);
+      check('mlc: PUT sincroniza contractYearStart com o início do contrato',
+        r.body.client.contractYearStart === '2026-06', r.body.client.contractYearStart);
+      // …e definir o ano contratual no cliente desloca a visão do MLC.
+      await api(`/clients/${mlcId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractYearStart: '2026-01' }),
+      });
+      r = await api(`/clients/${mlcId}/mlc`);
+      check('mlc: contractYearStart do cliente vale para o MLC (Ano 1 começa em jan/26)',
+        r.body.contract.startPeriodKey === '2026-01' && r.body.view.years[0].firstPeriodKey === '2026-01',
+        r.body.contract.startPeriodKey);
+      // volta ao início do contrato para não afetar os testes seguintes
+      await api(`/clients/${mlcId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractYearStart: '2026-06' }),
+      });
+
       r = await api(`/clients/${mlcId}/mlc`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ startPeriodKey: '2026-13', years: contrato.years }),

@@ -219,6 +219,8 @@
     }
     .btn-filter:hover { background: var(--surface-hover); color: var(--text-color); }
     .btn-filter.active { background: var(--ibm-blue); color: #fff; border-color: var(--ibm-blue); }
+    /* Toggle "Ocultar MSU registration": realçado quando está escondendo. */
+    .btn-filter.tfp-toggle-on { background: var(--ibm-blue); color: #fff; border-color: var(--ibm-blue); }
 
     #txtSearchInput {
       padding: 7px 11px !important;
