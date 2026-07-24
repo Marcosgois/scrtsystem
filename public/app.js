@@ -507,13 +507,20 @@ function renderKpis(series, client) {
     ? `12 meses completos até ${last.periodLabel}`
     : `soma de ${acc12Months} mês(es) disponíveis`;
 
+  // No modo Acumulado 12M o baseline vira anual (12×), para comparar com o
+  // acumulado; nos demais modos segue mensal, comparado ao mês selecionado.
   const baseline = client.monthlyBaselineMsu;
+  const isAcc = state.chartMode === 'acc12';
+  $('kpi-baseline-title').textContent = isAcc ? 'Baseline anual' : 'Baseline mensal';
   if (baseline) {
-    const diff = last.totalMsuConsumed - baseline;
-    $('kpi-baseline-value').textContent = `${fmt(baseline)} MSU`;
+    const alvo = isAcc ? baseline * 12 : baseline;
+    const consumo = isAcc ? acc12 : last.totalMsuConsumed;
+    const diff = consumo - alvo;
+    const ondeVs = isAcc ? 'do baseline anual' : `do baseline em ${esc(last.periodLabel)}`;
+    $('kpi-baseline-value').textContent = `${fmt(alvo)} MSU`;
     $('kpi-baseline-sub').innerHTML = diff > 0
-      ? `<span class="delta up">+${fmt(diff)} MSU</span> acima do baseline em ${esc(last.periodLabel)}`
-      : `<span class="delta down">${fmt(diff)} MSU</span> abaixo do baseline em ${esc(last.periodLabel)}`;
+      ? `<span class="delta up">+${fmt(diff)} MSU</span> acima ${ondeVs}`
+      : `<span class="delta down">${fmt(diff)} MSU</span> abaixo ${ondeVs}`;
   } else {
     $('kpi-baseline-value').textContent = '–';
     $('kpi-baseline-sub').textContent = 'defina o baseline do contrato';
@@ -835,6 +842,8 @@ $('toggle-trend').addEventListener('change', () => rerenderChart());
 $('toggle-baseline').addEventListener('change', () => rerenderChart());
 function rerenderChart() {
   if (state.dashboard && state.dashboard.series.length) {
+    // O KPI de baseline (mensal ↔ anual) segue o modo do gráfico.
+    renderKpis(state.dashboard.series, state.dashboard.client);
     renderChart(state.dashboard.series, state.dashboard.client);
   }
 }
