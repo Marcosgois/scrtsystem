@@ -3,6 +3,8 @@
 const express = require('express');
 const multer = require('multer');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const { Client, ScrtReport, Inventory } = require('./models');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
@@ -27,6 +29,30 @@ function normalizeName(s) {
 
 function isValidId(id) {
   return mongoose.Types.ObjectId.isValid(id);
+}
+
+// Arquivos SCRT originais ficam no disco (podem passar do limite de 16 MB do
+// documento Mongo — a planilha do Itaú tem 30 MB). Um por relatório, pelo _id.
+// Diretório configurável (os testes apontam para um temp).
+const SCRT_FILES_DIR = process.env.SCRT_FILES_DIR || path.join(__dirname, '..', 'data', 'scrt-files');
+const scrtFilePath = (id) => path.join(SCRT_FILES_DIR, String(id));
+
+function saveScrtFile(id, buffer, meta) {
+  try {
+    fs.mkdirSync(SCRT_FILES_DIR, { recursive: true });
+    fs.writeFileSync(scrtFilePath(id), buffer);
+    return { name: meta.name || null, size: buffer.length, contentType: meta.contentType || 'application/octet-stream' };
+  } catch (err) {
+    console.warn('[SCRT] não foi possível guardar o arquivo bruto:', err.message);
+    return null;
+  }
+}
+
+/** Remove do disco os arquivos brutos dos relatórios dados (ao excluir). */
+function removeScrtFiles(ids) {
+  for (const id of ids || []) {
+    try { fs.rmSync(scrtFilePath(id), { force: true }); } catch (e) { /* ignora */ }
+  }
 }
 
 /** Normaliza o baseline: null/''/0 -> null (sem baseline); inválido ou negativo -> NaN (sinal de erro). */
@@ -177,6 +203,7 @@ function mergeMonth(reports, tagCtx) {
       reportId: r._id,
       siteLabel: r.siteLabel || null,
       sourceFileName: r.sourceFileName || null,
+      rawFile: r.rawFile || null, // { name, size, contentType } se o arquivo foi guardado
       totalMsuConsumed: r.totalMsuConsumed,
       machineCount: (r.machines || []).length,
       machines: machineSerials(r.machines),
@@ -328,7 +355,9 @@ router.delete('/clients/:id', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const client = await Client.findByIdAndDelete(req.params.id);
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const ids = await ScrtReport.find({ client: client._id }).select('_id').lean();
   const { deletedCount } = await ScrtReport.deleteMany({ client: client._id });
+  removeScrtFiles(ids.map((r) => r._id));
   const inv = await Inventory.deleteOne({ client: client._id });
   res.json({ ok: true, deletedReports: deletedCount, deletedInventories: inv.deletedCount });
 }));
@@ -498,6 +527,16 @@ router.post('/clients/:id/reports', upload.single('file'), asyncHandler(async (r
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
+  // Guarda o arquivo bruto em disco (para ver/baixar depois) e registra no doc.
+  const contentType = isXlsx(req.file.buffer)
+    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    : 'text/csv; charset=utf-8';
+  const rawFile = saveScrtFile(report._id, req.file.buffer, { name: fileName, contentType });
+  if (rawFile) {
+    report.rawFile = rawFile;
+    await ScrtReport.updateOne({ _id: report._id }, { $set: { rawFile } });
+  }
+
   // Total do mês já com este arquivo incluído.
   const doMes = await ScrtReport.find({ client: client._id, periodKey: parsed.periodKey }).lean();
   const merged = mergeMonth(doMes, tagContextOf(client));
@@ -537,6 +576,25 @@ router.get('/reports/:id', asyncHandler(async (req, res) => {
   res.json(report);
 }));
 
+/** Serve o arquivo SCRT original (inline para pré-visualizar; ?download=1 baixa). */
+router.get('/reports/:id/file', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const report = await ScrtReport.findById(req.params.id).select('rawFile sourceFileName').lean();
+  if (!report) return res.status(404).json({ error: 'Relatório não encontrado.' });
+  if (!report.rawFile || !fs.existsSync(scrtFilePath(report._id))) {
+    return res.status(404).json({
+      error: 'O arquivo original deste SCRT não foi guardado (enviado antes desta versão). Reenvie o SCRT para ver/baixar.',
+    });
+  }
+  const name = report.rawFile.name || report.sourceFileName || `scrt-${report._id}.csv`;
+  const asciiName = name.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '');
+  const disposition = req.query.download ? 'attachment' : 'inline';
+  res.setHeader('Content-Type', report.rawFile.contentType || 'application/octet-stream');
+  res.setHeader('Content-Disposition',
+    `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+  res.send(fs.readFileSync(scrtFilePath(report._id)));
+}));
+
 /** Mês fundido: soma das origens (sites) enviadas para aquele cliente/mês. */
 router.get('/clients/:id/months/:periodKey', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
@@ -557,11 +615,13 @@ router.delete('/clients/:id/months/:periodKey', asyncHandler(async (req, res) =>
   if (!/^\d{4}-\d{2}$/.test(req.params.periodKey)) {
     return res.status(400).json({ error: 'Mês inválido (use AAAA-MM).' });
   }
+  const doMes = await ScrtReport.find({ client: req.params.id, periodKey: req.params.periodKey }).select('_id').lean();
   const { deletedCount } = await ScrtReport.deleteMany({
     client: req.params.id,
     periodKey: req.params.periodKey,
   });
   if (!deletedCount) return res.status(404).json({ error: 'Mês não encontrado para este cliente.' });
+  removeScrtFiles(doMes.map((r) => r._id));
   res.json({ ok: true, deletedReports: deletedCount });
 }));
 
@@ -569,6 +629,7 @@ router.delete('/reports/:id', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const report = await ScrtReport.findByIdAndDelete(req.params.id);
   if (!report) return res.status(404).json({ error: 'Relatório não encontrado.' });
+  removeScrtFiles([report._id]);
   res.json({ ok: true });
 }));
 

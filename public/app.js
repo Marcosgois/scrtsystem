@@ -405,6 +405,13 @@ $('btn-add-tag').addEventListener('click', () => {
 
 $('btn-manage-tags').addEventListener('click', openTagsModal);
 
+// Ver arquivos SCRT do mês selecionado.
+$('btn-scrt-files').addEventListener('click', () => {
+  if (!state.dashboard || !state.selectedPeriodKey) return;
+  const s = state.dashboard.series.find((x) => x.periodKey === state.selectedPeriodKey);
+  window.openScrtFilesModal(state.clientId, state.selectedPeriodKey, s ? s.periodLabel : null);
+});
+
 $('btn-save-tags').addEventListener('click', async () => {
   syncDraftTags();
   const defs = draftTags.map((t) => ({ name: t.name.trim(), ignored: !!t.ignored })).filter((t) => t.name);

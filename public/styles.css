@@ -1089,3 +1089,21 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 }
 .upload-tag-row:last-child { border-bottom: none; }
 .upload-tag-select { max-width: 160px; }
+
+/* ── Modal "Arquivos SCRT" (zOTC e MLC) ────────────────────────── */
+.scrt-file-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.scrt-file-row:last-child { border-bottom: none; }
+.scrt-file-actions { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.scrt-preview { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.scrt-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+#scrt-preview-body {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+  background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; max-height: 48vh; overflow: auto; white-space: pre;
+  color: var(--ink);
+}
+.mlc-scrt-link { cursor: pointer; user-select: none; }
+.mlc-scrt-link:hover { outline: 1px solid var(--primary); outline-offset: 1px; }

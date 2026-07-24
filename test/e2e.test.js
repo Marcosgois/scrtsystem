@@ -37,6 +37,9 @@ async function main() {
   const mongod = await MongoMemoryServer.create();
   process.env.MONGODB_URI = mongod.getUri('tfpsystem-e2e');
   process.env.PORT = String(PORT);
+  // Arquivos SCRT brutos vão para um temp (não polui data/scrt-files).
+  const scrtFilesDir = path.join(require('os').tmpdir(), `scrt-files-e2e-${process.pid}`);
+  process.env.SCRT_FILES_DIR = scrtFilesDir;
 
   const { connectDb } = require('../src/db');
   const { app } = require('../server');
@@ -85,6 +88,25 @@ async function main() {
     check('6 máquinas persistidas', r.body.report.machines.length === 6);
     check('sem replaced no primeiro envio', r.body.replaced === false);
     const reportId = r.body.report._id;
+
+    // Arquivo SCRT bruto guardado (para ver/baixar depois)
+    check('upload guarda o arquivo bruto (rawFile)',
+      r.body.report.rawFile && r.body.report.rawFile.name === '#JUN2026.csv' && r.body.report.rawFile.size > 0,
+      r.body.report.rawFile);
+    {
+      const fileRes = await fetch(`${BASE}/reports/${reportId}/file`);
+      const fileText = await fileRes.text();
+      check('GET /reports/:id/file serve o CSV original',
+        fileRes.status === 200 && /SCRT/.test(fileText), { status: fileRes.status, head: fileText.slice(0, 30) });
+      check('GET /reports/:id/file com content-type csv', /csv/.test(fileRes.headers.get('content-type') || ''),
+        fileRes.headers.get('content-type'));
+      const dlRes = await fetch(`${BASE}/reports/${reportId}/file?download=1`);
+      check('download traz Content-Disposition attachment',
+        /attachment/.test(dlRes.headers.get('content-disposition') || ''), dlRes.headers.get('content-disposition'));
+      await dlRes.arrayBuffer();
+    }
+    r = await api(`/clients/${caixaId}/months/2026-06`);
+    check('months: sources trazem rawFile', r.body.sources[0].rawFile && r.body.sources[0].rawFile.size > 0, r.body.sources[0].rawFile);
 
     // Reenvio do mesmo mês substitui (upsert)
     r = await api(`/clients/${caixaId}/reports`, { method: 'POST', body: uploadForm(SAMPLE, '#JUN2026-v2.csv') });
@@ -786,6 +808,7 @@ async function main() {
     const mongoose = require('mongoose');
     await mongoose.disconnect();
     await mongod.stop();
+    try { fs.rmSync(scrtFilesDir, { recursive: true, force: true }); } catch (e) { /* ok */ }
   }
 
   console.log(failures === 0 ? '\nE2E: TODOS OS TESTES PASSARAM' : `\nE2E: ${failures} FALHA(S)`);

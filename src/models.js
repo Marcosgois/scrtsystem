@@ -149,6 +149,15 @@ const scrtReportSchema = new mongoose.Schema(
     containersTotalMsu: Number,
     warnings: [String],
     sourceFileName: String,
+    // Arquivo SCRT original (guardado em disco, data/scrt-files/<_id>) para
+    // download/pré-visualização. Ausente nos relatórios subidos antes disto.
+    rawFile: {
+      type: new mongoose.Schema(
+        { name: String, size: Number, contentType: String },
+        { _id: false }
+      ),
+      default: null,
+    },
     // Identidade física do relatório: seriais das máquinas, ordenados.
     // Dois SCRTs do mesmo mês com máquinas diferentes (ex.: sites SCN e SIG)
     // convivem e são somados; reenviar o mesmo conjunto substitui o anterior.

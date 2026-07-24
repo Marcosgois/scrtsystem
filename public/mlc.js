@@ -145,7 +145,7 @@ function renderYearCard(ano) {
     const gCls = m.growth >= 0 ? 'up' : 'down';
     return `<tr>
       <td>${esc(m.label)}</td>
-      <td class="num">${fmtInt(m.consumedMsu)} <span class="badge badge-scrt" title="Valor vindo do SCRT do cliente">SCRT</span></td>
+      <td class="num">${fmtInt(m.consumedMsu)} <span class="badge badge-scrt mlc-scrt-link" role="button" tabindex="0" data-period="${esc(m.periodKey)}" data-label="${esc(m.label)}" title="Ver arquivos SCRT de ${esc(m.label)}">SCRT</span></td>
       <td class="num"><span class="delta ${gCls}">${fmtSigned(m.growth)}</span></td>
       <td class="num">${fmtBRL(m.baselineMensalRs)}</td>
       <td class="num">${fmtBRL(m.growthChargeRs)}</td>
@@ -374,6 +374,12 @@ $('btn-edit-contract-2').addEventListener('click', openContractEditor);
 $('btn-empty-new-contract').addEventListener('click', openContractEditor);
 $('btn-save-contract').addEventListener('click', saveContract);
 $('btn-delete-contract').addEventListener('click', deleteContract);
+
+// Clicar no selo "SCRT" de um mês abre os arquivos daquele mês.
+$('mlc-years').addEventListener('click', (e) => {
+  const el = e.target.closest('.mlc-scrt-link');
+  if (el && window.openScrtFilesModal) window.openScrtFilesModal(state.clientId, el.dataset.period, el.dataset.label);
+});
 
 $('modal-contract').addEventListener('click', (e) => {
   if (e.target === e.currentTarget || e.target.closest('[data-close-modal]')) closeModal();
