@@ -77,6 +77,7 @@
         <p class="muted" id="dash-client-sub"></p>
       </div>
       <div class="client-header-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-open-compare">Comparar meses</button>
         <button class="btn btn-ghost btn-sm" id="btn-open-forecast">Capacity planning</button>
         <button class="btn btn-ghost btn-sm" id="btn-edit-baseline">Definir baseline</button>
         <button class="btn btn-ghost btn-sm" id="btn-edit-contract-year">Ano contratual</button>
@@ -192,76 +193,6 @@
           </table>
         </div>
         <div class="report-meta muted small" id="report-meta"></div>
-      </div>
-    </div>
-
-    <!-- Comparativo mês a mês: quem puxou o consumo -->
-    <div class="card reveal" id="compare-card">
-      <div class="card-header">
-        <div>
-          <h2 id="compare-title">Comparativo mês a mês</h2>
-          <p class="muted">Quem puxou o consumo: primeiro a máquina, depois a LPAR dentro dela</p>
-        </div>
-        <label class="compare-select-wrap">
-          <span class="muted small">comparar com</span>
-          <select id="compare-base" aria-label="Mês de comparação"></select>
-        </label>
-      </div>
-
-      <div id="compare-empty" class="muted small hidden">
-        É preciso ter pelo menos dois meses do cliente para comparar.
-      </div>
-
-      <div id="compare-body">
-        <div class="compare-summary" id="compare-summary"></div>
-
-        <div class="two-col compare-grid">
-          <div>
-            <h3 class="compare-subtitle">
-              Por máquina
-              <span class="muted small">clique para ver as LPARs dela</span>
-            </h3>
-            <div class="table-responsive">
-              <table data-sort-table="compareMachines">
-                <thead>
-                  <tr>
-                    <th data-sort="identifier">Máquina</th>
-                    <th class="num" id="th-machine-base" data-sort="baseMsu">Mês base</th>
-                    <th class="num" id="th-machine-target" data-sort="targetMsu">Mês alvo</th>
-                    <th class="num" data-sort="delta">Variação</th>
-                    <th class="num" data-sort="contribPct">Contribuição</th>
-                  </tr>
-                </thead>
-                <tbody id="compare-machines-tbody"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <h3 class="compare-subtitle">
-              <span id="compare-lpar-title">Por LPAR</span>
-              <button type="button" class="machine-chip hidden" id="compare-machine-chip" title="Remover filtro de máquina"></button>
-            </h3>
-            <div class="table-responsive">
-              <table data-sort-table="compareLpars">
-                <thead>
-                  <tr>
-                    <th data-sort="name">LPAR</th>
-                    <th data-sort="machine">Máquina</th>
-                    <th class="num" id="th-lpar-base" data-sort="baseMsu">Mês base</th>
-                    <th class="num" id="th-lpar-target" data-sort="targetMsu">Mês alvo</th>
-                    <th class="num" data-sort="delta">Variação</th>
-                    <th class="num" data-sort="contribPct">Contribuição</th>
-                  </tr>
-                </thead>
-                <tbody id="compare-lpars-tbody"></tbody>
-              </table>
-            </div>
-            <p class="muted small hidden" id="compare-lpar-unavailable" style="padding-top: 10px;">
-              Um dos meses comparados não traz as seções de LPAR (N5/N7), então não dá para detalhar por LPAR.
-            </p>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -417,6 +348,85 @@
     <div id="upload-result-body"></div>
     <div class="modal-actions">
       <button class="btn btn-primary" data-close-modal>OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: comparativo mês a mês -->
+<div class="modal-backdrop hidden" id="modal-compare">
+  <div class="modal modal-compare" role="dialog" aria-modal="true" aria-labelledby="compare-title">
+    <div class="modal-forecast-top">
+      <div>
+        <h2 id="compare-title">Comparativo mês a mês</h2>
+        <p class="muted small">Quem puxou o consumo: primeiro a máquina, depois a LPAR dentro dela</p>
+      </div>
+      <div class="modal-compare-head">
+        <label class="compare-select-wrap">
+          <span class="muted small">comparar com</span>
+          <select id="compare-base" aria-label="Mês de comparação"></select>
+        </label>
+        <button class="row-action" data-close-modal title="Fechar" aria-label="Fechar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-forecast-scroll">
+      <div id="compare-empty" class="muted small hidden">
+        É preciso ter pelo menos dois meses do cliente para comparar.
+      </div>
+
+      <div id="compare-body">
+        <div class="compare-summary" id="compare-summary"></div>
+
+        <div class="two-col compare-grid">
+          <div>
+            <h3 class="compare-subtitle">
+              Por máquina
+              <span class="muted small">clique para ver as LPARs dela</span>
+            </h3>
+            <div class="table-responsive">
+              <table data-sort-table="compareMachines">
+                <thead>
+                  <tr>
+                    <th data-sort="identifier">Máquina</th>
+                    <th class="num" id="th-machine-base" data-sort="baseMsu">Mês base</th>
+                    <th class="num" id="th-machine-target" data-sort="targetMsu">Mês alvo</th>
+                    <th class="num" data-sort="delta">Variação</th>
+                    <th class="num" data-sort="contribPct">Contribuição</th>
+                  </tr>
+                </thead>
+                <tbody id="compare-machines-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="compare-subtitle">
+              <span id="compare-lpar-title">Por LPAR</span>
+              <button type="button" class="machine-chip hidden" id="compare-machine-chip" title="Remover filtro de máquina"></button>
+            </h3>
+            <div class="table-responsive">
+              <table data-sort-table="compareLpars">
+                <thead>
+                  <tr>
+                    <th data-sort="name">LPAR</th>
+                    <th data-sort="machine">Máquina</th>
+                    <th class="num" id="th-lpar-base" data-sort="baseMsu">Mês base</th>
+                    <th class="num" id="th-lpar-target" data-sort="targetMsu">Mês alvo</th>
+                    <th class="num" data-sort="delta">Variação</th>
+                    <th class="num" data-sort="contribPct">Contribuição</th>
+                  </tr>
+                </thead>
+                <tbody id="compare-lpars-tbody"></tbody>
+              </table>
+            </div>
+            <p class="muted small hidden" id="compare-lpar-unavailable" style="padding-top: 10px;">
+              Um dos meses comparados não traz as seções de LPAR (N5/N7), então não dá para detalhar por LPAR.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

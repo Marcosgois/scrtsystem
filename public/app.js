@@ -541,7 +541,6 @@ async function loadDashboard() {
   renderHistory(series, client);
 
   await loadMonthDetail(last.periodKey);
-  await loadCompare();
 }
 
 function renderWarnings(latest) {
@@ -990,11 +989,11 @@ async function selectMonth(periodKey) {
   renderChart(state.dashboard.series, state.dashboard.client);
   document.querySelectorAll('#history-tbody tr[data-period]').forEach((tr) =>
     tr.classList.toggle('selected', tr.dataset.period === periodKey));
+  // O comparativo (modal) acompanha o mês selecionado, contra o mês anterior a
+  // ele; carrega ao abrir o modal. Aqui só reseta o mês base do comparativo.
+  state.compareBaseKey = null;
   try {
     await loadMonthDetail(periodKey);
-    // O comparativo acompanha o mês selecionado, sempre contra o mês anterior a ele.
-    state.compareBaseKey = null;
-    await loadCompare();
   } catch (err) {
     toast(`Falha ao carregar o mês: ${err.message}`, 'error');
   }
@@ -1586,6 +1585,12 @@ $('btn-open-forecast').addEventListener('click', () => {
   // Redesenha no tamanho atual do modal se já houver projeção (canvas precisa estar visível).
   if (state.forecast) requestAnimationFrame(() => renderForecast());
 });
+
+$('btn-open-compare').addEventListener('click', () => {
+  if (!state.dashboard) return;
+  openModal('modal-compare');
+  loadCompare(); // busca para o mês selecionado atual e renderiza no modal
+});
 $('btn-forecast').addEventListener('click', runForecast);
 $('forecast-method').addEventListener('change', () => { if (state.forecast) runForecast(); });
 $('forecast-years').addEventListener('change', () => { if (state.forecast) runForecast(); });
@@ -1597,9 +1602,7 @@ async function loadCompare() {
   const target = state.dashboard.series.find((s) => s.periodKey === state.selectedPeriodKey);
   if (!target) return;
 
-  const card = $('compare-card');
   if (state.dashboard.series.length < 2) {
-    card.classList.remove('hidden');
     $('compare-empty').classList.remove('hidden');
     $('compare-body').classList.add('hidden');
     return;
