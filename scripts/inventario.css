@@ -329,8 +329,12 @@
       margin-left: 6px;
       font-weight: 600;
     }
-    tr.tfp-row-ss-pair > td { background: var(--success-light); }
-    tr.tfp-row-ss-pair > td:first-child { box-shadow: inset 3px 0 0 #24a148; }
+    /* Licença e S&S dividem o mesmo verde: o par se lê como um bloco só. */
+    tr.tfp-row-ss-pair > td,
+    tr.tfp-row-lic-pair > td { background: var(--success-light); }
+    tr.tfp-row-ss-pair > td:first-child,
+    tr.tfp-row-lic-pair > td:first-child { box-shadow: inset 3px 0 0 #24a148; }
+    /* Só o S&S entra recuado, para ficar claro quem pende de quem. */
     tr.tfp-row-ss-pair.row-parent > td:first-child { padding-left: 22px; }
     tr.tfp-row-ss-pair.row-child > td:first-child { padding-left: 40px; }
     .tfp-pair-note {

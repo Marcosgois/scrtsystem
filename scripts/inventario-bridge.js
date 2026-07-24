@@ -868,8 +868,10 @@
   function appendProductRows(tbody, prod, opts) {
     opts = opts || {};
     const paired = opts.attachedTo;
+    // As duas pontas do par ganham o verde: a licença e o S&S dela.
+    const marca = paired ? ' tfp-row-ss-pair' : (opts.coverage ? ' tfp-row-lic-pair' : '');
     const row = document.createElement('tr');
-    row.className = `row-parent row-clickable${paired ? ' tfp-row-ss-pair' : ''}`;
+    row.className = `row-parent row-clickable${marca}`;
     row.setAttribute('onclick', `openProductModal('${prod.productId}')`);
     row.title = paired
       ? `S&S da licença ${paired.lic.productId} (serial ${paired.lic.swSerial})`
@@ -902,7 +904,7 @@
 
     (prod.features || []).forEach((feat) => {
       const fRow = document.createElement('tr');
-      fRow.className = `row-child row-clickable${paired ? ' tfp-row-ss-pair' : ''}`;
+      fRow.className = `row-child row-clickable${marca}`;
       fRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
       fRow.innerHTML =
         `<td style="padding-left: 28px;">↳ ${escHtml(feat.featureCode)}</td>` +
