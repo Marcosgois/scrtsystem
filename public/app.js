@@ -9,7 +9,7 @@ const state = {
   selectedPeriodKey: null, // mês selecionado (um mês pode vir de vários SCRTs)
   chart: null,
   dashboardReq: 0,
-  chartMode: 'monthly', // 'monthly' | 'acc12'
+  chartMode: 'monthly', // 'monthly' | 'machines' | 'lpars' | 'groups' | 'acc12' | 'contract'
   lparTab: 'n7', // 'n7' (uso) | 'n5' (picos 4HRA)
   lparView: 'exploded', // 'exploded' | 'grouped'
   machineFilter: null, // identificador da máquina que filtra as LPARs (null = todas)
@@ -46,6 +46,44 @@ const CARBON_CAT = [
   '#6929c4', '#1192e8', '#005d5d', '#9f1853', '#fa4d56', '#570408', '#198038',
   '#002d9c', '#ee538b', '#b28600', '#009d9a', '#012749', '#8a3800', '#a56eff',
 ];
+
+/* ── Ano contratual ─────────────────────────────────────
+ * Ano contratual = 12 meses a partir de um mês de início (recorrente).
+ * Ex.: início "2024-06" => Ano 1 jun/24–mai/25, Ano 2 jun/25–mai/26, etc.
+ * A base vem do cliente (contractYearStart) ou, na falta, do contrato MLC.  */
+const MONTH_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const keyToAbs = (k) => { const [y, m] = k.split('-').map(Number); return y * 12 + (m - 1); };
+const absToKey = (a) => `${Math.floor(a / 12)}-${String((a % 12) + 1).padStart(2, '0')}`;
+const labelKeyShort = (k) => { const [y, m] = k.split('-').map(Number); return `${MONTH_ABBR[m - 1]}/${String(y).slice(-2)}`; };
+function contractStart(client) {
+  return (client && (client.contractYearStart
+    || (client.mlcContract && client.mlcContract.startPeriodKey))) || null;
+}
+// Agrupa a série em anos contratuais e acumula o consumo dentro de cada ano.
+function fiscalYears(series, start) {
+  const startAbs = keyToAbs(start);
+  const map = new Map();
+  for (const s of series) {
+    const yi = Math.floor((keyToAbs(s.periodKey) - startAbs) / 12);
+    if (!map.has(yi)) map.set(yi, []);
+    map.get(yi).push(s);
+  }
+  return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([yi, months]) => {
+    months.sort((a, b) => a.periodKey.localeCompare(b.periodKey));
+    let acc = 0;
+    const accByKey = {};
+    for (const s of months) { acc += s.totalMsuConsumed; accByKey[s.periodKey] = acc; }
+    const firstAbs = startAbs + yi * 12;
+    return {
+      yi,
+      label: yi >= 0 ? `Ano ${yi + 1}` : 'Antes do contrato',
+      range: `${labelKeyShort(absToKey(firstAbs))}–${labelKeyShort(absToKey(firstAbs + 11))}`,
+      total: acc,
+      monthsWithData: months.length,
+      accByKey,
+    };
+  });
+}
 
 /* ── Ordenação das tabelas ──────────────────────────────
    Cada tabela declara data-sort-table; cada <th> ordenável, data-sort="<campo>".
@@ -285,6 +323,45 @@ $('btn-save-baseline').addEventListener('click', async () => {
   }
 });
 
+// ── Ano contratual ──
+function openContractYearModal() {
+  const client = (state.dashboard && state.dashboard.client) || currentClient();
+  if (!client) return;
+  const mlcStart = client.mlcContract && client.mlcContract.startPeriodKey;
+  $('input-contract-year').value = client.contractYearStart || mlcStart || '';
+  const hint = $('contract-year-mlc-hint');
+  if (!client.contractYearStart && mlcStart) {
+    hint.textContent = `Sugerido pelo contrato MLC: início em ${labelKeyShort(mlcStart)}.`;
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+  openModal('modal-contract-year');
+  $('input-contract-year').focus();
+}
+
+$('btn-edit-contract-year').addEventListener('click', openContractYearModal);
+
+$('btn-save-contract-year').addEventListener('click', async () => {
+  const value = $('input-contract-year').value; // 'AAAA-MM' ou ''
+  if (value && !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) {
+    toast('Informe o mês de início no formato AAAA-MM.', 'error');
+    return;
+  }
+  try {
+    await api(`/clients/${state.clientId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contractYearStart: value || null }),
+    });
+    closeModals();
+    toast(value ? 'Ano contratual atualizado.' : 'Ano contratual removido.');
+    await loadClients();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
 /* ── Upload de SCRT ─────────────────────────────────── */
 
 $('btn-upload').addEventListener('click', () => triggerUpload());
@@ -507,20 +584,34 @@ function renderKpis(series, client) {
     ? `12 meses completos até ${last.periodLabel}`
     : `soma de ${acc12Months} mês(es) disponíveis`;
 
-  // No modo Acumulado 12M o baseline vira anual (12×), para comparar com o
-  // acumulado; nos demais modos segue mensal, comparado ao mês selecionado.
+  // Nos modos anuais (Acumulado 12M e Por Ano Contratual) o baseline vira anual
+  // (12×); nos demais segue mensal, comparado ao mês selecionado.
   const baseline = client.monthlyBaselineMsu;
+  const start = contractStart(client);
   const isAcc = state.chartMode === 'acc12';
-  $('kpi-baseline-title').textContent = isAcc ? 'Baseline anual' : 'Baseline mensal';
+  const isContract = state.chartMode === 'contract' && start;
+  const annualMode = isAcc || isContract;
+  $('kpi-baseline-title').textContent = annualMode ? 'Baseline anual' : 'Baseline mensal';
   if (baseline) {
-    const alvo = isAcc ? baseline * 12 : baseline;
-    const consumo = isAcc ? acc12 : last.totalMsuConsumed;
-    const diff = consumo - alvo;
-    const ondeVs = isAcc ? 'do baseline anual' : `do baseline em ${esc(last.periodLabel)}`;
+    const alvo = annualMode ? baseline * 12 : baseline;
     $('kpi-baseline-value').textContent = `${fmt(alvo)} MSU`;
-    $('kpi-baseline-sub').innerHTML = diff > 0
-      ? `<span class="delta up">+${fmt(diff)} MSU</span> acima ${ondeVs}`
-      : `<span class="delta down">${fmt(diff)} MSU</span> abaixo ${ondeVs}`;
+    if (isContract) {
+      // Progresso do ano contratual do mês selecionado (acumulado até ele).
+      const cy = fiscalYears(series, start).find((y) => y.accByKey[last.periodKey] != null);
+      const acc = cy ? cy.accByKey[last.periodKey] : 0;
+      const pct = alvo > 0 ? (acc / alvo) * 100 : 0;
+      const cls = acc > alvo ? 'up' : 'down';
+      $('kpi-baseline-sub').innerHTML = cy
+        ? `${esc(cy.label)}: <span class="delta ${cls}">${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span> do baseline anual (${cy.monthsWithData}/12 meses)`
+        : 'sem meses dentro do contrato';
+    } else {
+      const consumo = isAcc ? acc12 : last.totalMsuConsumed;
+      const ondeVs = isAcc ? 'do baseline anual' : `do baseline em ${esc(last.periodLabel)}`;
+      const diff = consumo - alvo;
+      $('kpi-baseline-sub').innerHTML = diff > 0
+        ? `<span class="delta up">+${fmt(diff)} MSU</span> acima ${ondeVs}`
+        : `<span class="delta down">${fmt(diff)} MSU</span> abaixo ${ondeVs}`;
+    }
   } else {
     $('kpi-baseline-value').textContent = '–';
     $('kpi-baseline-sub').textContent = 'defina o baseline do contrato';
@@ -548,12 +639,16 @@ function renderChart(series, client) {
   const isGroups = state.chartMode === 'groups';
   const isMachines = state.chartMode === 'machines';
   const isLpars = state.chartMode === 'lpars';
+  const isContract = state.chartMode === 'contract';
   const isStacked = isGroups || isMachines || isLpars;
   const showBaseline = $('toggle-baseline').checked && baseline;
   const selIdx = series.findIndex((s) => s.periodKey === state.selectedPeriodKey);
 
+  // Painel de totais por ano contratual (só aparece nesse modo).
+  renderContractYears(client, series);
+
   // Tendência só faz sentido no modo mensal.
-  $('toggle-trend-wrap').classList.toggle('hidden', isAcc || isStacked);
+  $('toggle-trend-wrap').classList.toggle('hidden', isAcc || isStacked || isContract);
 
   // Mês selecionado ganha a versão escurecida da cor.
   const perBarColor = (color) => series.map((_, i) => (i === selIdx ? darken(color) : color));
@@ -575,6 +670,37 @@ function renderChart(series, client) {
       tension: 0.15,
     });
     if (showBaseline) {
+      datasets.push({
+        type: 'line',
+        label: `Baseline anual (12 × ${fmtM(baseline)})`,
+        data: labels.map(() => baseline * 12),
+        borderColor: '#da1e28',
+        borderWidth: 2,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        pointHoverRadius: 0,
+      });
+    }
+  } else if (isContract) {
+    // Uma linha por ano contratual: acumula dentro do ano e "reinicia" no próximo.
+    const start = contractStart(client);
+    const years = start ? fiscalYears(series, start).filter((y) => y.yi >= 0) : [];
+    years.forEach((yr, i) => {
+      const color = CARBON_CAT[i % CARBON_CAT.length];
+      datasets.push({
+        type: 'line',
+        label: `${yr.label} (${yr.range})`,
+        data: series.map((s) => (yr.accByKey[s.periodKey] != null ? yr.accByKey[s.periodKey] : null)),
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 2.5,
+        pointRadius: series.map((s) => (yr.accByKey[s.periodKey] != null ? (s.periodKey === state.selectedPeriodKey ? 6 : 3.5) : 0)),
+        pointHoverRadius: 6,
+        spanGaps: false,
+        tension: 0.15,
+      });
+    });
+    if (showBaseline && years.length) {
       datasets.push({
         type: 'line',
         label: `Baseline anual (12 × ${fmtM(baseline)})`,
@@ -777,6 +903,7 @@ function renderChart(series, client) {
               if (!items.length) return '';
               const s = series[items[0].dataIndex];
               if (isAcc) return s.acc12Months < 12 ? `soma de ${s.acc12Months} mês(es) disponíveis` : '';
+              if (isContract) return `Consumo do mês: ${fmt(s.totalMsuConsumed)} MSU`;
               if (isStacked) return `Total do mês: ${fmt(s.totalMsuConsumed)} MSU`;
               return '';
             },
@@ -790,11 +917,55 @@ function renderChart(series, client) {
           beginAtZero: !isAcc,
           grid: { color: '#eef1f5' },
           ticks: { font: { size: 12 }, callback: (v) => fmtM(v) },
-          title: { display: true, text: isAcc ? 'MSUs acumulados (12 meses móveis)' : 'MSUs', font: { size: 12 } },
+          title: {
+            display: true,
+            text: isAcc ? 'MSUs acumulados (12 meses móveis)'
+              : isContract ? 'MSUs acumulados no ano contratual' : 'MSUs',
+            font: { size: 12 },
+          },
         },
       },
     },
   });
+}
+
+// Painel de totais por ano contratual (só no modo "Por Ano Contratual").
+function renderContractYears(client, series) {
+  const el = $('contract-years');
+  if (state.chartMode !== 'contract') { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.classList.remove('hidden');
+
+  const start = contractStart(client);
+  if (!start) {
+    el.innerHTML = '<div class="contract-empty">Defina o <strong>início do ano contratual</strong> '
+      + 'para ver o consumo alinhado ao contrato (ex.: jun→mai). '
+      + '<button type="button" class="btn btn-primary btn-sm" id="btn-contract-empty-define">Definir ano contratual</button></div>';
+    $('btn-contract-empty-define').addEventListener('click', openContractYearModal);
+    return;
+  }
+
+  const annual = client.monthlyBaselineMsu ? client.monthlyBaselineMsu * 12 : null;
+  const years = fiscalYears(series, start).filter((y) => y.yi >= 0);
+  if (!years.length) {
+    el.innerHTML = `<div class="contract-empty">Sem meses de SCRT dentro do contrato (início ${labelKeyShort(start)}).</div>`;
+    return;
+  }
+  const cards = years.map((yr) => {
+    let vs = '';
+    if (annual != null) {
+      const pct = (yr.total / annual) * 100;
+      const cls = yr.total > annual ? 'up' : 'down';
+      vs = ` · <span class="delta ${cls}">${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span> do baseline anual`;
+    }
+    return `<div class="contract-year-card">
+      <div class="cyc-head"><strong>${esc(yr.label)}</strong><span class="muted small">${esc(yr.range)}</span></div>
+      <div class="cyc-total">${fmt(yr.total)} MSU</div>
+      <div class="cyc-sub">${yr.monthsWithData}/12 meses${vs}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="contract-years-head">Totais por ano contratual `
+    + `<span class="muted small">início em ${labelKeyShort(start)}</span></div>`
+    + `<div class="contract-year-cards">${cards}</div>`;
 }
 
 // Clique no gráfico seleciona o mês. Listener próprio no canvas além do onClick do

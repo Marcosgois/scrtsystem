@@ -221,6 +221,25 @@ async function main() {
     });
     check('PATCH baseline', r.status === 200 && r.body.monthlyBaselineMsu === 19366655);
 
+    // Início do ano contratual
+    r = await api(`/clients/${caixaId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contractYearStart: '2024-06' }),
+    });
+    check('PATCH ano contratual salva AAAA-MM', r.status === 200 && r.body.contractYearStart === '2024-06', r.body.contractYearStart);
+
+    r = await api(`/clients/${caixaId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contractYearStart: '2024-13' }),
+    });
+    check('PATCH ano contratual inválido -> 400', r.status === 400, r.status);
+
+    r = await api(`/clients/${caixaId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contractYearStart: null }),
+    });
+    check('PATCH ano contratual null limpa o campo', r.status === 200 && r.body.contractYearStart === null, r.body.contractYearStart);
+
     // Grupos de LPARs
     r = await api(`/clients/${caixaId}`, {
       method: 'PATCH',

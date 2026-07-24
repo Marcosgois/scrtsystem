@@ -244,6 +244,16 @@ router.patch('/clients/:id', asyncHandler(async (req, res) => {
     if (Number.isNaN(baseline)) return res.status(400).json({ error: BASELINE_ERROR });
     update.monthlyBaselineMsu = baseline;
   }
+  if (req.body.contractYearStart !== undefined) {
+    const raw = req.body.contractYearStart;
+    if (raw === null || raw === '') {
+      update.contractYearStart = null;
+    } else if (/^\d{4}-(0[1-9]|1[0-2])$/.test(String(raw).trim())) {
+      update.contractYearStart = String(raw).trim();
+    } else {
+      return res.status(400).json({ error: 'Início do ano contratual deve ser AAAA-MM (ex.: 2024-06).' });
+    }
+  }
   if (req.body.notes !== undefined) update.notes = String(req.body.notes);
   if (req.body.lparGroups !== undefined) {
     const { groups, error } = parseLparGroups(req.body.lparGroups);

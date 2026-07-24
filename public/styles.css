@@ -1006,3 +1006,27 @@ td.strong, .num.strong { font-weight: 600; color: var(--ink); }
 @media (max-width: 720px) {
   .year-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Por Ano Contratual ─────────────────────────────────────── */
+.contract-years { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.contract-years-head { font-size: 13px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 10px; }
+.contract-year-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.contract-year-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--surface-subtle);
+}
+.cyc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.cyc-head strong { font-size: 13px; }
+.cyc-total { font-size: 19px; font-weight: 600; letter-spacing: -0.2px; font-variant-numeric: tabular-nums; }
+.cyc-sub { font-size: 11.5px; color: var(--ink-muted); margin-top: 3px; }
+.contract-empty {
+  padding: 16px 18px;
+  background: var(--surface-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--ink-secondary);
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}

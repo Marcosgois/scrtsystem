@@ -49,6 +49,10 @@ const clientSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, unique: true },
     // Baseline mensal contratual (MSUs) — opcional; habilita as comparações no dashboard.
     monthlyBaselineMsu: { type: Number, default: null },
+    // Mês de início do ano contratual (AAAA-MM). Ex.: "2024-06" => Ano 1 vai de
+    // jun/24 a mai/25, Ano 2 de jun/25 a mai/26, etc. Habilita a visão "Por Ano
+    // Contratual" no dashboard. Se vazio, o MLC (mlcContract.startPeriodKey) serve de base.
+    contractYearStart: { type: String, default: null },
     lparGroups: { type: [lparGroupSchema], default: [] },
     // Contrato MLC (Monthly License Charge) — parâmetros por ano; consumo vem do SCRT.
     mlcContract: { type: mlcContractSchema, default: null },

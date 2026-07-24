@@ -79,6 +79,7 @@
       <div class="client-header-actions">
         <button class="btn btn-ghost btn-sm" id="btn-open-forecast">Capacity planning</button>
         <button class="btn btn-ghost btn-sm" id="btn-edit-baseline">Definir baseline</button>
+        <button class="btn btn-ghost btn-sm" id="btn-edit-contract-year">Ano contratual</button>
         <button class="btn btn-danger-ghost btn-sm" id="btn-delete-client">Excluir cliente</button>
       </div>
     </div>
@@ -128,6 +129,7 @@
             <button type="button" class="seg-btn" data-chart-mode="lpars">Por LPAR</button>
             <button type="button" class="seg-btn" data-chart-mode="groups">Por grupo</button>
             <button type="button" class="seg-btn" data-chart-mode="acc12">Acumulado 12M</button>
+            <button type="button" class="seg-btn" data-chart-mode="contract">Por Ano Contratual</button>
           </div>
           <label class="toggle" id="toggle-trend-wrap"><input type="checkbox" id="toggle-trend" checked> Tendência</label>
           <label class="toggle"><input type="checkbox" id="toggle-baseline" checked> Baseline</label>
@@ -136,6 +138,8 @@
       <div class="chart-container">
         <canvas id="msuChart" role="img" aria-label="Gráfico de barras do consumo mensal de MSUs. Os mesmos dados estão na tabela de histórico abaixo."></canvas>
       </div>
+      <!-- Totais por ano contratual (só no modo "Por Ano Contratual") -->
+      <div id="contract-years" class="contract-years hidden"></div>
     </div>
 
     <div class="two-col">
@@ -345,6 +349,23 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close-modal>Cancelar</button>
       <button class="btn btn-primary" id="btn-save-baseline">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: ano contratual -->
+<div class="modal-backdrop hidden" id="modal-contract-year">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-contract-year-title">
+    <h2 id="modal-contract-year-title">Ano contratual</h2>
+    <p class="muted small">Mês de início do <strong>Ano 1</strong>. Os anos seguintes começam de 12 em 12 meses (ex.: início jun/2024 → Ano 1 jun/24–mai/25, Ano 2 jun/25–mai/26…). Habilita a visão "Por Ano Contratual". Deixe vazio para remover.</p>
+    <label class="field">
+      <span>Início do Ano 1</span>
+      <input type="month" id="input-contract-year">
+    </label>
+    <p class="muted small hidden" id="contract-year-mlc-hint"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-contract-year">Salvar</button>
     </div>
   </div>
 </div>
