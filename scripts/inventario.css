@@ -254,7 +254,11 @@
     .tab-btn:hover { color: var(--text-color); background: var(--surface-hover); }
     .tab-btn.active { color: var(--ibm-blue); border-bottom-color: var(--ibm-blue); }
 
-    .tab-content {
+    /* Só a aba ativa aparece. Sem isto, os dois conteúdos ficam visíveis
+       empilhados e trocar de aba parece "não funcionar". */
+    .tab-content { display: none; }
+    .tab-content.active {
+      display: block;
       background: var(--card-bg);
       border: 1px solid var(--border-color);
       border-top: none;
