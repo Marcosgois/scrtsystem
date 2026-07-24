@@ -912,3 +912,97 @@ th[data-sort].sorted { color: var(--primary); background: var(--primary-light); 
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+/* ============================================================ *
+ *  MLC (Monthly License Charge)
+ * ============================================================ */
+.client-header-actions { display: flex; gap: 8px; align-items: center; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+.badge-scrt { background: var(--primary-light); color: var(--primary); }
+
+td.strong, .num.strong { font-weight: 600; color: var(--ink); }
+
+.mlc-year { margin-bottom: 18px; }
+.mlc-year-range { font-size: 12.5px; font-weight: 400; }
+.mlc-encargos { font-size: 12px; margin-top: 2px; }
+
+.mlc-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mlc-table th, .mlc-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.mlc-table thead th {
+  position: sticky; top: 0;
+  background: var(--surface-subtle);
+  font-weight: 600; color: var(--ink-secondary);
+  border-bottom: 1px solid var(--border-strong);
+  text-align: left;
+}
+.mlc-table th.num, .mlc-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mlc-table tbody tr:hover td { background: var(--surface-hover); }
+.mlc-row-pending td { color: var(--ink-muted); font-style: italic; background: var(--surface-subtle); }
+.mlc-row-pending:hover td { background: var(--surface-subtle); }
+.mlc-row-total td {
+  background: var(--surface-subtle);
+  font-weight: 600;
+  border-top: 2px solid var(--border-strong);
+  border-bottom: none;
+}
+.mlc-row-total:hover td { background: var(--surface-subtle); }
+
+/* Editor do contrato */
+.contract-form-top { margin-bottom: 6px; }
+.contract-editor-scroll { max-height: 52vh; overflow-y: auto; margin: 4px -4px 10px; padding: 0 4px; }
+.year-editor {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: var(--surface-subtle);
+}
+.year-editor-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.year-label {
+  flex: 1; font-weight: 600; font-size: 14px;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink);
+}
+.year-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; }
+.year-grid .field { margin-bottom: 4px; }
+.encargos-block { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.encargos-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.encargos-head span { font-size: 12.5px; font-weight: 600; color: var(--ink-secondary); }
+.encargo-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.encargo-row .enc-nome { flex: 2; }
+.encargo-row .enc-valor { flex: 1; }
+.encargo-row input {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink); font-size: 13px;
+}
+.btn-icon {
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--ink-muted); border-radius: var(--radius);
+  width: 30px; height: 30px; cursor: pointer; font-size: 16px; line-height: 1;
+  flex: 0 0 auto;
+}
+.btn-icon:hover { background: var(--danger-light); color: var(--danger); border-color: var(--danger); }
+
+.modal-actions-split { display: flex; align-items: center; justify-content: space-between; }
+.modal-actions-right { display: flex; gap: 8px; }
+.form-error {
+  color: var(--danger); font-size: 12.5px; margin: 8px 0 0;
+  padding: 8px 10px; background: var(--danger-light); border-radius: var(--radius);
+}
+
+@media (max-width: 720px) {
+  .year-grid { grid-template-columns: 1fr; }
+}

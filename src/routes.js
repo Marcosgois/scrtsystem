@@ -7,6 +7,7 @@ const { Client, ScrtReport, Inventory } = require('./models');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
+const { computeMlcView } = require('./mlc');
 
 const router = express.Router();
 const upload = multer({
@@ -825,6 +826,102 @@ router.delete('/clients/:id/inventory', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const deleted = await Inventory.findOneAndDelete({ client: req.params.id });
   if (!deleted) return res.status(404).json({ error: 'Este cliente não tem inventário carregado.' });
+  res.json({ ok: true });
+}));
+
+/* ------------------------------------------------------------------ *
+ *  MLC (Monthly License Charge)
+ *  Contrato por cliente (parâmetros por ano) + consumo mensal vindo do SCRT.
+ * ------------------------------------------------------------------ */
+
+const PERIOD_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Consumo mensal do cliente pelo SCRT: periodKey -> Machine MSU Consumed. */
+async function scrtConsumoByPeriod(clientId) {
+  const raw = await ScrtReport.find({ client: clientId }).sort({ periodKey: 1, createdAt: 1 }).lean();
+  const byPeriod = {};
+  for (const r of mergeByMonth(raw)) byPeriod[r.periodKey] = r.totalMsuConsumed;
+  return byPeriod;
+}
+
+/** Valida e normaliza o corpo do contrato vindo do PUT. */
+function sanitizeMlcContract(body) {
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const start = String((body && body.startPeriodKey) || '').trim();
+  if (!PERIOD_KEY_RE.test(start)) {
+    return { error: 'Informe o mês inicial do contrato ("startPeriodKey") no formato AAAA-MM.' };
+  }
+  if (!Array.isArray(body.years) || body.years.length === 0) {
+    return { error: 'Informe pelo menos um ano de contrato em "years".' };
+  }
+  const years = body.years.map((y, i) => {
+    const encargos = Array.isArray(y && y.encargos) ? y.encargos : [];
+    return {
+      label: String((y && y.label) || '').trim() || `Ano ${i + 1}`,
+      baselineAnnualMsu: num(y && y.baselineAnnualMsu),
+      valorPorMsu: num(y && y.valorPorMsu),
+      encargoCrescimentoPorMsu: num(y && y.encargoCrescimentoPorMsu),
+      cbaPct: num(y && y.cbaPct),
+      encargos: encargos
+        .map((e) => ({ nome: String((e && e.nome) || '').trim(), valorMensal: num(e && e.valorMensal) }))
+        .filter((e) => e.nome),
+    };
+  });
+  return { contract: { startPeriodKey: start, years } };
+}
+
+/** Devolve o contrato MLC do cliente e a visão calculada mês a mês. */
+router.get('/clients/:id/mlc', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const contract = client.mlcContract || null;
+  const consumo = await scrtConsumoByPeriod(client._id);
+  const view = contract ? computeMlcView(contract, consumo) : null;
+  const scrtMonths = Object.keys(consumo).sort();
+
+  res.json({
+    client: { _id: client._id, name: client.name },
+    contract,
+    view,
+    scrt: {
+      monthCount: scrtMonths.length,
+      firstPeriodKey: scrtMonths[0] || null,
+      lastPeriodKey: scrtMonths[scrtMonths.length - 1] || null,
+    },
+  });
+}));
+
+/** Salva (ou substitui) o contrato MLC do cliente. */
+router.put('/clients/:id/mlc', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const { error, contract } = sanitizeMlcContract(req.body || {});
+  if (error) return res.status(400).json({ error });
+
+  const client = await Client.findByIdAndUpdate(
+    req.params.id,
+    { $set: { mlcContract: contract } },
+    { new: true }
+  ).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const consumo = await scrtConsumoByPeriod(client._id);
+  res.json({ contract: client.mlcContract, view: computeMlcView(client.mlcContract, consumo) });
+}));
+
+/** Remove o contrato MLC do cliente. */
+router.delete('/clients/:id/mlc', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findByIdAndUpdate(
+    req.params.id,
+    { $set: { mlcContract: null } },
+    { new: true }
+  ).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
   res.json({ ok: true });
 }));
 

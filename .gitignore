@@ -15,6 +15,7 @@ public/inventario.html
 # SCRTs, inventários e planilhas de CAIXA, BB, BRB e Itaú ficam só na máquina.
 # ─────────────────────────────────────────────────────────────────────────
 SCRT/
+mlc/
 scrt/
 *.xlsx
 *.htm

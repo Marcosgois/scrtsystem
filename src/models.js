@@ -12,12 +12,46 @@ const lparGroupSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Encargo mensal fixo do contrato MLC (ex.: "Dev/Test", "Produtos Flat").
+// A lista é livre — cada cliente monta os seus conforme o contrato assinado.
+const mlcEncargoSchema = new mongoose.Schema(
+  {
+    nome: { type: String, required: true, trim: true },
+    valorMensal: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+// Um ano do contrato MLC. Os parâmetros podem mudar de um ano para o outro.
+const mlcYearSchema = new mongoose.Schema(
+  {
+    label: { type: String, default: '' }, // "Ano 1"; vazio => gerado na visão
+    baselineAnnualMsu: { type: Number, default: 0 },
+    valorPorMsu: { type: Number, default: 0 }, // R$ por MSU do baseline
+    encargoCrescimentoPorMsu: { type: Number, default: 0 }, // R$ por MSU acima do baseline
+    cbaPct: { type: Number, default: 0 }, // desconto CBA (0.19 = 19%)
+    encargos: { type: [mlcEncargoSchema], default: [] },
+  },
+  { _id: false }
+);
+
+// Contrato MLC do cliente. O consumo mensal NÃO fica aqui: vem do SCRT.
+const mlcContractSchema = new mongoose.Schema(
+  {
+    startPeriodKey: { type: String, default: null }, // 1º mês do Ano 1, ex.: "2024-06"
+    years: { type: [mlcYearSchema], default: [] },
+  },
+  { _id: false }
+);
+
 const clientSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, unique: true },
     // Baseline mensal contratual (MSUs) — opcional; habilita as comparações no dashboard.
     monthlyBaselineMsu: { type: Number, default: null },
     lparGroups: { type: [lparGroupSchema], default: [] },
+    // Contrato MLC (Monthly License Charge) — parâmetros por ano; consumo vem do SCRT.
+    mlcContract: { type: mlcContractSchema, default: null },
     notes: { type: String, default: '' },
   },
   { timestamps: true }

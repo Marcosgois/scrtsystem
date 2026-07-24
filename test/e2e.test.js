@@ -607,6 +607,70 @@ async function main() {
       check('pares: cliente sem inventário -> 404', r.status === 404, r.status);
     }
 
+    // ----- MLC (contrato + consumo do SCRT) -----
+    {
+      // Cliente dedicado com o SCRT de Jun/2026 (22.040.571). Contrato começa nesse mês.
+      const mlcCli = await api('/clients', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'MLC TESTE' }),
+      });
+      const mlcId = mlcCli.body._id;
+      await api(`/clients/${mlcId}/reports`, { method: 'POST', body: uploadForm(SAMPLE, '#JUN2026.csv') });
+
+      r = await api(`/clients/${mlcId}/mlc`);
+      check('mlc: sem contrato devolve null e cobertura do SCRT',
+        r.status === 200 && r.body.contract === null && r.body.view === null
+        && r.body.scrt.lastPeriodKey === '2026-06', r.body);
+
+      const contrato = {
+        startPeriodKey: '2026-06',
+        years: [{
+          label: 'Ano 1',
+          baselineAnnualMsu: 120000000, // mensal 10.000.000
+          valorPorMsu: 2, // baseline mensal R$ 20.000.000
+          encargoCrescimentoPorMsu: 0.5,
+          cbaPct: 0.19,
+          encargos: [{ nome: 'Dev/Test', valorMensal: 1000000 }, { nome: '', valorMensal: 5 }],
+        }],
+      };
+      r = await api(`/clients/${mlcId}/mlc`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contrato),
+      });
+      const jun = r.body.view && r.body.view.years[0].months.find((m) => m.periodKey === '2026-06');
+      check('mlc: PUT salva e calcula; Jun/26 puxa o consumo do SCRT',
+        r.status === 200 && jun && jun.source === 'scrt' && jun.consumedMsu === 22040571, jun);
+      // growth = 22.040.571 − 10.000.000 = 12.040.571
+      check('mlc: growth = consumo − baseline mensal', jun && jun.growth === 12040571, jun && jun.growth);
+      // c/ growth = 20.000.000 + 12.040.571×0,5 + 1.000.000 = 27.020.285,5
+      check('mlc: consumo c/ growth confere', jun && Math.abs(jun.monthlyWithGrowthRs - 27020285.5) < 1e-6,
+        jun && jun.monthlyWithGrowthRs);
+      check('mlc: com CBA = c/ growth × 0,81',
+        jun && Math.abs(jun.withCbaRs - 27020285.5 * 0.81) < 1e-4, jun && jun.withCbaRs);
+      check('mlc: encargo sem nome é descartado no PUT',
+        r.body.contract.years[0].encargos.length === 1, r.body.contract.years[0].encargos);
+      const jul = r.body.view.years[0].months.find((m) => m.periodKey === '2026-07');
+      check('mlc: mês sem SCRT fica pendente', jul && jul.source === null && jul.monthlyWithGrowthRs === null, jul);
+
+      r = await api(`/clients/${mlcId}/mlc`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startPeriodKey: '2026-13', years: contrato.years }),
+      });
+      check('mlc: mês inicial inválido -> 400', r.status === 400, r.status);
+
+      r = await api(`/clients/${mlcId}/mlc`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startPeriodKey: '2026-06', years: [] }),
+      });
+      check('mlc: sem anos -> 400', r.status === 400, r.status);
+
+      r = await api(`/clients/${mlcId}/mlc`, { method: 'DELETE' });
+      check('mlc: DELETE remove o contrato', r.status === 200, r.status);
+      r = await api(`/clients/${mlcId}/mlc`);
+      check('mlc: após excluir, contrato volta null', r.body.contract === null, r.body.contract);
+
+      r = await api('/clients/xxx/mlc');
+      check('mlc: id inválido -> 400', r.status === 400, r.status);
+    }
+
     // Ids inválidos
     r = await api('/clients/xxx/dashboard');
     check('id inválido -> 400', r.status === 400);

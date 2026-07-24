@@ -11,7 +11,9 @@
     "test:e2e": "node test/e2e.test.js",
     "build:inventario": "node scripts/build-inventario.js",
     "test:migration": "node test/migration.test.js",
-    "test:forecast": "node test/forecast.test.js"
+    "test:forecast": "node test/forecast.test.js",
+    "test:mlc": "node test/mlc.test.js",
+    "import:mlc-caixa": "node scripts/import-mlc-caixa.js"
   },
   "engines": {
     "node": ">=18"
