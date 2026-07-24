@@ -709,6 +709,75 @@ async function main() {
       check('mlc: id inválido -> 400', r.status === 400, r.status);
     }
 
+    // ----- Tags de máquina (consumo faturável) -----
+    {
+      const tagCli = await api('/clients', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'TAG TESTE' }),
+      });
+      const tagId = tagCli.body._id;
+      await api(`/clients/${tagId}/reports`, { method: 'POST', body: uploadForm(SAMPLE, '#JUN2026.csv') });
+
+      r = await api(`/clients/${tagId}/dashboard`);
+      const s0 = r.body.series.find((x) => x.periodKey === '2026-06');
+      check('tags: catálogo default (Produção, DW, Dev/Test com dev/test ignorado)',
+        r.body.machineTags.defs.length === 3 && r.body.machineTags.defs.some((d) => d.name === 'Dev/Test' && d.ignored),
+        r.body.machineTags.defs);
+      check('tags: sem tag -> consumo cheio (22.040.571) e ignorado 0',
+        s0.totalMsuConsumed === 22040571 && s0.ignoredMsuConsumed === 0, s0);
+
+      r = await api(`/clients/${tagId}/months/2026-06`);
+      const maq = r.body.machines[0];
+      const serial = maq.serialNumber || maq.identifier;
+      const msu = maq.msuConsumed;
+      check('tags: máquina vem sem tag', maq.tag === null && maq.ignored === false, maq);
+
+      r = await api(`/clients/${tagId}/machine-tags`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignments: [{ serial, tag: 'Dev/Test' }] }),
+      });
+      check('tags: PUT atribuição salva', r.status === 200 && r.body.machineTags.assignments.length === 1, r.body);
+
+      r = await api(`/clients/${tagId}/dashboard`);
+      const s1 = r.body.series.find((x) => x.periodKey === '2026-06');
+      check('tags: dev/test sai do faturável (dashboard)',
+        s1.totalMsuConsumed === 22040571 - msu && s1.ignoredMsuConsumed === msu,
+        { fat: s1.totalMsuConsumed, ign: s1.ignoredMsuConsumed });
+      check('tags: totalMsuAllMachines mantém o bruto', s1.totalMsuAllMachines === 22040571, s1.totalMsuAllMachines);
+
+      r = await api(`/clients/${tagId}/months/2026-06`);
+      const maqT = r.body.machines.find((m) => (m.serialNumber || m.identifier) === serial);
+      check('tags: máquina marcada ignorada no mês', maqT.tag === 'Dev/Test' && maqT.ignored === true, maqT);
+      check('tags: mês faturável = bruto − máquina ignorada',
+        r.body.totalMsuConsumed === 22040571 - msu && r.body.ignoredMsuConsumed === msu, r.body.totalMsuConsumed);
+
+      r = await api(`/clients/${tagId}/machine-tags`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignments: [{ serial: 'X', tag: 'Inexistente' }] }),
+      });
+      check('tags: tag fora do catálogo -> 422', r.status === 422, r.status);
+
+      r = await api(`/clients/${tagId}/machine-tags`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defs: [] }),
+      });
+      check('tags: catálogo vazio -> 422', r.status === 422, r.status);
+
+      // Remover uma tag do catálogo poda as atribuições órfãs.
+      r = await api(`/clients/${tagId}/machine-tags`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defs: [{ name: 'Produção', ignored: false }] }),
+      });
+      check('tags: remover Dev/Test do catálogo poda a atribuição órfã',
+        r.body.machineTags.assignments.length === 0, r.body.machineTags.assignments);
+      r = await api(`/clients/${tagId}/dashboard`);
+      const s2 = r.body.series.find((x) => x.periodKey === '2026-06');
+      check('tags: sem atribuição válida, consumo volta ao cheio', s2.totalMsuConsumed === 22040571, s2.totalMsuConsumed);
+
+      r = await api('/clients/xxx/machine-tags', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defs: [{ name: 'A' }] }),
+      });
+      check('tags: id inválido -> 400', r.status === 400, r.status);
+    }
+
     // Ids inválidos
     r = await api('/clients/xxx/dashboard');
     check('id inválido -> 400', r.status === 400);

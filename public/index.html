@@ -173,16 +173,21 @@
         <div class="card-header">
           <div>
             <h2 id="machines-title">Máquinas</h2>
-            <p class="muted">clique em uma máquina para filtrar as LPARs dela</p>
+            <p class="muted">clique em uma máquina para filtrar as LPARs dela · a tag define se o consumo conta</p>
           </div>
-          <span class="tag tag-history" id="machines-period"></span>
+          <div class="client-header-actions">
+            <button class="btn btn-ghost btn-sm" id="btn-manage-tags">Tags de máquina</button>
+            <span class="tag tag-history" id="machines-period"></span>
+          </div>
         </div>
+        <div class="banner banner-muted hidden" id="machines-ignored-note"></div>
         <div class="table-responsive">
           <table id="machines-table" data-sort-table="machines">
             <thead>
               <tr>
                 <th data-sort="identifier">Máquina</th>
                 <th data-sort="typeModel">Tipo-Modelo</th>
+                <th data-sort="tag">Tag</th>
                 <th class="num" data-sort="ratedCapacityMsus">Capacidade</th>
                 <th class="num" data-sort="peakUtilizationMsus">Pico</th>
                 <th class="num" data-sort="msuConsumed">MSU Consumido</th>
@@ -280,6 +285,21 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close-modal>Cancelar</button>
       <button class="btn btn-primary" id="btn-save-baseline">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: tags de máquina (catálogo) -->
+<div class="modal-backdrop hidden" id="modal-tags">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-tags-title">
+    <h2 id="modal-tags-title">Tags de máquina</h2>
+    <p class="muted small">Defina as tags e marque quais têm o consumo <strong>ignorado</strong> (não conta no faturável). A tag de cada máquina é escolhida na tabela de máquinas ou ao subir o SCRT.</p>
+    <div id="tags-editor" class="tags-editor"></div>
+    <button type="button" class="btn btn-ghost btn-sm" id="btn-add-tag">+ Adicionar tag</button>
+    <p class="form-error hidden" id="tags-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-tags">Salvar</button>
     </div>
   </div>
 </div>

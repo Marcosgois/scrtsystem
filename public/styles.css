@@ -1039,3 +1039,53 @@ td.strong, .num.strong { font-weight: 600; color: var(--ink); }
   color: var(--ink-secondary);
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
+
+/* ── Tags de máquina (produção / dev-test / ignoradas) ─────────── */
+.banner-muted {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ink-muted);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  margin-bottom: 12px;
+}
+.tag-cell { white-space: nowrap; }
+.tag-select {
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  max-width: 140px;
+}
+.tag-select.ignored { color: var(--danger); border-color: var(--danger); background: var(--danger-light); }
+/* Linha de máquina ignorada: consumo não conta -> apagada e riscada. */
+tr.machine-ignored td { color: var(--ink-muted); }
+tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
+.pct-bar.ignored { background: var(--ink-muted) !important; }
+
+/* Modal de catálogo de tags */
+.tags-editor { margin: 12px 0 6px; display: flex; flex-direction: column; gap: 8px; }
+.tag-row { display: flex; align-items: center; gap: 12px; }
+.tag-row .tag-name {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.tag-ignored { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-secondary); white-space: nowrap; }
+.upload-tagging { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.upload-tag-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+}
+.upload-tag-row:last-child { border-bottom: none; }
+.upload-tag-select { max-width: 160px; }

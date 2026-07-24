@@ -48,6 +48,45 @@ function machineSerials(machines) {
   )].sort();
 }
 
+/** Serial normalizado de uma máquina (mesma identidade de machineSerials). */
+function serialOf(m) {
+  return String((m && (m.serialNumber || m.identifier)) || '').trim().toUpperCase();
+}
+
+// Catálogo padrão de tags: dev/test é o único ignorado.
+const DEFAULT_TAG_DEFS = [
+  { name: 'Produção', ignored: false },
+  { name: 'DW', ignored: false },
+  { name: 'Dev/Test', ignored: true },
+];
+
+/** Catálogo efetivo do cliente (usa o padrão quando ele não configurou nada). */
+function tagDefsOf(client) {
+  const defs = client && client.machineTagDefs;
+  return defs && defs.length ? defs : DEFAULT_TAG_DEFS;
+}
+
+/**
+ * Contexto de tags do cliente para o merge: mapa serial->tag e o conjunto de
+ * nomes de tag ignorados. Máquina com tag ignorada não entra no faturável.
+ */
+function tagContextOf(client) {
+  const ignoredNames = new Set(tagDefsOf(client).filter((t) => t.ignored).map((t) => t.name));
+  const bySerial = new Map();
+  for (const a of (client && client.machineTags) || []) {
+    const s = String(a.serial || '').trim().toUpperCase();
+    if (s) bySerial.set(s, a.tag);
+  }
+  return { bySerial, ignoredNames };
+}
+
+/** A máquina é ignorada? (tem tag e a tag está marcada como ignorada). */
+function isMachineIgnored(machine, tagCtx) {
+  if (!tagCtx) return false;
+  const tag = tagCtx.bySerial.get(serialOf(machine));
+  return Boolean(tag && tagCtx.ignoredNames.has(tag));
+}
+
 /** Identidade física do relatório: o conjunto de máquinas que ele reporta. */
 function sourceKeyOf(machines) {
   const serials = machineSerials(machines);
@@ -68,8 +107,9 @@ function siteLabelFrom(fileName, machines) {
 /**
  * Funde os relatórios de um mês numa visão única: soma o consumo e une
  * máquinas, LPARs e containers, mantendo a lista de origens para rastreio.
+ * `tagCtx` (opcional) exclui do faturável as máquinas de tag ignorada.
  */
-function mergeMonth(reports) {
+function mergeMonth(reports, tagCtx) {
   if (!reports.length) return null;
   const first = reports[0];
   const machines = [];
@@ -79,13 +119,25 @@ function mergeMonth(reports) {
 
   for (const r of reports) {
     const origem = r.siteLabel || r.sourceFileName || '';
-    for (const m of r.machines || []) machines.push({ ...m, source: origem, reportId: r._id });
+    for (const m of r.machines || []) {
+      const tag = tagCtx ? (tagCtx.bySerial.get(serialOf(m)) || null) : null;
+      const ignored = isMachineIgnored(m, tagCtx);
+      machines.push({ ...m, source: origem, reportId: r._id, tag, ignored });
+    }
     for (const l of r.lpars || []) lpars.push({ ...l, source: origem });
     for (const c of r.containers || []) containers.push({ ...c, source: origem });
     for (const w of r.warnings || []) warnings.push(reports.length > 1 && origem ? `[${origem}] ${w}` : w);
   }
 
-  const totalMsuConsumed = reports.reduce((a, r) => a + (r.totalMsuConsumed || 0), 0);
+  // Consumo faturável: parte do total confiável do relatório (soma das origens)
+  // e SUBTRAI as máquinas ignoradas. Assim não depende de toda máquina trazer
+  // msuConsumed (o formato Sub-Capacity/MVM do BRB, p.ex., não traz).
+  const totalMsuAllMachines = reports.reduce((a, r) => a + (r.totalMsuConsumed || 0), 0);
+  let ignoredMsuConsumed = 0;
+  for (const m of machines) {
+    if (m.ignored) ignoredMsuConsumed += (m.msuConsumed || 0);
+  }
+  const totalMsuConsumed = totalMsuAllMachines - ignoredMsuConsumed;
   const containersTotalMsu = containers.length
     ? containers.reduce((a, c) => a + (c.totalMsu || 0), 0)
     : null;
@@ -116,6 +168,8 @@ function mergeMonth(reports) {
     lpars,
     containers,
     totalMsuConsumed,
+    totalMsuAllMachines,
+    ignoredMsuConsumed,
     containersTotalMsu,
     warnings,
     conflicts,
@@ -136,13 +190,13 @@ function mergeMonth(reports) {
 }
 
 /** Agrupa relatórios (já ordenados) por mês e devolve os meses fundidos. */
-function mergeByMonth(reports) {
+function mergeByMonth(reports, tagCtx) {
   const byKey = new Map();
   for (const r of reports) {
     if (!byKey.has(r.periodKey)) byKey.set(r.periodKey, []);
     byKey.get(r.periodKey).push(r);
   }
-  return [...byKey.keys()].sort().map((k) => mergeMonth(byKey.get(k)));
+  return [...byKey.keys()].sort().map((k) => mergeMonth(byKey.get(k), tagCtx));
 }
 
 /** Referência enxuta de um mês (para seletores e cabeçalhos do comparativo). */
@@ -279,6 +333,66 @@ router.delete('/clients/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true, deletedReports: deletedCount, deletedInventories: inv.deletedCount });
 }));
 
+/**
+ * Tags de máquina do cliente: catálogo (defs) e/ou atribuições por serial.
+ * Body: { defs?: [{name, ignored}], assignments?: [{serial, tag}] }.
+ * Máquina de tag ignorada tem o consumo excluído do faturável (em tudo).
+ */
+router.put('/clients/:id/machine-tags', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const update = {};
+
+  if (req.body.defs !== undefined) {
+    if (!Array.isArray(req.body.defs)) return res.status(400).json({ error: 'Envie "defs" como lista.' });
+    const seen = new Set();
+    const defs = [];
+    for (const d of req.body.defs) {
+      const name = String((d && d.name) || '').trim();
+      if (!name) return res.status(400).json({ error: 'Toda tag precisa de um nome.' });
+      const key = name.toLowerCase();
+      if (seen.has(key)) return res.status(422).json({ error: `Tag repetida: "${name}".` });
+      seen.add(key);
+      defs.push({ name, ignored: Boolean(d && d.ignored) });
+    }
+    if (!defs.length) return res.status(422).json({ error: 'Deixe pelo menos uma tag no catálogo.' });
+    update.machineTagDefs = defs;
+  }
+
+  if (req.body.assignments !== undefined) {
+    if (!Array.isArray(req.body.assignments)) {
+      return res.status(400).json({ error: 'Envie "assignments" como lista.' });
+    }
+    // O catálogo válido: o que veio no corpo, ou o já salvo, ou o padrão.
+    let catalogo = update.machineTagDefs;
+    if (!catalogo) {
+      const atual = await Client.findById(req.params.id).select('machineTagDefs').lean();
+      catalogo = tagDefsOf(atual);
+    }
+    const validas = new Set(catalogo.map((t) => t.name));
+    const bySerial = new Map(); // um serial -> uma tag (o último vence)
+    for (const a of req.body.assignments) {
+      const serial = String((a && a.serial) || '').trim().toUpperCase();
+      const tag = String((a && a.tag) || '').trim();
+      if (!serial) return res.status(400).json({ error: 'Cada atribuição precisa do "serial".' });
+      if (!tag) { bySerial.delete(serial); continue; } // tag vazia = sem tag
+      if (!validas.has(tag)) return res.status(422).json({ error: `Tag "${tag}" não existe no catálogo.` });
+      bySerial.set(serial, tag);
+    }
+    update.machineTags = [...bySerial.entries()].map(([serial, tag]) => ({ serial, tag }));
+  }
+
+  // Mudou o catálogo sem reenviar as atribuições: poda as que ficaram órfãs.
+  if (update.machineTagDefs && update.machineTags === undefined) {
+    const validas = new Set(update.machineTagDefs.map((t) => t.name));
+    const atual = await Client.findById(req.params.id).select('machineTags').lean();
+    update.machineTags = ((atual && atual.machineTags) || []).filter((a) => validas.has(a.tag));
+  }
+
+  const client = await Client.findByIdAndUpdate(req.params.id, { $set: update }, { new: true }).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  res.json({ machineTags: { defs: tagDefsOf(client), assignments: client.machineTags || [] } });
+}));
+
 // ── Upload de SCRT ──────────────────────────────────────────────────────────
 
 router.post('/clients/:id/reports', upload.single('file'), asyncHandler(async (req, res) => {
@@ -386,7 +500,7 @@ router.post('/clients/:id/reports', upload.single('file'), asyncHandler(async (r
 
   // Total do mês já com este arquivo incluído.
   const doMes = await ScrtReport.find({ client: client._id, periodKey: parsed.periodKey }).lean();
-  const merged = mergeMonth(doMes);
+  const merged = mergeMonth(doMes, tagContextOf(client));
 
   res.status(existing ? 200 : 201).json({
     replaced: Boolean(existing),
@@ -433,7 +547,8 @@ router.get('/clients/:id/months/:periodKey', asyncHandler(async (req, res) => {
     .sort({ siteLabel: 1, createdAt: 1 })
     .lean();
   if (!reports.length) return res.status(404).json({ error: 'Mês não encontrado para este cliente.' });
-  res.json(mergeMonth(reports));
+  const client = await Client.findById(req.params.id).lean();
+  res.json(mergeMonth(reports, tagContextOf(client)));
 }));
 
 /** Exclui o mês inteiro (todas as origens/SCRTs daquele cliente e período). */
@@ -468,7 +583,8 @@ router.get('/clients/:id/dashboard', asyncHandler(async (req, res) => {
 
   const raw = await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean();
   // Cada mês pode ter vários SCRTs (sites diferentes) — trabalha sobre o mês fundido.
-  const reports = mergeByMonth(raw);
+  // O consumo já sai faturável (exclui máquinas de tag ignorada).
+  const reports = mergeByMonth(raw, tagContextOf(client));
   const byKey = new Map(reports.map((r) => [r.periodKey, r]));
   // Consumo por grupo de LPARs em cada mês (usa os grupos ATUAIS do cliente).
   const groupsDef = (client.lparGroups || []).map((g) => ({ name: g.name, set: new Set(g.lpars || []) }));
@@ -511,6 +627,8 @@ router.get('/clients/:id/dashboard', asyncHandler(async (req, res) => {
       periodKey: r.periodKey,
       periodLabel: r.periodLabel,
       totalMsuConsumed: r.totalMsuConsumed,
+      totalMsuAllMachines: r.totalMsuAllMachines,
+      ignoredMsuConsumed: r.ignoredMsuConsumed,
       containersTotalMsu: r.containersTotalMsu,
       machineCount: r.machines ? r.machines.length : 0,
       // Origens (sites) que compõem o mês e conflitos entre elas.
@@ -546,7 +664,12 @@ router.get('/clients/:id/dashboard', asyncHandler(async (req, res) => {
   });
 
   const latest = reports.length > 0 ? reports[reports.length - 1] : null;
-  res.json({ client, series, latest });
+  // Tags de máquina: catálogo efetivo (com padrão) e atribuições por serial.
+  const machineTags = {
+    defs: tagDefsOf(client),
+    assignments: client.machineTags || [],
+  };
+  res.json({ client, series, latest, machineTags });
 }));
 
 /**
@@ -559,9 +682,10 @@ router.get('/clients/:id/compare', asyncHandler(async (req, res) => {
   const client = await Client.findById(req.params.id).lean();
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
 
-  // Compara MESES fundidos (um mês pode vir de vários SCRTs).
+  // Compara MESES fundidos (um mês pode vir de vários SCRTs); já faturável.
   const reports = mergeByMonth(
-    await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean()
+    await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean(),
+    tagContextOf(client)
   );
   if (reports.length < 2) {
     return res.json({ base: null, target: null, machines: [], lpars: [], totalDelta: 0, availableMonths: reports.map(monthRef) });
@@ -606,17 +730,23 @@ router.get('/clients/:id/compare', asyncHandler(async (req, res) => {
     }).sort((a, b) => b.delta - a.delta);
   };
 
+  // Faturável: fora as máquinas ignoradas (e as LPARs delas), para a soma das
+  // variações bater com o totalDelta.
+  const naoIgnoradas = (r) => (r.machines || []).filter((m) => !m.ignored);
+  const idsIgnorados = (r) => new Set((r.machines || []).filter((m) => m.ignored).map((m) => m.identifier));
   const machines = diffRows(
-    base.machines || [],
-    target.machines || [],
+    naoIgnoradas(base),
+    naoIgnoradas(target),
     (m) => m.identifier,
     (m) => ({ identifier: m.identifier, typeModel: m.typeModel || null, serialNumber: m.serialNumber || null })
   );
 
-  const lparsOf = (r) => (r.lpars || []).filter((l) => l.msuConsumed != null);
+  const ignBase = idsIgnorados(base);
+  const ignTarget = idsIgnorados(target);
+  const lparsOf = (r, ign) => (r.lpars || []).filter((l) => l.msuConsumed != null && !ign.has(l.machine));
   const lpars = diffRows(
-    lparsOf(base),
-    lparsOf(target),
+    lparsOf(base, ignBase),
+    lparsOf(target, ignTarget),
     (l) => `${l.machine}|${l.name}`,
     (l) => ({ name: l.name, machine: l.machine || null, os: l.os || null })
   );
@@ -628,7 +758,7 @@ router.get('/clients/:id/compare', asyncHandler(async (req, res) => {
     totalDeltaPct: pct(totalDelta, base.totalMsuConsumed),
     machines,
     // Meses sem seções N7 não têm detalhe por LPAR — o front avisa em vez de mostrar tabela vazia.
-    lparDetailAvailable: lparsOf(base).length > 0 && lparsOf(target).length > 0,
+    lparDetailAvailable: lparsOf(base, ignBase).length > 0 && lparsOf(target, ignTarget).length > 0,
     lpars,
     availableMonths: reports.map(monthRef),
   });
@@ -653,7 +783,8 @@ router.get('/clients/:id/forecast', asyncHandler(async (req, res) => {
   months = Math.round(months);
 
   const monthsData = mergeByMonth(
-    await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean()
+    await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean(),
+    tagContextOf(client)
   );
   const history = monthsData.map((m) => ({
     periodKey: m.periodKey,
@@ -846,11 +977,12 @@ router.delete('/clients/:id/inventory', asyncHandler(async (req, res) => {
 
 const PERIOD_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-/** Consumo mensal do cliente pelo SCRT: periodKey -> Machine MSU Consumed. */
-async function scrtConsumoByPeriod(clientId) {
-  const raw = await ScrtReport.find({ client: clientId }).sort({ periodKey: 1, createdAt: 1 }).lean();
+// Consumo mensal (faturável) do cliente pelo SCRT: periodKey -> MSU.
+// Recebe o cliente para respeitar as tags ignoradas (dev/test).
+async function scrtConsumoByPeriod(client) {
+  const raw = await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean();
   const byPeriod = {};
-  for (const r of mergeByMonth(raw)) byPeriod[r.periodKey] = r.totalMsuConsumed;
+  for (const r of mergeByMonth(raw, tagContextOf(client))) byPeriod[r.periodKey] = r.totalMsuConsumed;
   return byPeriod;
 }
 
@@ -894,7 +1026,7 @@ router.get('/clients/:id/mlc', asyncHandler(async (req, res) => {
   const stored = client.mlcContract || null;
   const effStart = client.contractYearStart || (stored && stored.startPeriodKey) || null;
   const contract = stored ? { ...stored, startPeriodKey: effStart } : null;
-  const consumo = await scrtConsumoByPeriod(client._id);
+  const consumo = await scrtConsumoByPeriod(client);
   const view = (contract && effStart) ? computeMlcView(contract, consumo) : null;
   const scrtMonths = Object.keys(consumo).sort();
 
@@ -924,7 +1056,7 @@ router.put('/clients/:id/mlc', asyncHandler(async (req, res) => {
   ).lean();
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
 
-  const consumo = await scrtConsumoByPeriod(client._id);
+  const consumo = await scrtConsumoByPeriod(client);
   res.json({ contract: client.mlcContract, view: computeMlcView(client.mlcContract, consumo) });
 }));
 

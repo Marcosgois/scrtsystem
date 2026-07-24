@@ -362,6 +362,80 @@ $('btn-save-contract-year').addEventListener('click', async () => {
   }
 });
 
+// ── Tags de máquina: catálogo (criar tags, marcar quais ignoram) ──
+let draftTags = [];
+
+function openTagsModal() {
+  if (!state.dashboard) return;
+  draftTags = tagDefs().map((d) => ({ name: d.name, ignored: !!d.ignored }));
+  if (!draftTags.length) draftTags = [{ name: '', ignored: false }];
+  renderTagsEditor();
+  $('tags-error').classList.add('hidden');
+  openModal('modal-tags');
+}
+
+function renderTagsEditor() {
+  $('tags-editor').innerHTML = draftTags.map((t, i) => `
+    <div class="tag-row">
+      <input type="text" class="tag-name" data-i="${i}" value="${esc(t.name)}" placeholder="Nome da tag" maxlength="40">
+      <label class="tag-ignored"><input type="checkbox" class="tag-ign" data-i="${i}" ${t.ignored ? 'checked' : ''}> ignora o consumo</label>
+      ${draftTags.length > 1 ? `<button type="button" class="btn-icon" data-remove-tag data-i="${i}" title="Remover tag" aria-label="Remover tag">×</button>` : ''}
+    </div>`).join('');
+}
+
+function syncDraftTags() {
+  const el = $('tags-editor');
+  el.querySelectorAll('.tag-name').forEach((inp) => { draftTags[+inp.dataset.i].name = inp.value; });
+  el.querySelectorAll('.tag-ign').forEach((inp) => { draftTags[+inp.dataset.i].ignored = inp.checked; });
+}
+
+$('tags-editor').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove-tag]');
+  if (!btn) return;
+  syncDraftTags();
+  draftTags.splice(+btn.dataset.i, 1);
+  renderTagsEditor();
+});
+
+$('btn-add-tag').addEventListener('click', () => {
+  syncDraftTags();
+  draftTags.push({ name: '', ignored: false });
+  renderTagsEditor();
+});
+
+$('btn-manage-tags').addEventListener('click', openTagsModal);
+
+$('btn-save-tags').addEventListener('click', async () => {
+  syncDraftTags();
+  const defs = draftTags.map((t) => ({ name: t.name.trim(), ignored: !!t.ignored })).filter((t) => t.name);
+  if (!defs.length) return showTagsError('Deixe pelo menos uma tag.');
+  const vistas = new Set();
+  for (const d of defs) {
+    const k = d.name.toLowerCase();
+    if (vistas.has(k)) return showTagsError(`Tag repetida: "${d.name}".`);
+    vistas.add(k);
+  }
+  try {
+    const r = await api(`/clients/${state.clientId}/machine-tags`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defs }),
+    });
+    if (state.dashboard.machineTags) state.dashboard.machineTags = r.machineTags;
+    closeModals();
+    await refreshDashboardKeepingMonth();
+    toast('Tags atualizadas.');
+  } catch (err) {
+    showTagsError(err.message);
+  }
+});
+
+function showTagsError(msg) {
+  const el = $('tags-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
 /* ── Upload de SCRT ─────────────────────────────────── */
 
 $('btn-upload').addEventListener('click', () => triggerUpload());
@@ -430,9 +504,9 @@ async function uploadScrtFiles(fileList) {
     }
   }
 
+  await loadClients(); // recarrega o dashboard (catálogo de tags atualizado)
   renderUploadResult(results, clientName);
   openModal('modal-upload-result');
-  await loadClients();
 }
 
 function renderUploadResult(results, clientName) {
@@ -454,7 +528,8 @@ function renderUploadResult(results, clientName) {
         ${result.warnings && result.warnings.length
           ? `<ul>${result.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>`
           : ''}
-      </div>`;
+      </div>${uploadTaggingHtml(results)}`;
+    wireUploadTagging();
     return;
   }
 
@@ -493,7 +568,50 @@ function renderUploadResult(results, clientName) {
         </table>
       </div>
       ${avisos.length ? `<ul>${avisos.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+    </div>${uploadTaggingHtml(results)}`;
+  wireUploadTagging();
+}
+
+// Máquinas distintas (por serial) dos SCRTs recém-enviados.
+function uploadMachines(results) {
+  const seen = new Map();
+  for (const r of results) {
+    if (!r.ok) continue;
+    for (const m of (r.result.report.machines || [])) {
+      const serial = normSerial(m.serialNumber || m.identifier);
+      if (serial && !seen.has(serial)) seen.set(serial, { identifier: m.identifier, serial });
+    }
+  }
+  return [...seen.values()];
+}
+
+// Seção "Marcar máquinas" no resultado do upload (tag por serial).
+function uploadTaggingHtml(results) {
+  const machines = uploadMachines(results);
+  const defs = tagDefs();
+  if (!machines.length || !defs.length) return '';
+  const assign = new Map((((state.dashboard || {}).machineTags || {}).assignments || [])
+    .map((a) => [normSerial(a.serial), a.tag]));
+  const rows = machines.map((m) => {
+    const cur = assign.get(m.serial) || '';
+    const options = ['<option value="">(sem tag)</option>']
+      .concat(defs.map((d) => `<option value="${esc(d.name)}"${cur === d.name ? ' selected' : ''}>${esc(d.name)}${d.ignored ? ' · ignora' : ''}</option>`))
+      .join('');
+    return `<div class="upload-tag-row">
+      <span><strong>${esc(m.identifier)}</strong> <span class="muted small">${esc(m.serial)}</span></span>
+      <select class="tag-select upload-tag-select" data-serial="${esc(m.serial)}">${options}</select>
     </div>`;
+  }).join('');
+  return `<div class="upload-tagging">
+    <h3 class="compare-subtitle">Marcar máquinas <span class="muted small">a tag ignorada (dev/test) sai do consumo</span></h3>
+    ${rows}
+  </div>`;
+}
+
+function wireUploadTagging() {
+  document.querySelectorAll('#upload-result-body .upload-tag-select').forEach((sel) => {
+    sel.addEventListener('change', () => setMachineTag(sel.dataset.serial, sel.value));
+  });
 }
 
 /* ── Dashboard ──────────────────────────────────────── */
@@ -1099,34 +1217,73 @@ async function loadMonthDetail(periodKey) {
   renderLparCard();
 }
 
+// Catálogo de tags do cliente (defs) e o conjunto de nomes ignorados.
+function tagDefs() {
+  return (state.dashboard && state.dashboard.machineTags && state.dashboard.machineTags.defs) || [];
+}
+function ignoredTagNames() {
+  return new Set(tagDefs().filter((d) => d.ignored).map((d) => d.name));
+}
+const normSerial = (s) => String(s || '').trim().toUpperCase();
+
 function renderMachines() {
   const report = state.reportDetail;
   if (!report) return;
   $('machines-title').textContent = `Máquinas · ${report.machines.length} no Multiplex`;
   $('machines-period').textContent = report.periodLabel;
 
-  const total = report.totalMsuConsumed || 1;
+  // Aviso do que ficou de fora do faturável (máquinas de tag ignorada).
+  const nota = $('machines-ignored-note');
+  const ignoradas = report.machines.filter((m) => m.ignored);
+  if (report.ignoredMsuConsumed > 0) {
+    nota.innerHTML = `${ignoradas.length} máquina(s) ignorada(s) · <strong>${fmt(report.ignoredMsuConsumed)} MSU</strong> `
+      + `fora do faturável (bruto ${fmt(report.totalMsuAllMachines)} → faturável <strong>${fmt(report.totalMsuConsumed)}</strong>).`;
+    nota.classList.remove('hidden');
+  } else {
+    nota.classList.add('hidden');
+  }
+
+  const defs = tagDefs();
+  const ignored = ignoredTagNames();
+  const total = report.totalMsuAllMachines || report.totalMsuConsumed || 1;
   const tbody = $('machines-tbody');
   paintSortHeaders('machines');
   tbody.innerHTML = sortRows('machines', report.machines).map((m) => {
     const pct = ((m.msuConsumed || 0) / total) * 100;
     const selected = state.machineFilter === m.identifier;
+    const options = ['<option value="">(sem tag)</option>']
+      .concat(defs.map((d) =>
+        `<option value="${esc(d.name)}"${m.tag === d.name ? ' selected' : ''}>${esc(d.name)}${d.ignored ? ' · ignora' : ''}</option>`))
+      .join('');
     return `
-      <tr data-machine="${esc(m.identifier)}" class="${selected ? 'selected' : ''}"
+      <tr data-machine="${esc(m.identifier)}" class="${selected ? 'selected' : ''}${m.ignored ? ' machine-ignored' : ''}"
           title="${selected ? `Remover filtro da máquina ${esc(m.identifier)}` : `Filtrar LPARs da máquina ${esc(m.identifier)}`}">
         <td><strong>${esc(m.identifier)}</strong>${m.serialNumber ? `<div class="small muted">${esc(m.serialNumber)}</div>` : ''}</td>
         <td>${esc(m.typeModel || '–')}</td>
+        <td class="tag-cell">
+          <select class="tag-select${ignored.has(m.tag) ? ' ignored' : ''}" data-serial="${esc(m.serialNumber || m.identifier)}"
+                  aria-label="Tag da máquina ${esc(m.identifier)}">${options}</select>
+        </td>
         <td class="num">${fmt(m.ratedCapacityMsus)}</td>
         <td class="num">${fmt(m.peakUtilizationMsus)}</td>
         <td class="num"><strong>${fmt(m.msuConsumed)}</strong></td>
         <td class="num">
           <div class="pct-bar-wrap">
             <span>${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>
-            <div class="pct-bar-track"><div class="pct-bar" style="width:${Math.max(2, pct)}%"></div></div>
+            <div class="pct-bar-track"><div class="pct-bar${m.ignored ? ' ignored' : ''}" style="width:${Math.max(2, pct)}%"></div></div>
           </div>
         </td>
       </tr>`;
   }).join('');
+
+  // Trocar a tag: não dispara o filtro da linha (stopPropagation).
+  tbody.querySelectorAll('.tag-select').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', (e) => {
+      e.stopPropagation();
+      setMachineTag(sel.dataset.serial, sel.value);
+    });
+  });
 
   tbody.querySelectorAll('tr[data-machine]').forEach((tr) => {
     tr.addEventListener('click', () => {
@@ -1136,6 +1293,40 @@ function renderMachines() {
       renderLparCard();
     });
   });
+}
+
+// Atribui (ou remove) a tag de uma máquina e atualiza o consumo em todo lugar.
+async function setMachineTag(serial, tag) {
+  const s = normSerial(serial);
+  const atual = ((state.dashboard.machineTags && state.dashboard.machineTags.assignments) || [])
+    .filter((a) => normSerial(a.serial) !== s);
+  if (tag) atual.push({ serial: s, tag });
+  try {
+    const r = await api(`/clients/${state.clientId}/machine-tags`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments: atual }),
+    });
+    if (state.dashboard.machineTags) state.dashboard.machineTags.assignments = r.machineTags.assignments;
+    await refreshDashboardKeepingMonth();
+    toast(tag ? `Máquina marcada como "${tag}".` : 'Tag da máquina removida.');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// Recarrega o dashboard (consumo faturável recomputado) mantendo o mês selecionado.
+async function refreshDashboardKeepingMonth() {
+  const keep = state.selectedPeriodKey;
+  const data = await api(`/clients/${state.clientId}/dashboard`);
+  state.dashboard = data;
+  const { client, series } = data;
+  if (!series.length) return;
+  state.selectedPeriodKey = series.some((s) => s.periodKey === keep) ? keep : series[series.length - 1].periodKey;
+  renderKpis(series, client);
+  renderChart(series, client);
+  renderHistory(series, client);
+  await loadMonthDetail(state.selectedPeriodKey);
 }
 
 function renderReportMeta(month) {

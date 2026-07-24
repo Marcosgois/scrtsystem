@@ -44,9 +44,32 @@ const mlcContractSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Catálogo de tags de máquina (ex.: "Produção", "DW", "Dev/Test").
+// `ignored` marca as tags cujo consumo NÃO conta (dev/test por padrão).
+const machineTagDefSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    ignored: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+// Atribuição de uma tag a uma máquina, pelo serial (vale para todos os meses).
+const machineTagSchema = new mongoose.Schema(
+  {
+    serial: { type: String, required: true },
+    tag: { type: String, required: true },
+  },
+  { _id: false }
+);
+
 const clientSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, unique: true },
+    // Tags de máquina: catálogo (nome + se é ignorada) e atribuição por serial.
+    // Máquina de tag ignorada tem o consumo de MSU excluído do faturável.
+    machineTagDefs: { type: [machineTagDefSchema], default: [] },
+    machineTags: { type: [machineTagSchema], default: [] },
     // Baseline mensal contratual (MSUs) — opcional; habilita as comparações no dashboard.
     monthlyBaselineMsu: { type: Number, default: null },
     // Mês de início do ano contratual (AAAA-MM). Ex.: "2024-06" => Ano 1 vai de
