@@ -1,10 +1,10 @@
 /* ==========================================================================
-   Ponte TFPSystem — anexada pelo scripts/build-inventario.js
+   Ponte IBM Z Control Desk — anexada pelo scripts/build-inventario.js
    ==========================================================================
    O painel de inventário é preservado como veio: parse, filtros, tabelas,
    modais e exportações continuam sendo o código original. Este script apenas
    redefine a camada de persistência para gravar no MongoDB via API, em vez de
-   localStorage, e amarra o painel à lista de clientes do TFPSystem.
+   localStorage, e amarra o painel à lista de clientes do IBM Z Control Desk.
 
    Como funciona: declarações de função em <script> compartilham o escopo
    global, então as definições abaixo substituem as do painel (que já rodou).
@@ -14,7 +14,7 @@
 
   const ACTIVE_KEY = 'tfp_inventario_ultimo_cliente';
 
-  // Cache em memória: clientId (TFPSystem) -> { clientName, customerNumber, updatedAt, products, pairOverrides }
+  // Cache em memória: clientId (IBM Z Control Desk) -> { clientName, customerNumber, updatedAt, products, pairOverrides }
   const invStore = {};
   window.tfpClients = [];
 
@@ -59,7 +59,7 @@
   window.saveCustomerInventory = async function (client, products, updatedAt, sourceFileName) {
     const clientId = selectedClientId();
     if (!clientId) {
-      alert('Selecione o cliente do TFPSystem antes de carregar o inventário.');
+      alert('Selecione o cliente do IBM Z Control Desk antes de carregar o inventário.');
       return null;
     }
     const result = await invApi(`/clients/${clientId}/inventory`, {
@@ -85,7 +85,7 @@
     return result;
   };
 
-  /** Lista os clientes do TFPSystem, marcando quais já têm inventário. */
+  /** Lista os clientes do IBM Z Control Desk, marcando quais já têm inventário. */
   window.populateCustomerDropdown = async function (selectedClientId = null) {
     const select = document.getElementById('selectCustomer');
     if (!select) return;

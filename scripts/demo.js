@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Modo demonstração: sobe o TFPSystem com um MongoDB em memória.
+ * Modo demonstração: sobe o IBM Z Control Desk com um MongoDB em memória.
  * Útil para testar sem banco instalado — OS DADOS NÃO PERSISTEM ao encerrar.
  * Para uso real, configure MONGODB_URI no .env e rode: npm start
  */
@@ -20,7 +20,7 @@ async function main() {
 
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
-    console.log(`TFPSystem (demo) rodando em http://localhost:${port}`);
+    console.log(`IBM Z Control Desk (demo) rodando em http://localhost:${port}`);
   });
 }
 

@@ -78,7 +78,7 @@ async function main() {
   }
 
   const server = app.listen(PORT, () => {
-    console.log(`TFPSystem rodando em http://localhost:${PORT}`);
+    console.log(`IBM Z Control Desk rodando em http://localhost:${PORT}`);
   });
 
   // Encerramento limpo: fecha o HTTP, desconecta e para o mongod SEM apagar os dados.

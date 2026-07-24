@@ -4,7 +4,7 @@
  * Gera public/inventario.html a partir do painel original em Inventario/.
  *
  * O painel é mantido intacto: este build só (1) aplica o sistema visual do
- * TFPSystem, (2) insere a barra de módulos e (3) anexa um script que
+ * IBM Z Control Desk, (2) insere a barra de módulos e (3) anexa um script que
  * sobrescreve a camada de persistência para gravar no MongoDB via API,
  * em vez de localStorage.
  *
@@ -42,12 +42,12 @@ const ICONS = {
 };
 
 const TOPBAR = `
-  <!-- Barra de módulos do TFPSystem (gerada por scripts/build-inventario.js) -->
+  <!-- Barra de módulos do IBM Z Control Desk (gerada por scripts/build-inventario.js) -->
   <header class="tfp-topbar">
     <div class="tfp-topbar-inner">
       <div class="tfp-brand">
-        <div class="tfp-brand-mark">TFP</div>
-        <div><h1>TFPSystem</h1></div>
+        <div class="tfp-brand-mark">Z</div>
+        <div><h1>IBM Z Control Desk</h1></div>
         <nav class="tfp-module-nav" aria-label="Módulos">
           <a href="/">${ICONS.chart}Consumo zOTC (SCRT)</a>
           <a href="/mlc">${ICONS.trend}Consumo MLC (SCRT)</a>
@@ -99,7 +99,7 @@ function build() {
   let html = fs.readFileSync(srcPath, 'utf8');
   const original = html.length;
 
-  // 1) Sistema visual: troca o <style> do painel pelo do TFPSystem.
+  // 1) Sistema visual: troca o <style> do painel pelo do IBM Z Control Desk.
   const css = fs.readFileSync(path.join(__dirname, 'inventario.css'), 'utf8');
   if (!/<style>[\s\S]*?<\/style>/.test(html)) throw new Error('Bloco <style> não encontrado no painel.');
   html = html.replace(/<style>[\s\S]*?<\/style>/, () => `<style>\n${css}\n  </style>`);

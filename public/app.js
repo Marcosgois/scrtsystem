@@ -1,6 +1,6 @@
 'use strict';
 
-/* TFPSystem — dashboard de consumo TFP (SCRT) por cliente. */
+/* IBM Z Control Desk — dashboard de consumo TFP (SCRT) por cliente. */
 
 const state = {
   clients: [],
