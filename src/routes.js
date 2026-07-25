@@ -1225,7 +1225,7 @@ function machineUpdate(body) {
   if (body.lsprModel !== undefined) set.lsprModel = String(body.lsprModel || '').trim();
   if (body.serial !== undefined) set.serial = String(body.serial || '').trim().toUpperCase();
   if (body.year !== undefined) set.year = body.year === '' || body.year === null ? null : numOf(body.year);
-  ['iflsActive', 'iflsSpare', 'storageTB', 'storageAddTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
+  ['cps', 'ziips', 'iflsActive', 'iflsSpare', 'icfs', 'memoryTB', 'memoryAddTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
   if (body.dormant !== undefined) set.dormant = Boolean(body.dormant);
   if (body.notes !== undefined) set.notes = String(body.notes || '');
   ['configTxtName', 'configTxtContent', 'configCfrName', 'configCfrContent'].forEach((k) => {

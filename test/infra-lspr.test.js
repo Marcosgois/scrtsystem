@@ -111,6 +111,12 @@ async function main() {
     r = await api(`/clients/${caixaId}/infra/machines/${mId}`);
     check('GET máquina reflete o novo LSPR (3931-705)', r.body.lspr && r.body.lspr.msu === 1232, r.body && r.body.lspr);
 
+    // ── Processadores (CP/zIIP/IFL/CF) e memória ──
+    r = await api(`/clients/${caixaId}/infra/machines/${mId}`, { method: 'PUT', json: { cps: 6, ziips: 2, iflsActive: 4, icfs: 1, memoryTB: 8, memoryAddTB: 2 } });
+    check('PUT grava CP/zIIP/IFL/CF e memória',
+      r.status === 200 && r.body.cps === 6 && r.body.ziips === 2 && r.body.iflsActive === 4 && r.body.icfs === 1 && r.body.memoryTB === 8 && r.body.memoryAddTB === 2,
+      r.body);
+
     // ── Cliente sem SCRT ──
     r = await api('/clients', { method: 'POST', json: { name: 'VAZIO' } });
     const vazioId = r.body._id;

@@ -62,6 +62,21 @@ async function backfillSourceKeys(connection) {
   console.log(`[MongoDB] ${antigos.length} relatório(s) antigo(s) receberam sourceKey.`);
 }
 
+/** Renomeia os campos de storage das máquinas de infra para memória. */
+async function renameStorageToMemory(connection) {
+  const coll = connection.db.collection('inframachines');
+  try {
+    const res = await coll.updateMany(
+      { $or: [{ storageTB: { $exists: true } }, { storageAddTB: { $exists: true } }] },
+      { $rename: { storageTB: 'memoryTB', storageAddTB: 'memoryAddTB' } }
+    );
+    if (res.modifiedCount) console.log(`[MongoDB] ${res.modifiedCount} máquina(s): storage → memória.`);
+  } catch (err) {
+    if (err.codeName === 'NamespaceNotFound' || err.code === 26) return;
+    console.warn(`[MongoDB] rename storage→memória: ${err.message}`);
+  }
+}
+
 async function connectDb(uri) {
   mongoose.connection.on('error', (err) => {
     console.error('[MongoDB] erro de conexão:', err.message);
@@ -75,6 +90,7 @@ async function connectDb(uri) {
   // criar os índices atuais, senão a criação falha em bases já existentes.
   await dropObsoleteIndexes(mongoose.connection);
   await backfillSourceKeys(mongoose.connection);
+  await renameStorageToMemory(mongoose.connection);
 
   const { Client, ScrtReport, Inventory } = require('./models');
   await Promise.all([Client.init(), ScrtReport.init(), Inventory.init()]);

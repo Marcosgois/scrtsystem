@@ -233,10 +233,13 @@ const infraMachineSchema = new mongoose.Schema(
     lsprModel: { type: String, default: '' }, // liga com LsprModel.model (ex.: "3931-705")
     serial: { type: String, default: '', index: true }, // normalizado em maiúsculas
     year: { type: Number, default: null },
-    iflsActive: { type: Number, default: 0 },
-    iflsSpare: { type: Number, default: 0 },
-    storageTB: { type: Number, default: 0 },
-    storageAddTB: { type: Number, default: 0 },
+    cps: { type: Number, default: 0 },        // CPs / GPs (processadores de propósito geral)
+    ziips: { type: Number, default: 0 },      // zIIPs
+    iflsActive: { type: Number, default: 0 }, // IFLs ativos
+    iflsSpare: { type: Number, default: 0 },  // IFLs spare
+    icfs: { type: Number, default: 0 },       // ICFs (Coupling Facility / CF)
+    memoryTB: { type: Number, default: 0 },       // memória (antigo storageTB)
+    memoryAddTB: { type: Number, default: 0 },    // memória adicional (antigo storageAddTB)
     dormant: { type: Boolean, default: false },
     notes: { type: String, default: '' },
     // Arquivos de configuração (texto), guardados inline (excluídos da listagem).

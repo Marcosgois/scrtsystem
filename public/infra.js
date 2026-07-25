@@ -57,6 +57,15 @@ const jsonPost = (path, body) => api(path, { method: 'POST', headers: { 'Content
 const lsprCache = new Map(); // model LSPR -> linha (cache do combobox de referência)
 let lsprTimer = null;
 
+// Processadores e memória da máquina.
+const engineTotal = (m) => (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0) + (m.icfs || 0);
+const memoryOf = (m) => (m.memoryTB || 0) + (m.memoryAddTB || 0);
+// Detalhe "6 CP · 2 zIIP · 4 IFL · 1 CF" (sempre os quatro tipos).
+function engineBreakdown(m) {
+  const ifl = `${fmt(m.iflsActive || 0)} IFL${m.iflsSpare ? ` (+${m.iflsSpare})` : ''}`;
+  return `${fmt(m.cps || 0)} CP · ${fmt(m.ziips || 0)} zIIP · ${ifl} · ${fmt(m.icfs || 0)} CF`;
+}
+
 function showView(which) {
   ['empty-clients', 'infra-view'].forEach((id) => $(id).classList.toggle('hidden', id !== which));
 }
@@ -113,14 +122,16 @@ function drStatus() {
 
 function renderStats() {
   const ativas = state.machines.filter((m) => !m.dormant);
-  const ifls = state.machines.reduce((a, m) => a + (m.iflsActive || 0), 0);
-  const tb = state.machines.reduce((a, m) => a + (m.storageTB || 0) + (m.storageAddTB || 0), 0);
+  const sum = (k) => state.machines.reduce((a, m) => a + (m[k] || 0), 0);
+  const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive'); const icfs = sum('icfs');
+  const engines = cps + ziips + ifls + icfs;
+  const mem = state.machines.reduce((a, m) => a + memoryOf(m), 0);
   const dr = drStatus();
   const cards = [
     { h: 'Sites', v: fmt(state.sites.length) },
     { h: 'Máquinas ativas', v: fmt(ativas.length), s: state.machines.length > ativas.length ? `${state.machines.length - ativas.length} dormente(s)` : 'nenhuma dormente' },
-    { h: 'IFLs ativos', v: fmt(ifls) },
-    { h: 'Storage total', v: `${num1(tb)} TB` },
+    { h: 'Processadores', v: fmt(engines), s: `${fmt(cps)} CP · ${fmt(ziips)} zIIP · ${fmt(ifls)} IFL · ${fmt(icfs)} CF` },
+    { h: 'Memória total', v: `${num1(mem)} TB` },
     { h: 'Disponibilidade', v: `<span style="color:${dr.color};font-weight:600">${esc(dr.label)}</span>`, raw: true },
   ];
   $('infra-kpis').innerHTML = cards.map((c) =>
@@ -154,7 +165,7 @@ function machineCardCompact(m) {
       <span class="imc-mark ${grad}"></span>
       <span class="imc-id"><strong>${esc(m.model || 'Máquina')}</strong>${m.featureModel ? ` <span class="muted small">${esc(m.featureModel)}</span>` : ''}
         <span class="muted small">${esc(m.serial || 's/ serial')}</span></span>
-      <span class="imc-cap muted small">${fmt(m.iflsActive)} IFL${m.iflsSpare ? ' +' + m.iflsSpare : ''} · ${num1((m.storageTB || 0) + (m.storageAddTB || 0))} TB</span>
+      <span class="imc-cap muted small" title="${esc(engineBreakdown(m))}">${fmt(engineTotal(m))} proc · ${num1(memoryOf(m))} TB</span>
     </div>
     ${lps.length ? `<div class="lpar-strip">${lps.map(lparChip).join('')}</div>` : '<div class="lpar-strip muted small">sem LPARs</div>'}
   </button>`;
@@ -176,8 +187,8 @@ function renderOverview() {
   const siteBlocks = state.sites.map((s) => {
     const ms = bySite.get(s._id) || [];
     const r = ROLES[s.role] || ROLES.prod;
-    const ifls = ms.reduce((a, m) => a + (m.iflsActive || 0), 0);
-    const tb = ms.reduce((a, m) => a + (m.storageTB || 0) + (m.storageAddTB || 0), 0);
+    const engines = ms.reduce((a, m) => a + engineTotal(m), 0);
+    const mem = ms.reduce((a, m) => a + memoryOf(m), 0);
     return `<div class="site-block" style="border-top-color:${r.color}">
       <div class="site-block-head">
         <span class="badge" style="background:${r.color}1a;color:${r.color}">${esc(r.label)}</span>
@@ -185,7 +196,7 @@ function renderOverview() {
         <button type="button" class="btn-link" data-edit-site="${s._id}">editar</button>
       </div>
       ${ms.length ? ms.map(machineCardCompact).join('') : '<div class="empty-inline small">sem máquinas neste site</div>'}
-      <div class="site-block-foot muted small">${ms.length} máquina(s) · ${fmt(ifls)} IFLs · ${num1(tb)} TB</div>
+      <div class="site-block-foot muted small">${ms.length} máquina(s) · ${fmt(engines)} proc · ${num1(mem)} TB</div>
     </div>`;
   }).join('');
   const semSiteBlock = semSite.length
@@ -229,7 +240,7 @@ function renderMachines() {
         <table class="infra-table">
           <thead><tr>
             <th>Modelo</th><th>Site</th><th>Serial</th>
-            <th class="num">IFLs</th><th class="num">Storage</th><th class="num">Ano</th>
+            <th>Processadores</th><th class="num">Memória</th><th class="num">Ano</th>
             <th>Capacidade (LSPR)</th><th>Consumo (SCRT)</th><th class="infra-actions-col">Ações</th>
           </tr></thead>
           <tbody id="machine-rows"></tbody>
@@ -275,8 +286,8 @@ function renderMachineRows() {
       <td><span class="imc-mark ${grad} inline"></span><strong>${esc(m.model || '—')}</strong>${m.variant ? ` <span class="muted small">${esc(m.variant)}</span>` : ''}${m.featureModel ? `<div class="muted small">${esc(m.featureModel)}</div>` : ''}${m.dormant ? ' <span class="badge badge-neutral">dormente</span>' : ''}</td>
       <td>${siteCell}</td>
       <td class="mono">${esc(m.serial || '—')}</td>
-      <td class="num">${fmt(m.iflsActive)}${m.iflsSpare ? ` <span class="muted small">+${m.iflsSpare}</span>` : ''}</td>
-      <td class="num">${num1((m.storageTB || 0) + (m.storageAddTB || 0))} TB</td>
+      <td>${engineTotal(m) ? `<strong>${fmt(engineTotal(m))}</strong><div class="muted small">${engineBreakdown(m)}</div>` : '<span class="muted small">—</span>'}</td>
+      <td class="num">${memoryOf(m) ? `${num1(memoryOf(m))} TB` : '<span class="muted small">—</span>'}</td>
       <td class="num">${m.year || '—'}</td>
       <td>${lsprCell}</td>
       <td>${scrtCell}</td>
@@ -373,10 +384,13 @@ function openMachineModal(machineId) {
   if (m && m.lspr) lsprCache.set(m.lspr.model, m.lspr);
   renderLsprInfo(m ? m.lspr : null);
   set('machine-year', m ? m.year : '');
+  set('machine-cps', m ? m.cps : '');
+  set('machine-ziips', m ? m.ziips : '');
   set('machine-ifls', m ? m.iflsActive : '');
   set('machine-ifls-spare', m ? m.iflsSpare : '');
-  set('machine-storage', m ? m.storageTB : '');
-  set('machine-storage-add', m ? m.storageAddTB : '');
+  set('machine-icfs', m ? m.icfs : '');
+  set('machine-memory', m ? m.memoryTB : '');
+  set('machine-memory-add', m ? m.memoryAddTB : '');
   set('machine-notes', m ? m.notes : '');
   $('machine-dormant').checked = m ? !!m.dormant : false;
   const cur = m && m.site && (m.site._id || m.site);
@@ -397,10 +411,13 @@ async function saveMachine() {
     serial: $('machine-serial').value.trim(),
     year: $('machine-year').value === '' ? null : Number($('machine-year').value),
     site: $('machine-site').value || null,
+    cps: numv('machine-cps'),
+    ziips: numv('machine-ziips'),
     iflsActive: numv('machine-ifls'),
     iflsSpare: numv('machine-ifls-spare'),
-    storageTB: numv('machine-storage'),
-    storageAddTB: numv('machine-storage-add'),
+    icfs: numv('machine-icfs'),
+    memoryTB: numv('machine-memory'),
+    memoryAddTB: numv('machine-memory-add'),
     dormant: $('machine-dormant').checked,
     notes: $('machine-notes').value.trim(),
   };
