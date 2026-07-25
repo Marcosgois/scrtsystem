@@ -5,7 +5,7 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const { Client, ScrtReport, Inventory } = require('./models');
+const { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar } = require('./models');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
@@ -1130,6 +1130,207 @@ router.delete('/clients/:id/mlc', asyncHandler(async (req, res) => {
     { new: true }
   ).lean();
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  res.json({ ok: true });
+}));
+
+/* ------------------------------------------------------------------ *
+ *  Infraestrutura (parque físico): Sites, Máquinas, LPARs — por cliente.
+ *  Sem foto e sem catálogo. Máquina cruza com o SCRT pelo serial.
+ * ------------------------------------------------------------------ */
+
+const INFRA_ROLES = ['prod', 'dr', 'ha', 'dev', 'test', 'colo'];
+const INFRA_OS = ['linux', 'zos', 'zvm', 'kvm', 'other'];
+const INFRA_NIC = ['OSA', 'RoCE', 'NetworkExpress', 'HiperSockets', 'Other'];
+const numOf = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+
+/** Mapa serial(maiúsculo) -> consumo/tag da máquina no ÚLTIMO mês de SCRT. */
+async function scrtBySerialLatest(client) {
+  const map = new Map();
+  if (!client) return map;
+  const raw = await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean();
+  if (!raw.length) return map;
+  const merged = mergeByMonth(raw, tagContextOf(client));
+  const latest = merged[merged.length - 1];
+  for (const m of (latest.machines || [])) {
+    const s = serialOf(m);
+    if (s) map.set(s, { msuConsumed: m.msuConsumed, tag: m.tag || null, ignored: !!m.ignored, periodLabel: latest.periodLabel });
+  }
+  return map;
+}
+
+// Atualização parcial: só grava os campos presentes no corpo.
+function siteUpdate(body) {
+  const set = {};
+  if (body.name !== undefined) set.name = String(body.name || '').trim();
+  if (body.location !== undefined) set.location = String(body.location || '').trim();
+  if (body.role !== undefined) set.role = INFRA_ROLES.includes(body.role) ? body.role : 'prod';
+  if (body.notes !== undefined) set.notes = String(body.notes || '');
+  return set;
+}
+
+function machineUpdate(body) {
+  const set = {};
+  if (body.site !== undefined) set.site = body.site && isValidId(body.site) ? body.site : null;
+  if (body.model !== undefined) set.model = String(body.model || '').trim();
+  if (body.variant !== undefined) set.variant = String(body.variant || '').trim();
+  if (body.featureModel !== undefined) set.featureModel = String(body.featureModel || '').trim();
+  if (body.serial !== undefined) set.serial = String(body.serial || '').trim().toUpperCase();
+  if (body.year !== undefined) set.year = body.year === '' || body.year === null ? null : numOf(body.year);
+  ['iflsActive', 'iflsSpare', 'storageTB', 'storageAddTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
+  if (body.dormant !== undefined) set.dormant = Boolean(body.dormant);
+  if (body.notes !== undefined) set.notes = String(body.notes || '');
+  ['configTxtName', 'configTxtContent', 'configCfrName', 'configCfrContent'].forEach((k) => {
+    if (body[k] !== undefined) set[k] = String(body[k] || '');
+  });
+  return set;
+}
+
+function lparUpdate(body) {
+  const set = {};
+  if (body.machine !== undefined && isValidId(body.machine)) set.machine = body.machine;
+  if (body.name !== undefined) set.name = String(body.name || '').trim();
+  if (body.os !== undefined) set.os = INFRA_OS.includes(body.os) ? body.os : 'linux';
+  if (body.osDistro !== undefined) set.osDistro = String(body.osDistro || '').trim();
+  ['ifls', 'cps', 'memoryGB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
+  if (body.description !== undefined) set.description = String(body.description || '');
+  ['devices', 'wwpns', 'ips'].forEach((k) => {
+    if (body[k] !== undefined) set[k] = (Array.isArray(body[k]) ? body[k] : []).map((x) => String(x).trim()).filter(Boolean);
+  });
+  if (body.networkCards !== undefined) {
+    set.networkCards = (Array.isArray(body.networkCards) ? body.networkCards : [])
+      .map((c) => ({ type: INFRA_NIC.includes(c && c.type) ? c.type : 'OSA', label: String((c && c.label) || '').trim() }))
+      .filter((c) => c.label);
+  }
+  if (body.notes !== undefined) set.notes = String(body.notes || '');
+  return set;
+}
+
+// ── Sites ──
+router.get('/clients/:id/infra/sites', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  res.json(await InfraSite.find({ client: req.params.id }).sort({ name: 1 }).lean());
+}));
+
+router.post('/clients/:id/infra/sites', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const set = siteUpdate(req.body || {});
+  if (!set.name) return res.status(400).json({ error: 'Informe o nome do site.' });
+  res.status(201).json(await InfraSite.create({ client: client._id, ...set }));
+}));
+
+router.put('/clients/:id/infra/sites/:siteId', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.siteId)) return res.status(400).json({ error: 'Id inválido.' });
+  const set = siteUpdate(req.body || {});
+  if (set.name !== undefined && !set.name) return res.status(400).json({ error: 'O nome do site não pode ficar vazio.' });
+  const site = await InfraSite.findOneAndUpdate({ _id: req.params.siteId, client: req.params.id }, { $set: set }, { new: true }).lean();
+  if (!site) return res.status(404).json({ error: 'Site não encontrado.' });
+  res.json(site);
+}));
+
+router.delete('/clients/:id/infra/sites/:siteId', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.siteId)) return res.status(400).json({ error: 'Id inválido.' });
+  const site = await InfraSite.findOneAndDelete({ _id: req.params.siteId, client: req.params.id });
+  if (!site) return res.status(404).json({ error: 'Site não encontrado.' });
+  // Máquinas do site ficam "sem site".
+  await InfraMachine.updateMany({ client: req.params.id, site: site._id }, { $unset: { site: 1 } });
+  res.json({ ok: true });
+}));
+
+// ── Máquinas ──
+router.get('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const filter = { client: req.params.id };
+  if (req.query.siteId && isValidId(req.query.siteId)) filter.site = req.query.siteId;
+  const machines = await InfraMachine.find(filter)
+    .select('-configTxtContent -configCfrContent')
+    .populate('site', 'name location role')
+    .sort({ model: 1, serial: 1 })
+    .lean();
+  // Cruza com o SCRT pelo serial (consumo/tag do último mês).
+  const bySerial = await scrtBySerialLatest(client);
+  for (const m of machines) m.scrt = bySerial.get(String(m.serial || '').trim().toUpperCase()) || null;
+  res.json(machines);
+}));
+
+router.post('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const set = machineUpdate(req.body || {});
+  if (!set.model && !set.serial) return res.status(400).json({ error: 'Informe ao menos o modelo ou o serial da máquina.' });
+  if (set.site) {
+    const ok = await InfraSite.exists({ _id: set.site, client: client._id });
+    if (!ok) return res.status(422).json({ error: 'Site inválido para este cliente.' });
+  }
+  res.status(201).json(await InfraMachine.create({ client: client._id, ...set }));
+}));
+
+router.get('/clients/:id/infra/machines/:machineId', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.machineId)) return res.status(400).json({ error: 'Id inválido.' });
+  const machine = await InfraMachine.findOne({ _id: req.params.machineId, client: req.params.id })
+    .populate('site', 'name location role').lean();
+  if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
+  res.json(machine);
+}));
+
+router.put('/clients/:id/infra/machines/:machineId', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.machineId)) return res.status(400).json({ error: 'Id inválido.' });
+  const set = machineUpdate(req.body || {});
+  if (set.site) {
+    const ok = await InfraSite.exists({ _id: set.site, client: req.params.id });
+    if (!ok) return res.status(422).json({ error: 'Site inválido para este cliente.' });
+  }
+  const machine = await InfraMachine.findOneAndUpdate({ _id: req.params.machineId, client: req.params.id }, { $set: set }, { new: true })
+    .select('-configTxtContent -configCfrContent').populate('site', 'name location role').lean();
+  if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
+  res.json(machine);
+}));
+
+router.delete('/clients/:id/infra/machines/:machineId', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.machineId)) return res.status(400).json({ error: 'Id inválido.' });
+  const machine = await InfraMachine.findOneAndDelete({ _id: req.params.machineId, client: req.params.id });
+  if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
+  await InfraLpar.deleteMany({ machine: machine._id }); // cascata: LPARs da máquina
+  res.json({ ok: true });
+}));
+
+// ── LPARs ──
+router.get('/clients/:id/infra/lpars', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const filter = { client: req.params.id };
+  if (req.query.machineId && isValidId(req.query.machineId)) filter.machine = req.query.machineId;
+  res.json(await InfraLpar.find(filter).populate('machine', 'model variant featureModel serial').sort({ name: 1 }).lean());
+}));
+
+router.post('/clients/:id/infra/lpars', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const set = lparUpdate(req.body || {});
+  if (!set.machine) return res.status(400).json({ error: 'Informe a máquina da LPAR.' });
+  if (!set.name) return res.status(400).json({ error: 'Informe o nome da LPAR.' });
+  const machineOk = await InfraMachine.exists({ _id: set.machine, client: client._id });
+  if (!machineOk) return res.status(422).json({ error: 'Máquina inválida para este cliente.' });
+  res.status(201).json(await InfraLpar.create({ client: client._id, ...set }));
+}));
+
+router.put('/clients/:id/infra/lpars/:lparId', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.lparId)) return res.status(400).json({ error: 'Id inválido.' });
+  const set = lparUpdate(req.body || {});
+  if (set.name !== undefined && !set.name) return res.status(400).json({ error: 'O nome da LPAR não pode ficar vazio.' });
+  const lpar = await InfraLpar.findOneAndUpdate({ _id: req.params.lparId, client: req.params.id }, { $set: set }, { new: true }).lean();
+  if (!lpar) return res.status(404).json({ error: 'LPAR não encontrada.' });
+  res.json(lpar);
+}));
+
+router.delete('/clients/:id/infra/lpars/:lparId', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.lparId)) return res.status(400).json({ error: 'Id inválido.' });
+  const lpar = await InfraLpar.findOneAndDelete({ _id: req.params.lparId, client: req.params.id });
+  if (!lpar) return res.status(404).json({ error: 'LPAR não encontrada.' });
   res.json({ ok: true });
 }));
 

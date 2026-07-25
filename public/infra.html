@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBM Z Control Desk — Infraestrutura</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <h1>IBM Z Control Desk</h1>
+        <p>Consumo Mainframe · Tailored Fit Pricing (SCRT)</p>
+      </div>
+      <nav class="module-nav" aria-label="Módulos">
+        <a href="/">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo zOTC (SCRT)
+        </a>
+        <a href="/mlc">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo MLC (SCRT)
+        </a>
+        <a href="/inventario">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          Inventário
+        </a>
+        <a href="/infra" class="active" aria-current="page">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Infraestrutura
+        </a>
+      </nav>
+    </div>
+    <div class="topbar-actions">
+      <label class="client-select-wrap" for="client-select">
+        <span class="client-select-label">Cliente</span>
+        <select id="client-select" aria-label="Selecionar cliente"></select>
+      </label>
+      <button class="btn btn-ghost" id="btn-new-site">+ Site</button>
+      <button class="btn btn-primary" id="btn-new-machine">+ Máquina</button>
+    </div>
+  </div>
+</header>
+
+<main class="container" id="main">
+
+  <!-- Nenhum cliente -->
+  <section class="empty-state hidden" id="empty-clients">
+    <div class="empty-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 20h18M4 20V9.5L12 4l8 5.5V20M9 20v-5.5h6V20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h2>Nenhum cliente cadastrado</h2>
+    <p>Cadastre um cliente no módulo de consumo zOTC para começar.</p>
+    <a class="btn btn-primary" href="/">Ir para Consumo zOTC</a>
+  </section>
+
+  <!-- Infraestrutura do cliente -->
+  <section id="infra-view" class="hidden">
+    <div class="client-header">
+      <div>
+        <h2 id="infra-client-name">—</h2>
+        <p class="muted" id="infra-subtitle">Parque físico IBM Z / LinuxONE</p>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="infra-kpis"></div>
+
+    <div class="segmented infra-tabs" role="group" aria-label="Visões da infraestrutura">
+      <button type="button" class="seg-btn active" data-tab="overview">Visão geral</button>
+      <button type="button" class="seg-btn" data-tab="machines">Máquinas</button>
+      <button type="button" class="seg-btn" data-tab="lpars">LPARs</button>
+    </div>
+
+    <div id="tab-overview" class="infra-tab"></div>
+    <div id="tab-machines" class="infra-tab hidden"></div>
+    <div id="tab-lpars" class="infra-tab hidden"></div>
+  </section>
+</main>
+
+<!-- Modal: site -->
+<div class="modal-backdrop hidden" id="modal-site">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-site-title">
+    <h2 id="modal-site-title">Site</h2>
+    <label class="field"><span>Nome *</span><input type="text" id="site-name" maxlength="120" placeholder="Ex.: Datacenter SP"></label>
+    <label class="field"><span>Localização</span><input type="text" id="site-location" maxlength="120" placeholder="Cidade / datacenter"></label>
+    <div class="field"><span>Papel</span><div id="site-role" class="role-grid"></div></div>
+    <label class="field"><span>Notas</span><input type="text" id="site-notes" maxlength="240"></label>
+    <p class="form-error hidden" id="site-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-site">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: máquina -->
+<div class="modal-backdrop hidden" id="modal-machine">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-machine-title">
+    <h2 id="modal-machine-title">Máquina</h2>
+    <div class="machine-grid">
+      <label class="field"><span>Modelo</span>
+        <input type="text" id="machine-model" list="model-suggestions" maxlength="80" placeholder="Ex.: LinuxONE Emperor 5">
+        <datalist id="model-suggestions"></datalist>
+      </label>
+      <label class="field"><span>Variante</span><input type="text" id="machine-variant" maxlength="60"></label>
+      <label class="field"><span>Feature model (capacidade)</span><input type="text" id="machine-feature" maxlength="40" placeholder="Ex.: Max32"></label>
+      <label class="field"><span>Serial</span><input type="text" id="machine-serial" maxlength="60" placeholder="liga com o SCRT"></label>
+      <label class="field"><span>Ano</span><input type="number" id="machine-year" min="1990" max="2100"></label>
+      <label class="field"><span>Site</span><select id="machine-site"></select></label>
+      <label class="field"><span>IFLs ativos</span><input type="number" id="machine-ifls" min="0" step="any"></label>
+      <label class="field"><span>IFLs spare</span><input type="number" id="machine-ifls-spare" min="0" step="any"></label>
+      <label class="field"><span>Storage (TB)</span><input type="number" id="machine-storage" min="0" step="any"></label>
+      <label class="field"><span>Storage adicional (TB)</span><input type="number" id="machine-storage-add" min="0" step="any"></label>
+    </div>
+    <label class="field"><span>Notas</span><input type="text" id="machine-notes" maxlength="240"></label>
+    <label class="toggle machine-dormant"><input type="checkbox" id="machine-dormant"> Máquina dormente (não em produção)</label>
+    <p class="form-error hidden" id="machine-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-machine">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: arquivos de configuração -->
+<div class="modal-backdrop hidden" id="modal-config">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-config-title">
+    <h2 id="modal-config-title">Arquivos de configuração</h2>
+    <p class="muted small" id="config-machine-label"></p>
+    <div id="config-slots"></div>
+    <p class="form-error hidden" id="config-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Fechar</button>
+      <button class="btn btn-primary" id="btn-save-config">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: LPARs de uma máquina -->
+<div class="modal-backdrop hidden" id="modal-lpars">
+  <div class="modal modal-compare" role="dialog" aria-modal="true" aria-labelledby="modal-lpars-title">
+    <div class="modal-forecast-top">
+      <div>
+        <h2 id="modal-lpars-title">LPARs</h2>
+        <p class="muted small" id="lpars-machine-sub"></p>
+      </div>
+      <div class="modal-compare-head">
+        <button class="btn btn-primary btn-sm" id="btn-add-lpar">+ Nova LPAR</button>
+        <button class="row-action" data-close-modal aria-label="Fechar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-forecast-scroll">
+      <div id="lpars-list"></div>
+      <div id="lpar-form" class="lpar-form hidden"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script src="infra.js"></script>
+</body>
+</html>

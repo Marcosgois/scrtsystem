@@ -39,6 +39,7 @@ const ICONS = {
   trend: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   close: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   building: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 20h18M4 20V9.5L12 4l8 5.5V20M9 20v-5.5h6V20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  rack: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
 };
 
 const TOPBAR = `
@@ -52,6 +53,7 @@ const TOPBAR = `
           <a href="/">${ICONS.chart}Consumo zOTC (SCRT)</a>
           <a href="/mlc">${ICONS.trend}Consumo MLC (SCRT)</a>
           <a href="/inventario" class="active" aria-current="page">${ICONS.box}Inventário</a>
+          <a href="/infra">${ICONS.rack}Infraestrutura</a>
         </nav>
       </div>
     </div>

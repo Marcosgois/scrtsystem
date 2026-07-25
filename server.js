@@ -27,6 +27,9 @@ app.get('/inventario', (req, res) => {
 app.get('/mlc', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'mlc.html'));
 });
+app.get('/infra', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'infra.html'));
+});
 
 // Erros da API respondem JSON; erros de entrada do cliente viram 4xx, não 500.
 app.use((err, req, res, next) => {

@@ -1107,3 +1107,81 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 }
 .mlc-scrt-link { cursor: pointer; user-select: none; }
 .mlc-scrt-link:hover { outline: 1px solid var(--primary); outline-offset: 1px; }
+
+/* ============================================================ *
+ *  Infraestrutura (Sites · Máquinas · LPARs)
+ * ============================================================ */
+.infra-tabs { margin: 4px 0 16px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.badge-neutral { background: var(--gray-20); color: var(--ink); }
+.badge-danger { background: var(--danger-light); color: var(--danger); }
+.btn-link { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 12px; font-family: var(--font); padding: 0 2px; }
+.btn-link:hover { text-decoration: underline; }
+.btn-link.danger { color: var(--danger); }
+.empty-inline { padding: 18px; background: var(--surface-subtle); border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--ink-secondary); font-size: 13px; }
+.empty-inline.small { padding: 10px 12px; font-size: 12px; }
+
+/* Marca de máquina (substitui a foto): bloco com gradiente */
+.imc-mark { width: 34px; height: 34px; border-radius: var(--radius); flex: 0 0 auto; display: inline-block; }
+.imc-mark.inline { width: 18px; height: 18px; vertical-align: middle; margin-right: 6px; border-radius: 3px; }
+.grad-linuxone { background: linear-gradient(135deg, #0f62fe, #4589ff); }
+.grad-z { background: linear-gradient(135deg, #262626, #525252); }
+
+/* Formulários em grade */
+.machine-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; }
+.machine-dormant { margin-top: 8px; }
+.role-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 4px; }
+.role-opt { padding: 7px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); cursor: pointer; font-size: 12.5px; font-family: var(--font); color: var(--ink-secondary); }
+.role-opt.active { background: color-mix(in srgb, var(--rc) 12%, white); border-color: var(--rc); color: var(--rc); font-weight: 600; }
+
+/* Visão geral: colunas por site */
+.site-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.site-block { background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--primary); border-radius: var(--radius); padding: 12px; }
+.site-block-nosite { border-top-color: var(--border-strong); border-top-style: dashed; }
+.site-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.site-block-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.infra-machine-card { display: block; width: 100%; text-align: left; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
+.infra-machine-card:hover { border-color: var(--primary); }
+.infra-machine-card.dormant { opacity: 0.6; }
+.imc-head { display: flex; align-items: center; gap: 10px; }
+.imc-id { display: flex; flex-direction: column; line-height: 1.25; flex: 1; min-width: 0; }
+.imc-cap { white-space: nowrap; }
+.lpar-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.lpar-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); }
+.os-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+
+/* Aba Máquinas (tabela) */
+.infra-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.infra-search { flex: 1; min-width: 220px; padding: 7px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 13px; font-family: var(--font); }
+.infra-toolbar select { padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 13px; background: var(--surface); }
+.infra-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.infra-table th, .infra-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.infra-table thead th { position: sticky; top: 0; background: var(--surface-subtle); font-weight: 600; color: var(--ink-secondary); border-bottom: 1px solid var(--border-strong); }
+.infra-table th.num, .infra-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.infra-table tbody tr:hover td { background: var(--surface-hover); }
+.infra-table tr.machine-dormant td { opacity: 0.6; }
+.infra-actions-col { width: 1%; white-space: nowrap; }
+.infra-actions { white-space: nowrap; text-align: right; }
+.infra-actions .row-action { padding: 4px; }
+.row-action.danger:hover { color: var(--danger); }
+
+/* Modal arquivos de config */
+.config-slot { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+.config-slot-head { margin-bottom: 8px; }
+.config-slot-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.config-preview { margin-top: 10px; font-family: var(--mono); font-size: 11px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; max-height: 40vh; overflow: auto; white-space: pre; }
+
+/* Modal LPARs */
+.lpar-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+.lpar-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.lpar-card-actions { margin-left: auto; display: flex; gap: 10px; }
+.lpar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 16px; margin-top: 6px; }
+.lpar-grid > div > span.muted { display: block; }
+.lpar-form { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.nic-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.nic-row .nic-type { flex: 0 0 150px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); }
+.nic-row .nic-label { flex: 1; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); }
+
+@media (max-width: 720px) {
+  .machine-grid, .lpar-grid, .role-grid { grid-template-columns: 1fr; }
+}

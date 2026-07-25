@@ -800,6 +800,81 @@ async function main() {
       check('tags: id inválido -> 400', r.status === 400, r.status);
     }
 
+    // ----- Infraestrutura (Sites, Máquinas, LPARs) -----
+    {
+      const infraCli = await api('/clients', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'INFRA TESTE' }),
+      });
+      const infraId = infraCli.body._id;
+      await api(`/clients/${infraId}/reports`, { method: 'POST', body: uploadForm(SAMPLE, '#JUN2026.csv') }); // p/ o cruzamento
+
+      // Site
+      r = await api(`/clients/${infraId}/infra/sites`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'DC Principal', role: 'prod', location: 'SP' }),
+      });
+      check('infra: POST site -> 201', r.status === 201 && r.body.role === 'prod', r.body);
+      const siteId = r.body._id;
+      r = await api(`/clients/${infraId}/infra/sites`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '' }),
+      });
+      check('infra: site sem nome -> 400', r.status === 400, r.status);
+
+      // Máquina com serial que casa com o SCRT (M1C1 = 82-C5DC8, 2.541.509 MSU)
+      r = await api(`/clients/${infraId}/infra/machines`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'LinuxONE Emperor 5', serial: '82-c5dc8', site: siteId, iflsActive: 48 }),
+      });
+      check('infra: POST máquina -> 201 e serial em maiúsculas', r.status === 201 && r.body.serial === '82-C5DC8', r.body);
+      const machineId = r.body._id;
+      r = await api(`/clients/${infraId}/infra/machines`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: '', serial: '' }),
+      });
+      check('infra: máquina sem modelo nem serial -> 400', r.status === 400, r.status);
+
+      // Cruzamento com o SCRT pelo serial
+      r = await api(`/clients/${infraId}/infra/machines`);
+      const cross = r.body.find((m) => m._id === machineId);
+      check('infra: máquina cruza com o SCRT (2.541.509 MSU)',
+        cross && cross.scrt && cross.scrt.msuConsumed === 2541509, cross && cross.scrt);
+      check('infra: listagem não traz o conteúdo de config', cross && cross.configTxtContent === undefined, Object.keys(cross || {}));
+
+      // Config via item (PUT) — a listagem esconde, o item traz
+      await api(`/clients/${infraId}/infra/machines/${machineId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ configTxtName: 'cfg.txt', configTxtContent: 'linha1\nlinha2' }),
+      });
+      r = await api(`/clients/${infraId}/infra/machines/${machineId}`);
+      check('infra: GET item traz o conteúdo de config', r.body.configTxtContent === 'linha1\nlinha2', r.body.configTxtName);
+
+      // LPAR
+      r = await api(`/clients/${infraId}/infra/lpars`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ machine: machineId, name: 'LNXPROD1', os: 'linux', ifls: 24, memoryGB: 512, ips: ['10.0.0.1'], networkCards: [{ type: 'RoCE', label: 'A0' }] }),
+      });
+      check('infra: POST LPAR -> 201', r.status === 201 && r.body.name === 'LNXPROD1' && r.body.networkCards.length === 1, r.body);
+      const lparId = r.body._id;
+      r = await api(`/clients/${infraId}/infra/lpars`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'X' }),
+      });
+      check('infra: LPAR sem máquina -> 400', r.status === 400, r.status);
+
+      // Excluir site: máquina fica sem site (não é apagada)
+      r = await api(`/clients/${infraId}/infra/sites/${siteId}`, { method: 'DELETE' });
+      check('infra: DELETE site -> ok', r.status === 200, r.status);
+      r = await api(`/clients/${infraId}/infra/machines/${machineId}`);
+      check('infra: máquina do site excluído fica sem site', r.body.site == null, r.body.site);
+
+      // Excluir máquina: cascata apaga a LPAR
+      r = await api(`/clients/${infraId}/infra/machines/${machineId}`, { method: 'DELETE' });
+      check('infra: DELETE máquina -> ok', r.status === 200, r.status);
+      r = await api(`/clients/${infraId}/infra/lpars`);
+      check('infra: LPARs da máquina são removidas em cascata', r.body.length === 0, r.body.length);
+
+      r = await api(`/clients/${infraId}/infra/lpars/${lparId}`, { method: 'DELETE' });
+      check('infra: DELETE de LPAR já removida -> 404', r.status === 404, r.status);
+      r = await api('/clients/xxx/infra/sites');
+      check('infra: id inválido -> 400', r.status === 400, r.status);
+    }
+
     // Ids inválidos
     r = await api('/clients/xxx/dashboard');
     check('id inválido -> 400', r.status === 400);

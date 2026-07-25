@@ -207,8 +207,79 @@ const inventorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* ── Infraestrutura (parque físico IBM Z / LinuxONE) ─────────────────────────
+ * Inventário físico por cliente: Site -> Máquina -> LPAR. Distinto das máquinas
+ * do SCRT (subdoc de ScrtReport); aqui é o cadastro do hardware. A ligação com
+ * o SCRT é pelo serial (normalizado em maiúsculas). Sem foto e sem catálogo.
+ */
+const infraSiteSchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    name: { type: String, required: true, trim: true },
+    location: { type: String, default: '' },
+    role: { type: String, enum: ['prod', 'dr', 'ha', 'dev', 'test', 'colo'], default: 'prod' },
+    notes: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+
+const infraMachineSchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    site: { type: mongoose.Schema.Types.ObjectId, ref: 'InfraSite', default: null },
+    model: { type: String, default: '' }, // ex.: "LinuxONE Emperor 5", "IBM z17"
+    variant: { type: String, default: '' },
+    featureModel: { type: String, default: '' }, // capacidade física (ex.: "Max32")
+    serial: { type: String, default: '', index: true }, // normalizado em maiúsculas
+    year: { type: Number, default: null },
+    iflsActive: { type: Number, default: 0 },
+    iflsSpare: { type: Number, default: 0 },
+    storageTB: { type: Number, default: 0 },
+    storageAddTB: { type: Number, default: 0 },
+    dormant: { type: Boolean, default: false },
+    notes: { type: String, default: '' },
+    // Arquivos de configuração (texto), guardados inline (excluídos da listagem).
+    configTxtName: { type: String, default: '' },
+    configTxtContent: { type: String, default: '' },
+    configCfrName: { type: String, default: '' },
+    configCfrContent: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+
+const infraNetworkCardSchema = new mongoose.Schema(
+  {
+    type: { type: String, enum: ['OSA', 'RoCE', 'NetworkExpress', 'HiperSockets', 'Other'], default: 'OSA' },
+    label: { type: String, default: '' }, // CHPID/porta/identificação
+  },
+  { _id: false }
+);
+
+const infraLparSchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    machine: { type: mongoose.Schema.Types.ObjectId, ref: 'InfraMachine', required: true, index: true },
+    name: { type: String, required: true, trim: true },
+    os: { type: String, enum: ['linux', 'zos', 'zvm', 'kvm', 'other'], default: 'linux' },
+    osDistro: { type: String, default: '' }, // "RHEL 10.2", "z/OS 3.1"
+    ifls: { type: Number, default: 0 },
+    cps: { type: Number, default: 0 }, // CPs/zIIPs (vCPUs)
+    memoryGB: { type: Number, default: 0 },
+    description: { type: String, default: '' },
+    devices: { type: [String], default: [] },
+    wwpns: { type: [String], default: [] },
+    ips: { type: [String], default: [] },
+    networkCards: { type: [infraNetworkCardSchema], default: [] },
+    notes: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+
 const Client = mongoose.model('Client', clientSchema);
 const ScrtReport = mongoose.model('ScrtReport', scrtReportSchema);
 const Inventory = mongoose.model('Inventory', inventorySchema);
+const InfraSite = mongoose.model('InfraSite', infraSiteSchema);
+const InfraMachine = mongoose.model('InfraMachine', infraMachineSchema);
+const InfraLpar = mongoose.model('InfraLpar', infraLparSchema);
 
-module.exports = { Client, ScrtReport, Inventory };
+module.exports = { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar };
