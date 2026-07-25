@@ -275,7 +275,15 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 // ── Clientes ────────────────────────────────────────────────────────────────
 
 router.get('/clients', asyncHandler(async (req, res) => {
-  const clients = await Client.find().sort({ name: 1 }).lean();
+  const user = req.user;
+  const isAdmin = user && user.role === 'admin';
+  const levelOf = (id) => {
+    if (isAdmin) return 'admin';
+    const g = ((user && user.access) || []).find((a) => String(a.client) === String(id));
+    return g ? g.level : null;
+  };
+  let clients = await Client.find().sort({ name: 1 }).lean();
+  if (!isAdmin) clients = clients.filter((c) => levelOf(c._id)); // só os clientes do usuário
   const stats = await ScrtReport.aggregate([
     {
       $group: {
@@ -291,6 +299,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
       const s = statsById.get(String(c._id));
       return {
         ...c,
+        accessLevel: levelOf(c._id), // 'admin' | 'edit' | 'view'
         reportCount: s ? s.reportCount : 0,
         lastPeriodKey: s ? s.lastPeriodKey : null,
       };
@@ -910,12 +919,17 @@ router.get('/clients/:id/forecast', asyncHandler(async (req, res) => {
 // ── Inventário de software (módulo Inventário) ──────────────────────────────
 // O parse do relatório IBM acontece no navegador; aqui só persistimos o resultado.
 
-/** Resumo de todos os inventários (para o seletor e a lista do módulo). */
+/** Resumo dos inventários (só dos clientes que o usuário pode acessar). */
 router.get('/inventories', asyncHandler(async (req, res) => {
-  const inventories = await Inventory.find()
+  let inventories = await Inventory.find()
     .select('client customerNumber clientName productCount reportUpdatedAt sourceFileName updatedAt')
     .populate('client', 'name')
     .lean();
+  const user = req.user;
+  if (!user || user.role !== 'admin') {
+    const allowed = new Set(((user && user.access) || []).map((a) => String(a.client)));
+    inventories = inventories.filter((i) => i.client && allowed.has(String(i.client._id || i.client)));
+  }
   res.json(inventories);
 }));
 

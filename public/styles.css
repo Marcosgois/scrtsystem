@@ -1185,3 +1185,112 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 @media (max-width: 720px) {
   .machine-grid, .lpar-grid, .role-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Autenticação: menu do usuário no topbar ────────────────────────────── */
+.user-menu { position: relative; display: flex; align-items: center; }
+.user-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: var(--ink-inverse);
+  padding: 5px 10px 5px 6px; border-radius: 999px;
+  cursor: pointer; font-family: var(--font); font-size: 12.5px; line-height: 1;
+}
+.user-chip:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.55); }
+.user-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--primary); color: #fff; font-weight: 600; font-size: 11px;
+  letter-spacing: 0.3px; flex-shrink: 0;
+}
+.user-avatar.lg { width: 40px; height: 40px; font-size: 15px; }
+.user-chip-text { display: flex; flex-direction: column; gap: 2px; text-align: left; max-width: 150px; }
+.user-chip-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-chip-role { font-size: 10.5px; opacity: 0.7; }
+.user-chip svg { opacity: 0.7; }
+.user-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  min-width: 232px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16); overflow: hidden;
+}
+.user-pop-head { display: flex; gap: 10px; align-items: center; padding: 14px; border-bottom: 1px solid var(--border); }
+.user-pop-head strong { display: block; font-size: 13.5px; }
+.user-pop-head .muted { display: block; font-size: 11.5px; margin-top: 1px; word-break: break-all; }
+.user-pop-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: none; border: none; border-top: 1px solid var(--border);
+  padding: 11px 14px; font-family: var(--font); font-size: 13px; color: var(--ink);
+  cursor: pointer; text-decoration: none;
+}
+.user-pop-item:first-of-type { border-top: none; }
+.user-pop-item:hover { background: var(--surface-hover); }
+.user-pop-item svg { opacity: 0.65; }
+.user-pop-item.danger { color: var(--danger); }
+.user-pop-item.danger:hover { background: var(--danger-light); }
+
+/* Selo "somente leitura" e ocultação de controles de edição */
+.readonly-badge {
+  display: none; align-items: center; gap: 6px;
+  background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.28);
+  color: var(--ink-inverse); border-radius: 999px; padding: 5px 11px 5px 9px;
+  font-size: 11.5px; font-weight: 500; letter-spacing: 0.2px; white-space: nowrap;
+}
+body.view-only .readonly-badge { display: inline-flex; }
+body.view-only [data-requires-edit] { display: none !important; }
+body:not(.is-admin) [data-requires-admin] { display: none !important; }
+
+@media (max-width: 720px) {
+  .user-chip-text { display: none; }
+}
+
+/* ── Administração de usuários ──────────────────────────────────────────── */
+.col-actions { width: 1%; white-space: nowrap; text-align: right; }
+#users-table td { vertical-align: middle; }
+.user-cell { display: flex; align-items: center; gap: 10px; }
+.user-cell .user-avatar { width: 30px; height: 30px; font-size: 12px; }
+.user-cell strong { font-size: 13px; font-weight: 600; }
+.role-tag {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500;
+  padding: 3px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.role-tag.admin { background: var(--accent-light); color: var(--accent); border-color: #d9c9f0; }
+.role-tag.user { background: var(--surface-hover); color: var(--ink-secondary); border-color: var(--border); }
+.access-summary { display: flex; flex-wrap: wrap; gap: 5px; }
+.access-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--ink-secondary); background: var(--surface-subtle); white-space: nowrap;
+}
+.access-chip.edit { border-color: #bfe3cb; background: var(--success-light); color: var(--success); }
+.access-chip.all { border-color: #d9c9f0; background: var(--accent-light); color: var(--accent); }
+#users-table .row-action { color: var(--ink-secondary); }
+#users-table tr:hover td { background: var(--surface-subtle); }
+
+.user-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin-bottom: 6px; }
+.user-form-grid .field:nth-child(3) { grid-column: 1; }
+@media (max-width: 640px) { .user-form-grid { grid-template-columns: 1fr; } }
+
+.access-head { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 8px; }
+.access-head > span { font-size: 12.5px; font-weight: 600; color: var(--ink-secondary); }
+.access-bulk { display: flex; gap: 12px; }
+.access-list { border: 1px solid var(--border); border-radius: var(--radius); max-height: 300px; overflow-y: auto; }
+.access-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+}
+.access-row:last-child { border-bottom: none; }
+.access-row .ar-name { font-size: 13px; font-weight: 500; }
+.access-seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius); overflow: hidden; }
+.access-seg button {
+  padding: 5px 12px; font-size: 12px; font-family: var(--font); background: var(--surface);
+  color: var(--ink-secondary); border: none; border-right: 1px solid var(--border-strong); cursor: pointer;
+}
+.access-seg button:last-child { border-right: none; }
+.access-seg button:hover { background: var(--surface-hover); }
+.access-seg button.on { background: var(--primary); color: #fff; }
+.access-seg button.on.edit-on { background: var(--success); }
+.access-empty { padding: 14px; text-align: center; color: var(--ink-muted); font-size: 12.5px; }
+/* Role picker de duas linhas (admin) */
+.role-opt-2 { text-align: left; line-height: 1.3; }
+.role-opt-2 strong { display: block; font-size: 13px; }
+.role-opt-2 span { display: block; font-size: 11px; font-weight: 400; opacity: 0.72; }

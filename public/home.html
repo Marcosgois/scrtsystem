@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBM Z Control Desk</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    html, body { background: #05060a; color: #f4f4f4; overflow-x: hidden; }
+    body { min-height: 100vh; }
+    a { color: inherit; }
+
+    /* Cena Three.js ao fundo */
+    #bg-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; display: block; }
+    .bg-veil {
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background:
+        radial-gradient(1200px 800px at 78% 12%, rgba(15, 98, 254, 0.16), transparent 60%),
+        radial-gradient(900px 700px at 10% 90%, rgba(105, 41, 196, 0.16), transparent 55%),
+        linear-gradient(180deg, rgba(5,6,10,0) 55%, rgba(5,6,10,0.75) 100%);
+    }
+
+    .page { position: relative; z-index: 2; }
+
+    /* Barra superior */
+    .home-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      max-width: 1180px; margin: 0 auto; padding: 22px 28px;
+    }
+    .home-brand { display: flex; align-items: center; gap: 12px; }
+    .home-mark {
+      width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
+      background: linear-gradient(135deg, #0f62fe, #6929c4); color: #fff; font-weight: 700; font-size: 18px;
+      box-shadow: 0 6px 22px rgba(15, 98, 254, 0.45);
+    }
+    .home-brand b { font-size: 15px; font-weight: 600; letter-spacing: 0.2px; }
+    .nav-cta {
+      display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px;
+      font-size: 13.5px; font-weight: 500; text-decoration: none; color: #fff;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.2); transition: all .16s ease;
+    }
+    .nav-cta:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.5); }
+
+    /* Hero */
+    .hero { max-width: 1180px; margin: 0 auto; padding: 78px 28px 60px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 9px; font-size: 12px; letter-spacing: 0.5px;
+      color: #a6c8ff; border: 1px solid rgba(120,169,255,0.32); background: rgba(15,98,254,0.1);
+      padding: 6px 14px; border-radius: 999px; margin-bottom: 26px;
+    }
+    .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: #42be65; box-shadow: 0 0 10px #42be65; }
+    .hero h1 {
+      font-size: clamp(38px, 6vw, 68px); line-height: 1.04; font-weight: 600; letter-spacing: -1.4px;
+      max-width: 15ch;
+    }
+    .hero h1 em { font-style: normal; background: linear-gradient(120deg, #78a9ff 10%, #be95ff 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero p.lead {
+      margin-top: 24px; font-size: clamp(15px, 2vw, 18px); line-height: 1.62; color: rgba(244,244,244,0.72);
+      max-width: 56ch;
+    }
+    .hero-actions { margin-top: 36px; display: flex; gap: 14px; flex-wrap: wrap; }
+    .btn-hero {
+      display: inline-flex; align-items: center; gap: 10px; padding: 14px 26px; border-radius: 999px;
+      font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer; border: none; font-family: var(--font);
+    }
+    .btn-hero.primary { color: #fff; background: linear-gradient(120deg, #0f62fe, #4589ff); box-shadow: 0 10px 34px rgba(15,98,254,0.5); transition: transform .16s ease, box-shadow .16s ease; }
+    .btn-hero.primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(15,98,254,0.6); }
+    .btn-hero.ghost { color: #fff; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.22); }
+    .btn-hero.ghost:hover { background: rgba(255,255,255,0.12); }
+
+    /* Módulos */
+    .modules { max-width: 1180px; margin: 0 auto; padding: 30px 28px 90px; }
+    .modules-head { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(244,244,244,0.42); margin-bottom: 18px; }
+    .module-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    @media (max-width: 900px) { .module-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .module-grid { grid-template-columns: 1fr; } }
+    .module-card {
+      position: relative; padding: 22px; border-radius: 14px; text-decoration: none; color: inherit;
+      background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.09);
+      backdrop-filter: blur(6px); overflow: hidden; transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .module-card:hover { transform: translateY(-4px); border-color: rgba(120,169,255,0.5); background: rgba(255,255,255,0.06); }
+    .module-card .mc-ic {
+      width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 16px;
+      background: rgba(15,98,254,0.16); border: 1px solid rgba(120,169,255,0.28); color: #a6c8ff;
+    }
+    .module-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .module-card p { font-size: 12.5px; line-height: 1.55; color: rgba(244,244,244,0.6); }
+    .module-card .mc-arrow { position: absolute; top: 20px; right: 20px; color: rgba(255,255,255,0.25); transition: transform .18s ease, color .18s ease; }
+    .module-card:hover .mc-arrow { color: #a6c8ff; transform: translate(3px,-3px); }
+
+    .home-foot { max-width: 1180px; margin: 0 auto; padding: 26px 28px 40px; font-size: 12px; color: rgba(244,244,244,0.34); border-top: 1px solid rgba(255,255,255,0.07); }
+
+    .reveal { opacity: 0; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #bg-canvas { display: none; }
+      .reveal { opacity: 1 !important; transform: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="bg-veil" aria-hidden="true"></div>
+
+  <div class="page">
+    <nav class="home-nav">
+      <div class="home-brand">
+        <div class="home-mark">Z</div>
+        <b>IBM Z Control Desk</b>
+      </div>
+      <a class="nav-cta" id="nav-cta" href="/login">Entrar</a>
+    </nav>
+
+    <header class="hero">
+      <span class="eyebrow reveal" id="r-eyebrow"><span class="dot"></span> Governança de mainframe · SCRT · Tailored Fit Pricing</span>
+      <h1 class="reveal" id="r-title">Todo o consumo <em>IBM&nbsp;Z</em> dos seus clientes, sob controle.</h1>
+      <p class="lead reveal" id="r-lead">Consolide SCRT, MLC, inventário de software licenciado e o parque físico de mainframe em um só painel — com acesso por cliente, comparativos mês a mês e planejamento de capacidade.</p>
+      <div class="hero-actions reveal" id="r-actions">
+        <a class="btn-hero primary" id="cta-main" href="/login">Acessar o painel
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn-hero ghost" href="#modulos">Ver módulos</a>
+      </div>
+    </header>
+
+    <section class="modules" id="modulos">
+      <div class="modules-head reveal" id="r-mhead">Quatro módulos, um só sistema</div>
+      <div class="module-grid">
+        <a class="module-card reveal" href="/consumo" data-mc>
+          <div class="mc-ic"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h3>Consumo zOTC</h3>
+          <p>Leitura de SCRT, MSU por máquina e LPAR, baseline e comparativos.</p>
+          <span class="mc-arrow"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+        <a class="module-card reveal" href="/mlc" data-mc>
+          <div class="mc-ic"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h3>Consumo MLC</h3>
+          <p>Contrato por cliente, ano contratual e MSU sincronizado do SCRT.</p>
+          <span class="mc-arrow"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+        <a class="module-card reveal" href="/inventario" data-mc>
+          <div class="mc-ic"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+          <h3>Inventário</h3>
+          <p>Software licenciado, S&amp;S casado 1:1 e consolidação por PID.</p>
+          <span class="mc-arrow"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+        <a class="module-card reveal" href="/infra" data-mc>
+          <div class="mc-ic"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+          <h3>Infraestrutura</h3>
+          <p>Sites, máquinas IBM Z / LinuxONE e LPARs cruzados com o SCRT.</p>
+          <span class="mc-arrow"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+      </div>
+    </section>
+
+    <footer class="home-foot">IBM Z Control Desk · Consumo Mainframe · Tailored Fit Pricing (SCRT) · Acesso restrito</footer>
+  </div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/gsap.min.js"></script>
+  <script>
+    /* Estado de sessão: ajusta o CTA (entrar × abrir painel). */
+    (async () => {
+      try {
+        const s = await fetch('/api/auth/status').then((r) => r.json());
+        const cta = document.getElementById('cta-main');
+        const nav = document.getElementById('nav-cta');
+        if (s && s.user) {
+          cta.setAttribute('href', '/consumo');
+          cta.firstChild.textContent = 'Abrir painel ';
+          nav.setAttribute('href', '/consumo');
+          nav.textContent = 'Abrir painel';
+        }
+      } catch (_) { /* ignora — CTA continua em /login */ }
+    })();
+  </script>
+  <script src="home.js"></script>
+</body>
+</html>

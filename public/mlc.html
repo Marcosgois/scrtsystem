@@ -17,7 +17,7 @@
         <p>Consumo Mainframe · Tailored Fit Pricing (SCRT)</p>
       </div>
       <nav class="module-nav" aria-label="Módulos">
-        <a href="/">
+        <a href="/consumo">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Consumo zOTC (SCRT)
         </a>
@@ -40,7 +40,7 @@
         <span class="client-select-label">Cliente</span>
         <select id="client-select" aria-label="Selecionar cliente"></select>
       </label>
-      <button class="btn btn-primary" id="btn-edit-contract" title="Cadastrar ou editar o contrato MLC deste cliente">
+      <button class="btn btn-primary" data-requires-edit id="btn-edit-contract" title="Cadastrar ou editar o contrato MLC deste cliente">
         Contrato MLC
       </button>
     </div>
@@ -56,7 +56,7 @@
     </div>
     <h2>Nenhum cliente cadastrado</h2>
     <p>Cadastre um cliente no módulo de consumo zOTC para começar.</p>
-    <a class="btn btn-primary" href="/">Ir para Consumo zOTC</a>
+    <a class="btn btn-primary" href="/consumo">Ir para Consumo zOTC</a>
   </section>
 
   <!-- Cliente sem contrato MLC -->
@@ -67,7 +67,7 @@
     <h2>Sem contrato MLC para <span id="empty-contract-name">este cliente</span></h2>
     <p>Cadastre os parâmetros do contrato (baseline, valor por MSU, encargos e CBA por ano).<br>
       O consumo mensal virá automaticamente do SCRT do cliente.</p>
-    <button class="btn btn-primary" id="btn-empty-new-contract">Cadastrar contrato MLC</button>
+    <button class="btn btn-primary" data-requires-edit id="btn-empty-new-contract">Cadastrar contrato MLC</button>
   </section>
 
   <!-- Contrato configurado -->
@@ -78,7 +78,7 @@
         <p class="muted" id="mlc-subtitle">Monthly License Charge · consumo do SCRT</p>
       </div>
       <div class="client-header-actions">
-        <button class="btn btn-ghost btn-sm" id="btn-edit-contract-2">Editar contrato</button>
+        <button class="btn btn-ghost btn-sm" data-requires-edit id="btn-edit-contract-2">Editar contrato</button>
       </div>
     </div>
 
@@ -102,13 +102,13 @@
 
     <div class="contract-editor-scroll">
       <div id="contract-years-editor"></div>
-      <button type="button" class="btn btn-ghost btn-sm" id="btn-add-year">+ Adicionar ano</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-requires-edit id="btn-add-year">+ Adicionar ano</button>
     </div>
 
     <p class="form-error hidden" id="contract-error"></p>
 
     <div class="modal-actions modal-actions-split">
-      <button class="btn btn-danger-ghost btn-sm" id="btn-delete-contract">Excluir contrato</button>
+      <button class="btn btn-danger-ghost btn-sm" data-requires-edit id="btn-delete-contract">Excluir contrato</button>
       <div class="modal-actions-right">
         <button class="btn btn-ghost" data-close-modal>Cancelar</button>
         <button class="btn btn-primary" id="btn-save-contract">Salvar contrato</button>
@@ -119,6 +119,7 @@
 
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
+<script src="auth-client.js"></script>
 <script src="scrt-files.js"></script>
 <script src="mlc.js"></script>
 </body>

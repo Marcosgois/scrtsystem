@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBM Z Control Desk — Entrar</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { background: #0b0b0d; color: var(--ink-inverse); display: grid; grid-template-columns: 1.05fr 0.95fr; min-height: 100vh; }
+    @media (max-width: 860px) { body { grid-template-columns: 1fr; } .login-aside { display: none; } }
+
+    /* Painel lateral com identidade do produto */
+    .login-aside {
+      position: relative; overflow: hidden;
+      background:
+        radial-gradient(1100px 700px at 20% -10%, rgba(15, 98, 254, 0.28), transparent 60%),
+        radial-gradient(900px 700px at 110% 120%, rgba(105, 41, 196, 0.24), transparent 55%),
+        #0b0b0d;
+      padding: 56px; display: flex; flex-direction: column; justify-content: space-between;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .login-aside::before {
+      content: ""; position: absolute; inset: 0;
+      background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+      background-size: 46px 46px; mask-image: radial-gradient(circle at 30% 40%, #000 30%, transparent 78%);
+      pointer-events: none;
+    }
+    .aside-brand { display: flex; align-items: center; gap: 14px; position: relative; }
+    .aside-mark {
+      width: 46px; height: 46px; border-radius: 8px; display: grid; place-items: center;
+      background: linear-gradient(135deg, #0f62fe, #6929c4); color: #fff; font-weight: 700; font-size: 22px;
+      box-shadow: 0 8px 28px rgba(15, 98, 254, 0.4);
+    }
+    .aside-brand h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.2px; }
+    .aside-brand p { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 1px; }
+    .aside-headline { position: relative; max-width: 440px; }
+    .aside-headline h2 { font-size: 30px; line-height: 1.18; font-weight: 600; letter-spacing: -0.4px; }
+    .aside-headline h2 em { font-style: normal; background: linear-gradient(120deg, #78a9ff, #be95ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .aside-headline p { margin-top: 16px; color: rgba(255,255,255,0.62); font-size: 14px; line-height: 1.6; }
+    .aside-modules { position: relative; display: flex; flex-wrap: wrap; gap: 8px; }
+    .aside-pill {
+      font-size: 11.5px; color: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 999px; padding: 5px 12px; background: rgba(255,255,255,0.04);
+    }
+
+    /* Coluna do formulário */
+    .login-main { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+    .login-card { width: 100%; max-width: 380px; }
+    .login-card > .lc-mark { display: none; }
+    @media (max-width: 860px) {
+      body { background: #0b0b0d; }
+      .login-card > .lc-mark { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+      .login-card > .lc-mark .aside-mark { width: 40px; height: 40px; font-size: 19px; }
+    }
+    .login-card h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.2px; }
+    .login-card .sub { color: rgba(255,255,255,0.55); font-size: 13.5px; margin-top: 6px; margin-bottom: 26px; }
+    .setup-note {
+      display: flex; gap: 10px; align-items: flex-start; margin-bottom: 22px; padding: 12px 14px;
+      border: 1px solid rgba(120, 169, 255, 0.35); background: rgba(15, 98, 254, 0.12);
+      border-radius: var(--radius); font-size: 12.5px; color: rgba(255,255,255,0.8); line-height: 1.5;
+    }
+    .field-dark { display: block; margin-bottom: 16px; }
+    .field-dark span { display: block; font-size: 12.5px; color: rgba(255,255,255,0.7); margin-bottom: 6px; }
+    .field-dark input {
+      width: 100%; padding: 11px 13px; font-size: 14px; font-family: var(--font);
+      color: #fff; background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.16); border-bottom: 1px solid rgba(255,255,255,0.42);
+      border-radius: var(--radius); outline: none;
+    }
+    .field-dark input:focus { border-color: #78a9ff; background: rgba(255,255,255,0.08); }
+    .field-dark input::placeholder { color: rgba(255,255,255,0.3); }
+    .btn-login {
+      width: 100%; margin-top: 8px; padding: 12px 16px; font-size: 14px; font-weight: 500;
+      font-family: var(--font); color: #fff; background: var(--primary); border: none;
+      border-radius: var(--radius); cursor: pointer; display: inline-flex; align-items: center; justify-content: space-between;
+    }
+    .btn-login:hover { background: var(--primary-hover); }
+    .btn-login:disabled { opacity: 0.55; cursor: default; }
+    .login-error {
+      display: none; margin-bottom: 18px; padding: 11px 13px; border-radius: var(--radius);
+      background: rgba(218, 30, 40, 0.14); border: 1px solid rgba(255, 122, 130, 0.4);
+      color: #ffb3b8; font-size: 12.5px; line-height: 1.5;
+    }
+    .login-error.show { display: block; }
+    .login-foot { margin-top: 26px; font-size: 11.5px; color: rgba(255,255,255,0.36); text-align: center; }
+    .lc-loading { color: rgba(255,255,255,0.5); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <aside class="login-aside">
+    <div class="aside-brand">
+      <div class="aside-mark">Z</div>
+      <div>
+        <h1>IBM Z Control Desk</h1>
+        <p>Consumo Mainframe · Tailored Fit Pricing</p>
+      </div>
+    </div>
+    <div class="aside-headline">
+      <h2>Governança de consumo <em>IBM Z</em> em um só lugar.</h2>
+      <p>Acompanhe SCRT, MLC, inventário de software e parque físico dos seus clientes de mainframe — com controle de acesso por cliente.</p>
+    </div>
+    <div class="aside-modules">
+      <span class="aside-pill">Consumo zOTC</span>
+      <span class="aside-pill">Consumo MLC</span>
+      <span class="aside-pill">Inventário</span>
+      <span class="aside-pill">Infraestrutura</span>
+    </div>
+  </aside>
+
+  <main class="login-main">
+    <div class="login-card">
+      <div class="lc-mark"><div class="aside-mark">Z</div><strong>IBM Z Control Desk</strong></div>
+      <div id="lc-body"><p class="lc-loading">Carregando…</p></div>
+      <p class="login-foot">Acesso restrito · IBM Z Control Desk</p>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const nextUrl = params.get('next') || '/consumo';
+
+    const arrow = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    function loginForm() {
+      return `
+        <h2>Entrar</h2>
+        <p class="sub">Use as credenciais fornecidas pelo administrador.</p>
+        <div class="login-error" id="lc-error"></div>
+        <form id="lc-form">
+          <label class="field-dark"><span>E-mail</span>
+            <input type="email" id="f-email" autocomplete="username" placeholder="voce@empresa.com" required autofocus></label>
+          <label class="field-dark"><span>Senha</span>
+            <input type="password" id="f-password" autocomplete="current-password" placeholder="••••••••" required></label>
+          <button type="submit" class="btn-login" id="lc-submit">Entrar ${arrow}</button>
+        </form>`;
+    }
+
+    function setupForm() {
+      return `
+        <h2>Configurar administrador</h2>
+        <p class="sub">Primeiro acesso do sistema.</p>
+        <div class="setup-note">
+          <span>Nenhum usuário cadastrado ainda. Crie a conta do <strong>administrador</strong> — depois você poderá cadastrar os demais usuários e associá-los a clientes.</span>
+        </div>
+        <div class="login-error" id="lc-error"></div>
+        <form id="lc-form">
+          <label class="field-dark"><span>Nome</span>
+            <input type="text" id="f-name" autocomplete="name" placeholder="Seu nome" required autofocus></label>
+          <label class="field-dark"><span>E-mail</span>
+            <input type="email" id="f-email" autocomplete="username" placeholder="voce@empresa.com" required></label>
+          <label class="field-dark"><span>Senha</span>
+            <input type="password" id="f-password" autocomplete="new-password" placeholder="mínimo 6 caracteres" required></label>
+          <button type="submit" class="btn-login" id="lc-submit">Criar e entrar ${arrow}</button>
+        </form>`;
+    }
+
+    function showError(msg) {
+      const e = $('lc-error');
+      if (e) { e.textContent = msg; e.classList.add('show'); }
+    }
+
+    async function submit(mode, e) {
+      e.preventDefault();
+      const btn = $('lc-submit');
+      btn.disabled = true;
+      $('lc-error').classList.remove('show');
+      const payload = {
+        email: $('f-email').value.trim(),
+        password: $('f-password').value,
+      };
+      if (mode === 'setup') payload.name = $('f-name').value.trim();
+      try {
+        const res = await fetch(`/api/auth/${mode === 'setup' ? 'setup' : 'login'}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Não foi possível entrar.');
+        location.href = nextUrl;
+      } catch (err) {
+        showError(err.message);
+        btn.disabled = false;
+      }
+    }
+
+    async function init() {
+      let status = null;
+      try {
+        status = await fetch('/api/auth/status').then((r) => r.json());
+      } catch (_) {
+        $('lc-body').innerHTML = '<p class="lc-loading">Servidor indisponível. Recarregue a página.</p>';
+        return;
+      }
+      if (status.user) { location.href = nextUrl; return; }
+      const mode = status.needsSetup ? 'setup' : 'login';
+      $('lc-body').innerHTML = status.needsSetup ? setupForm() : loginForm();
+      $('lc-form').addEventListener('submit', (e) => submit(mode, e));
+    }
+
+    init();
+  </script>
+</body>
+</html>

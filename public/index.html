@@ -18,7 +18,7 @@
         <p>Consumo Mainframe · Tailored Fit Pricing (SCRT)</p>
       </div>
       <nav class="module-nav" aria-label="Módulos">
-        <a href="/" class="active" aria-current="page">
+        <a href="/consumo" class="active" aria-current="page">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Consumo zOTC (SCRT)
         </a>
@@ -41,8 +41,8 @@
         <span class="client-select-label">Cliente</span>
         <select id="client-select" aria-label="Selecionar cliente"></select>
       </label>
-      <button class="btn btn-ghost" id="btn-new-client" title="Cadastrar novo cliente">+ Novo cliente</button>
-      <button class="btn btn-primary" id="btn-upload" title="Enviar relatório SCRT (.csv ou .xlsx)">
+      <button class="btn btn-ghost" data-requires-admin id="btn-new-client" title="Cadastrar novo cliente">+ Novo cliente</button>
+      <button class="btn btn-primary" data-requires-edit id="btn-upload" title="Enviar relatório SCRT (.csv ou .xlsx)">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 11V2M8 2L4.5 5.5M8 2l3.5 3.5M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Subir SCRT
       </button>
@@ -59,7 +59,7 @@
     </div>
     <h2>Nenhum cliente cadastrado</h2>
     <p>Cadastre o primeiro cliente para começar a subir os relatórios SCRT.</p>
-    <button class="btn btn-primary" id="btn-empty-new-client">+ Cadastrar cliente</button>
+    <button class="btn btn-primary" data-requires-admin id="btn-empty-new-client">+ Cadastrar cliente</button>
   </section>
 
   <!-- Estado vazio: cliente sem relatórios -->
@@ -69,7 +69,7 @@
     </div>
     <h2>Nenhum SCRT enviado para <span id="empty-reports-client"></span></h2>
     <p>Arraste um ou vários SCRTs (.csv ou planilha .xlsx com uma aba por máquina) para esta tela ou clique em "Subir SCRT".</p>
-    <button class="btn btn-primary" id="btn-empty-upload">Subir SCRT</button>
+    <button class="btn btn-primary" data-requires-edit id="btn-empty-upload">Subir SCRT</button>
   </section>
 
   <!-- Dashboard -->
@@ -83,9 +83,9 @@
       <div class="client-header-actions">
         <button class="btn btn-ghost btn-sm" id="btn-open-compare">Comparar meses</button>
         <button class="btn btn-ghost btn-sm" id="btn-open-forecast">Capacity planning</button>
-        <button class="btn btn-ghost btn-sm" id="btn-edit-baseline">Definir baseline</button>
-        <button class="btn btn-ghost btn-sm" id="btn-edit-contract-year">Ano contratual</button>
-        <button class="btn btn-danger-ghost btn-sm" id="btn-delete-client">Excluir cliente</button>
+        <button class="btn btn-ghost btn-sm" data-requires-edit id="btn-edit-baseline">Definir baseline</button>
+        <button class="btn btn-ghost btn-sm" data-requires-edit id="btn-edit-contract-year">Ano contratual</button>
+        <button class="btn btn-danger-ghost btn-sm" data-requires-admin id="btn-delete-client">Excluir cliente</button>
       </div>
     </div>
 
@@ -181,7 +181,7 @@
           </div>
           <div class="client-header-actions">
             <button class="btn btn-ghost btn-sm" id="btn-scrt-files">Ver arquivos SCRT</button>
-            <button class="btn btn-ghost btn-sm" id="btn-manage-tags">Tags de máquina</button>
+            <button class="btn btn-ghost btn-sm" data-requires-edit id="btn-manage-tags">Tags de máquina</button>
             <span class="tag tag-history" id="machines-period"></span>
           </div>
         </div>
@@ -225,7 +225,7 @@
             <button type="button" class="seg-btn active" data-lpar-tab="n7">Uso (N7)</button>
             <button type="button" class="seg-btn" data-lpar-tab="n5">Picos 4HRA (N5)</button>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" id="btn-manage-groups" title="Criar e editar grupos de LPARs">
+          <button type="button" class="btn btn-ghost btn-sm" data-requires-edit id="btn-manage-groups" title="Criar e editar grupos de LPARs">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="5.5" cy="4" r="1.8" fill="currentColor"/><circle cx="10.5" cy="8" r="1.8" fill="currentColor"/><circle cx="6.5" cy="12" r="1.8" fill="currentColor"/></svg>
             Grupos
           </button>
@@ -529,6 +529,7 @@
 
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
+<script src="auth-client.js"></script>
 <script src="scrt-files.js"></script>
 <script src="app.js"></script>
 </body>

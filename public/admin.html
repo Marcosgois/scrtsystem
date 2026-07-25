@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBM Z Control Desk — Administração</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <h1>IBM Z Control Desk</h1>
+        <p>Administração · Usuários e acessos</p>
+      </div>
+      <nav class="module-nav" aria-label="Módulos">
+        <a href="/consumo">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo zOTC (SCRT)
+        </a>
+        <a href="/mlc">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo MLC (SCRT)
+        </a>
+        <a href="/inventario">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          Inventário
+        </a>
+        <a href="/infra">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Infraestrutura
+        </a>
+        <a href="/admin" class="active" aria-current="page">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="5" r="2.4" stroke="currentColor" stroke-width="1.4"/><path d="M3 13c0-2.4 2.2-3.8 5-3.8s5 1.4 5 3.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          Administração
+        </a>
+      </nav>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" id="btn-new-user">+ Novo usuário</button>
+    </div>
+  </div>
+</header>
+
+<main class="container" id="main">
+  <section id="admin-view">
+    <div class="client-header">
+      <div>
+        <h2>Usuários</h2>
+        <p class="muted" id="admin-subtitle">Crie usuários e defina, por cliente, se cada um pode ver ou ver e editar.</p>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="admin-kpis"></div>
+
+    <div class="table-responsive">
+      <table class="infra-table" id="users-table">
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>E-mail</th>
+            <th>Papel</th>
+            <th>Acesso a clientes</th>
+            <th class="col-actions"></th>
+          </tr>
+        </thead>
+        <tbody id="users-body"></tbody>
+      </table>
+    </div>
+    <div class="empty-inline hidden" id="users-empty">Nenhum usuário cadastrado ainda.</div>
+  </section>
+</main>
+
+<!-- Modal: usuário -->
+<div class="modal-backdrop hidden" id="modal-user">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-user-title">
+    <h2 id="modal-user-title">Novo usuário</h2>
+    <div class="user-form-grid">
+      <label class="field"><span>Nome *</span><input type="text" id="u-name" maxlength="120" placeholder="Nome completo"></label>
+      <label class="field"><span>E-mail *</span><input type="email" id="u-email" maxlength="160" placeholder="voce@empresa.com"></label>
+      <label class="field"><span id="u-pass-label">Senha *</span><input type="password" id="u-password" autocomplete="new-password" placeholder="mínimo 6 caracteres"></label>
+      <div class="field"><span>Papel</span>
+        <div class="role-grid" id="u-role"></div>
+      </div>
+    </div>
+
+    <div id="u-access-block">
+      <div class="access-head">
+        <span>Acesso por cliente</span>
+        <div class="access-bulk">
+          <button type="button" class="btn-link" data-bulk="view">Todos: ver</button>
+          <button type="button" class="btn-link" data-bulk="edit">Todos: ver e editar</button>
+          <button type="button" class="btn-link" data-bulk="none">Limpar</button>
+        </div>
+      </div>
+      <div id="u-access-list" class="access-list"></div>
+    </div>
+    <p class="muted small" id="u-access-admin-note" style="display:none">Administradores têm acesso a todos os clientes automaticamente.</p>
+
+    <p class="form-error hidden" id="u-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="btn-delete-user" style="margin-right:auto; display:none">Excluir usuário</button>
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-user">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script src="auth-client.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

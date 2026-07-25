@@ -6,6 +6,9 @@ const express = require('express');
 const { connectDb } = require('./src/db');
 const { startLocalMongo, stopLocalMongo } = require('./src/localDb');
 const apiRoutes = require('./src/routes');
+const { attachUser, requireAuth, requireAdmin, clientAccessGuard, authRouter, adminRouter } = require('./src/authRoutes');
+const { sessionUserId } = require('./src/auth');
+const { User } = require('./src/models');
 
 const PORT = process.env.PORT || 3000;
 // Com MONGODB_URI definido no .env (Atlas/servidor próprio), usa esse banco.
@@ -17,19 +20,41 @@ const LOCAL_DB_PORT = Number(process.env.LOCAL_DB_PORT || 27017);
 const app = express();
 // Inventários de software chegam como JSON grande (centenas de produtos) — 25 MB cobre com folga.
 app.use(express.json({ limit: '25mb' }));
-app.use('/api', apiRoutes);
-app.use(express.static(path.join(__dirname, 'public')));
 
-// Rotas amigáveis dos módulos (além dos .html servidos pelo estático).
-app.get('/inventario', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'inventario.html'));
+// ── API com autenticação e autorização ──
+app.use('/api', attachUser);                        // req.user (ou null) a partir do cookie
+app.use('/api/auth', authRouter);                   // público: status/setup/login/logout/me
+app.use('/api', requireAuth);                       // o resto exige login
+app.use('/api/admin', requireAdmin, adminRouter);   // administração de usuários
+app.use('/api', clientAccessGuard);                 // acesso por cliente (view/edit)
+app.use('/api', apiRoutes);                          // rotas existentes dos módulos
+
+// ── Páginas ──
+const sendPage = (file) => (req, res) => res.sendFile(path.join(__dirname, 'public', file));
+const pageGuard = (req, res, next) => (sessionUserId(req) ? next() : res.redirect('/login'));
+const adminPageGuard = async (req, res, next) => {
+  const uid = sessionUserId(req);
+  const u = uid ? await User.findById(uid).select('role').lean().catch(() => null) : null;
+  if (!u) return res.redirect('/login');
+  if (u.role !== 'admin') return res.redirect('/consumo');
+  next();
+};
+
+app.get('/', sendPage('home.html'));               // homepage pública
+app.get('/login', sendPage('login.html'));         // login (+ setup do 1º admin)
+app.get('/consumo', pageGuard, sendPage('index.html'));
+app.get('/mlc', pageGuard, sendPage('mlc.html'));
+app.get('/inventario', pageGuard, sendPage('inventario.html'));
+app.get('/infra', pageGuard, sendPage('infra.html'));
+app.get('/admin', adminPageGuard, sendPage('admin.html'));
+
+// Bloqueia acesso direto aos HTMLs protegidos pelo estático.
+const PROTECTED_HTML = new Set(['/index.html', '/mlc.html', '/inventario.html', '/infra.html', '/admin.html']);
+app.use((req, res, next) => {
+  if (PROTECTED_HTML.has(req.path) && !sessionUserId(req)) return res.redirect('/login');
+  next();
 });
-app.get('/mlc', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'mlc.html'));
-});
-app.get('/infra', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'infra.html'));
-});
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // Erros da API respondem JSON; erros de entrada do cliente viram 4xx, não 500.
 app.use((err, req, res, next) => {

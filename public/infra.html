@@ -17,7 +17,7 @@
         <p>Consumo Mainframe · Tailored Fit Pricing (SCRT)</p>
       </div>
       <nav class="module-nav" aria-label="Módulos">
-        <a href="/">
+        <a href="/consumo">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Consumo zOTC (SCRT)
         </a>
@@ -40,8 +40,8 @@
         <span class="client-select-label">Cliente</span>
         <select id="client-select" aria-label="Selecionar cliente"></select>
       </label>
-      <button class="btn btn-ghost" id="btn-new-site">+ Site</button>
-      <button class="btn btn-primary" id="btn-new-machine">+ Máquina</button>
+      <button class="btn btn-ghost" data-requires-edit id="btn-new-site">+ Site</button>
+      <button class="btn btn-primary" data-requires-edit id="btn-new-machine">+ Máquina</button>
     </div>
   </div>
 </header>
@@ -55,7 +55,7 @@
     </div>
     <h2>Nenhum cliente cadastrado</h2>
     <p>Cadastre um cliente no módulo de consumo zOTC para começar.</p>
-    <a class="btn btn-primary" href="/">Ir para Consumo zOTC</a>
+    <a class="btn btn-primary" href="/consumo">Ir para Consumo zOTC</a>
   </section>
 
   <!-- Infraestrutura do cliente -->
@@ -149,7 +149,7 @@
         <p class="muted small" id="lpars-machine-sub"></p>
       </div>
       <div class="modal-compare-head">
-        <button class="btn btn-primary btn-sm" id="btn-add-lpar">+ Nova LPAR</button>
+        <button class="btn btn-primary btn-sm" data-requires-edit id="btn-add-lpar">+ Nova LPAR</button>
         <button class="row-action" data-close-modal aria-label="Fechar">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
@@ -164,6 +164,7 @@
 
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
+<script src="auth-client.js"></script>
 <script src="infra.js"></script>
 </body>
 </html>

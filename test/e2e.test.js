@@ -20,8 +20,13 @@ const ITAU_XLSX = path.join(__dirname, '..', 'SCRT', 'ITAU', 'SCRT TFP Jan-26.xl
 const PORT = 3999;
 const BASE = `http://127.0.0.1:${PORT}/api`;
 
+// Cookie de sessão do admin — preenchido no bootstrap e enviado em toda chamada.
+let authCookie = '';
+
 async function api(pathname, opts = {}) {
-  const res = await fetch(`${BASE}${pathname}`, opts);
+  const headers = { ...(opts.headers || {}) };
+  if (authCookie) headers.Cookie = authCookie;
+  const res = await fetch(`${BASE}${pathname}`, { ...opts, headers });
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
 }
@@ -53,6 +58,19 @@ async function main() {
   };
 
   try {
+    // ── Autenticação ──
+    // Sem login, a API é 401. Cria o primeiro admin (setup) e guarda a sessão.
+    let preAuth = await api('/clients');
+    check('sem login -> 401', preAuth.status === 401, preAuth.status);
+
+    const setupRes = await fetch(`${BASE}/auth/setup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'E2E Admin', email: 'e2e@admin.local', password: 'e2epass1' }),
+    });
+    const setupBody = await setupRes.json().catch(() => null);
+    authCookie = (setupRes.headers.get('set-cookie') || '').split(';')[0];
+    check('POST /auth/setup cria 1º admin', setupRes.status === 201 && setupBody && setupBody.role === 'admin', setupBody);
+    check('sessão do admin emitida', /zcd_session=/.test(authCookie), authCookie);
     // Clientes
     let r = await api('/clients');
     check('GET /clients vazio', r.status === 200 && r.body.length === 0, r.body);
@@ -94,13 +112,13 @@ async function main() {
       r.body.report.rawFile && r.body.report.rawFile.name === '#JUN2026.csv' && r.body.report.rawFile.size > 0,
       r.body.report.rawFile);
     {
-      const fileRes = await fetch(`${BASE}/reports/${reportId}/file`);
+      const fileRes = await fetch(`${BASE}/reports/${reportId}/file`, { headers: { Cookie: authCookie } });
       const fileText = await fileRes.text();
       check('GET /reports/:id/file serve o CSV original',
         fileRes.status === 200 && /SCRT/.test(fileText), { status: fileRes.status, head: fileText.slice(0, 30) });
       check('GET /reports/:id/file com content-type csv', /csv/.test(fileRes.headers.get('content-type') || ''),
         fileRes.headers.get('content-type'));
-      const dlRes = await fetch(`${BASE}/reports/${reportId}/file?download=1`);
+      const dlRes = await fetch(`${BASE}/reports/${reportId}/file?download=1`, { headers: { Cookie: authCookie } });
       check('download traz Content-Disposition attachment',
         /attachment/.test(dlRes.headers.get('content-disposition') || ''), dlRes.headers.get('content-disposition'));
       await dlRes.arrayBuffer();

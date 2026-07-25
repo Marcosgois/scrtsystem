@@ -275,11 +275,37 @@ const infraLparSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* ── Usuários e acesso ───────────────────────────────────────────────────────
+ * Login por e-mail + senha (scrypt). Cada usuário tem acesso a clientes
+ * específicos, com nível 'view' (só ver) ou 'edit' (ver e editar). Admin vê e
+ * edita tudo. O primeiro usuário é criado no setup inicial; depois, só o admin.
+ */
+const userAccessSchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+    level: { type: String, enum: ['view', 'edit'], default: 'view' },
+  },
+  { _id: false }
+);
+
+const userSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    passwordHash: { type: String, required: true },
+    passwordSalt: { type: String, required: true },
+    role: { type: String, enum: ['admin', 'user'], default: 'user' },
+    access: { type: [userAccessSchema], default: [] },
+  },
+  { timestamps: true }
+);
+
 const Client = mongoose.model('Client', clientSchema);
 const ScrtReport = mongoose.model('ScrtReport', scrtReportSchema);
 const Inventory = mongoose.model('Inventory', inventorySchema);
 const InfraSite = mongoose.model('InfraSite', infraSiteSchema);
 const InfraMachine = mongoose.model('InfraMachine', infraMachineSchema);
 const InfraLpar = mongoose.model('InfraLpar', infraLparSchema);
+const User = mongoose.model('User', userSchema);
 
-module.exports = { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar };
+module.exports = { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User };

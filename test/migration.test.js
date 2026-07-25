@@ -21,8 +21,12 @@ const check = (name, cond, extra) => {
   else { failures++; console.error(`  ✗ ${name}`, extra !== undefined ? JSON.stringify(extra) : ''); }
 };
 
+let authCookie = '';
+
 async function api(pathname, opts = {}) {
-  const res = await fetch(`${BASE}${pathname}`, opts);
+  const headers = { ...(opts.headers || {}) };
+  if (authCookie) headers.Cookie = authCookie;
+  const res = await fetch(`${BASE}${pathname}`, { ...opts, headers });
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
 }
@@ -71,6 +75,14 @@ async function main() {
   const { app } = require('../server');
   await connectDb(uri);
   const server = app.listen(PORT);
+
+  // Login obrigatório: cria o 1º admin e guarda a sessão para os uploads.
+  const setupRes = await fetch(`${BASE}/auth/setup`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Mig Admin', email: 'mig@admin.local', password: 'migpass1' }),
+  });
+  authCookie = (setupRes.headers.get('set-cookie') || '').split(';')[0];
+  check('setup do admin para a migração', setupRes.status === 201 && /zcd_session=/.test(authCookie), setupRes.status);
 
   try {
     const indexes = await mongoose.connection.db.collection('scrtreports').indexes();

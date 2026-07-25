@@ -50,7 +50,7 @@ const TOPBAR = `
         <div class="tfp-brand-mark">Z</div>
         <div><h1>IBM Z Control Desk</h1></div>
         <nav class="tfp-module-nav" aria-label="Módulos">
-          <a href="/">${ICONS.chart}Consumo zOTC (SCRT)</a>
+          <a href="/consumo">${ICONS.chart}Consumo zOTC (SCRT)</a>
           <a href="/mlc">${ICONS.trend}Consumo MLC (SCRT)</a>
           <a href="/inventario" class="active" aria-current="page">${ICONS.box}Inventário</a>
           <a href="/infra">${ICONS.rack}Infraestrutura</a>
@@ -135,7 +135,10 @@ function build() {
 
   // 5) Persistência no MongoDB (sobrescreve as funções do painel).
   const bridge = fs.readFileSync(path.join(__dirname, 'inventario-bridge.js'), 'utf8');
-  html = html.replace(/<\/body>/, `<script>\n${bridge}\n</script>\n</body>`);
+  html = html.replace(
+    /<\/body>/,
+    `<script src="/auth-client.js"></script>\n<script>\n${bridge}\n</script>\n</body>`
+  );
 
   fs.writeFileSync(OUT, html);
   console.log(`Painel:  ${path.relative(ROOT, srcPath)} (${(original / 1024).toFixed(0)} KB)`);
