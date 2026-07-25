@@ -211,19 +211,12 @@ endpoints respondem vazio — e não envia cabeçalhos CORS, o que também imped
 usuário de consultá-la a partir do TFPSystem. Um crawler exigiria credenciais de SSO, então o
 link (que abre a página onde o usuário já está autenticado) é a alternativa viável.
 
-### Atualizando o painel de inventário
+### O painel de inventário
 
-`public/inventario.html` é **gerado** — não edite à mão. Quando chegar uma versão nova do painel:
+`public/inventario.html` é um arquivo **versionado e autocontido** — edite direto nele, como
+qualquer outra página. Ele reúne, no mesmo arquivo: o painel original (parser, filtros, tabelas,
+modais e exportações), o sistema visual do IBM Z Control Desk, a barra de módulos e a ponte de
+persistência que grava no MongoDB via API (em vez de localStorage).
 
-1. coloque o arquivo em `Inventario/` (o build pega o `app_inventario*.html` mais recente);
-2. rode:
-
-```bash
-npm run build:inventario
-```
-
-O build ([scripts/build-inventario.js](scripts/build-inventario.js)) aplica o sistema visual
-([scripts/inventario.css](scripts/inventario.css)), insere a barra de módulos, remove os
-pictogramas e anexa a ponte de persistência ([scripts/inventario-bridge.js](scripts/inventario-bridge.js)),
-que sobrescreve as funções de armazenamento do painel para gravar no MongoDB. O código original
-do painel (parser, filtros, tabelas, exportações) não é tocado.
+Historicamente essa página era gerada por um build a partir de um painel externo; isso foi
+removido — hoje ela é fonte de primeira classe, mantida no repositório.

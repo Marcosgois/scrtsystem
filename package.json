@@ -10,7 +10,6 @@
     "demo": "node scripts/demo.js",
     "test:parser": "node test/parser.test.js",
     "test:e2e": "node test/e2e.test.js",
-    "build:inventario": "node scripts/build-inventario.js",
     "test:migration": "node test/migration.test.js",
     "test:auth": "node test/auth.test.js",
     "test:forecast": "node test/forecast.test.js",

@@ -1,0 +1,3670 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Analítico de Inventário zSystems - IBM</title>
+  <style>
+    /* ======================================================================
+       Módulo de Inventário — mesmo sistema visual do módulo de Consumo:
+       superfícies planas com bordas de 1px, raios discretos, tipografia densa
+       com numerais tabulares e paleta neutra restrita (base IBM Carbon).
+       As classes originais do painel foram preservadas.
+       ====================================================================== */
+    :root {
+      --gray-10: #f4f4f4;
+      --gray-20: #e0e0e0;
+      --gray-30: #c6c6c6;
+      --gray-50: #8d8d8d;
+      --gray-60: #6f6f6f;
+      --gray-70: #525252;
+      --gray-100: #161616;
+
+      --ibm-blue: #0f62fe;
+      --ibm-blue-hover: #0353e9;
+      --blue-light: #edf5ff;
+      --bg-color: #f4f4f4;
+      --card-bg: #ffffff;
+      --surface-subtle: #fafafa;
+      --surface-hover: #f2f4f8;
+      --border-color: #e0e0e0;
+      --border-strong: #c6c6c6;
+      --text-color: #161616;
+      --text-secondary: #525252;
+      --text-muted: #6f6f6f;
+
+      --success: #198038;
+      --success-light: #defbe6;
+      --danger: #da1e28;
+      --accent: #6929c4;
+      --accent-light: #f6f2ff;
+
+      --radius: 4px;
+      --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-size: 15px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+
+    svg { flex-shrink: 0; }
+
+    /* ── Cabeçalho da página ─────────────────────────────────────────────── */
+    .header-card {
+      background: transparent;
+      padding: 0 0 16px;
+      border-radius: 0;
+      box-shadow: none;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .header-card h1 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      color: var(--text-color);
+    }
+    .header-card p { margin: 3px 0 0; color: var(--text-secondary); font-size: 13px; }
+
+    /* ── Seletor de cliente ──────────────────────────────────────────────── */
+    .client-select-card {
+      background: var(--card-bg) !important;
+      border: 1px solid var(--border-color);
+      border-left: 2px solid var(--ibm-blue) !important;
+      border-radius: var(--radius) !important;
+      box-shadow: none !important;
+      padding: 12px 16px !important;
+      margin-bottom: 18px !important;
+    }
+    .client-select-card label {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-muted) !important;
+    }
+    #selectCustomer {
+      padding: 7px 11px !important;
+      border-radius: var(--radius) !important;
+      border: 1px solid var(--border-strong) !important;
+      font-family: var(--font);
+      font-size: 13px !important;
+      background: var(--surface-subtle) !important;
+      font-weight: 500 !important;
+      color: var(--text-color) !important;
+      cursor: pointer;
+    }
+    #selectCustomer:focus { outline: 2px solid var(--ibm-blue); outline-offset: -1px; }
+
+    #savedStorageBadge {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #0e6027 !important;
+      background: var(--success-light) !important;
+      padding: 4px 9px !important;
+      border-radius: 2px !important;
+    }
+
+    .btn-inventario {
+      background: var(--ibm-blue);
+      color: #fff;
+      border: 1px solid transparent;
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .btn-inventario:hover { background: var(--ibm-blue-hover); }
+
+    /* ── Cartão do cliente ───────────────────────────────────────────────── */
+    .client-card {
+      background: var(--card-bg);
+      padding: 14px 18px;
+      border: 1px solid var(--border-color);
+      border-left: 2px solid var(--ibm-blue);
+      border-radius: var(--radius);
+      box-shadow: none;
+      margin-bottom: 18px;
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+    .client-info-group { display: flex; flex-direction: column; gap: 4px; }
+    .client-info-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .client-info-value { font-size: 15px; font-weight: 600; color: var(--text-color); }
+
+    /* ── KPIs ────────────────────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1px;
+      background: var(--border-color);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .kpi-card {
+      background: var(--card-bg);
+      padding: 16px 18px;
+      border-radius: 0;
+      box-shadow: none;
+      border-left: none;
+    }
+    .kpi-card .title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+    .kpi-card .value {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      color: var(--text-color);
+      font-variant-numeric: tabular-nums;
+    }
+    /* acentos por categoria, aplicados como faixa superior discreta */
+    .kpi-card.licence { box-shadow: inset 0 2px 0 var(--ibm-blue); }
+    .kpi-card.ss { box-shadow: inset 0 2px 0 var(--success); }
+
+    /* ── Barra de filtros ────────────────────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 18px;
+      box-shadow: none;
+    }
+    .btn-filter {
+      background: var(--card-bg);
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      padding: 6px 13px;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+    }
+    .btn-filter:hover { background: var(--surface-hover); color: var(--text-color); }
+    .btn-filter.active { background: var(--ibm-blue); color: #fff; border-color: var(--ibm-blue); }
+    /* Toggle "Ocultar MSU registration": realçado quando está escondendo. */
+    .btn-filter.tfp-toggle-on { background: var(--ibm-blue); color: #fff; border-color: var(--ibm-blue); }
+
+    #txtSearchInput {
+      padding: 7px 11px !important;
+      border: 1px solid var(--border-strong) !important;
+      border-radius: var(--radius) !important;
+      font-family: var(--font);
+      font-size: 13px !important;
+      background: var(--surface-subtle);
+      min-width: 260px;
+    }
+    #txtSearchInput:focus { outline: 2px solid var(--ibm-blue); outline-offset: -1px; background: #fff; }
+
+    /* ── Abas ────────────────────────────────────────────────────────────── */
+    .nav-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 0;
+      background: transparent;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 11px 18px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+    }
+    .tab-btn:hover { color: var(--text-color); background: var(--surface-hover); }
+    .tab-btn.active { color: var(--ibm-blue); border-bottom-color: var(--ibm-blue); }
+
+    /* Só a aba ativa aparece. Sem isto, os dois conteúdos ficam visíveis
+       empilhados e trocar de aba parece "não funcionar". */
+    .tab-content { display: none; }
+    .tab-content.active {
+      display: block;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      padding: 18px 20px;
+      box-shadow: none;
+    }
+
+    /* ── Tabelas ─────────────────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+    th, td {
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+      background: var(--surface-subtle);
+      font-weight: 500;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border-bottom: 1px solid var(--border-strong);
+      white-space: nowrap;
+    }
+
+    th.sortable { cursor: pointer; user-select: none; transition: background 0.12s ease, color 0.12s ease; }
+    th.sortable:hover { background: var(--surface-hover); color: var(--text-color); }
+
+    .row-clickable { cursor: pointer; transition: background 0.1s ease; }
+    .row-clickable:hover { background: var(--surface-hover); }
+    .row-parent td { font-weight: 500; }
+    .row-child td { background: var(--surface-subtle); }
+    .row-child td:first-child { padding-left: 32px; }
+
+    .val-highlight { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .btn-expand-records {
+      background: transparent;
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      border-radius: var(--radius);
+      padding: 2px 8px;
+      font-size: 11px;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .btn-expand-records:hover { background: var(--surface-hover); border-color: var(--ibm-blue); color: var(--ibm-blue); }
+
+    /* ── Badges de categoria ─────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 2px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+    .badge-lic { background: var(--blue-light); color: #0043ce; }
+    .badge-ss { background: var(--success-light); color: #0e6027; }
+
+    /* ── Par Licença ↔ S&S (visão hierárquica, filtro "Todos") ───────────── */
+    /* O S&S casado é desenhado logo abaixo da licença, com um filete verde
+       ligando as duas linhas. */
+    .badge.tfp-badge-cov {
+      background: var(--success-light);
+      color: #0e6027;
+      margin-left: 6px;
+      font-weight: 600;
+    }
+    /* Licença e S&S dividem o mesmo verde: o par se lê como um bloco só. */
+    tr.tfp-row-ss-pair > td,
+    tr.tfp-row-lic-pair > td { background: var(--success-light); }
+    tr.tfp-row-ss-pair > td:first-child,
+    tr.tfp-row-lic-pair > td:first-child { box-shadow: inset 3px 0 0 #24a148; }
+    /* Só o S&S entra recuado, para ficar claro quem pende de quem. */
+    tr.tfp-row-ss-pair.row-parent > td:first-child { padding-left: 22px; }
+    tr.tfp-row-ss-pair.row-child > td:first-child { padding-left: 40px; }
+    .tfp-pair-note {
+      margin-left: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    /* Ajuste manual: separar um par errado ou casar o que ficou solto. */
+    .tfp-pair-btn {
+      margin-left: 6px;
+      padding: 1px 7px;
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: transparent;
+      border: 1px solid var(--border-strong);
+      border-radius: 2px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+    .tfp-pair-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--ibm-blue);
+      color: var(--ibm-blue);
+    }
+
+    .tfp-pair-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      background: rgba(22, 22, 22, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .tfp-pair-box {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: min(600px, 100%);
+      max-height: 80vh;
+      padding: 24px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+    }
+    .tfp-pair-box h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color); }
+    .tfp-pair-sub {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    #tfp-pair-search {
+      padding: 8px 12px;
+      font-family: var(--font);
+      font-size: 13px;
+      color: var(--text-color);
+      background: var(--card-bg);
+      border: 1px solid var(--border-strong);
+      border-radius: 2px;
+      outline: none;
+    }
+    #tfp-pair-search:focus { border-color: var(--ibm-blue); box-shadow: inset 0 0 0 1px var(--ibm-blue); }
+    .tfp-pair-list {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 2px;
+    }
+    .tfp-pair-opt {
+      display: flex;
+      gap: 12px;
+      align-items: baseline;
+      width: 100%;
+      padding: 8px 12px;
+      font-family: var(--font);
+      font-size: 12px;
+      text-align: left;
+      color: var(--text-color);
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+    }
+    .tfp-pair-opt:last-child { border-bottom: none; }
+    .tfp-pair-opt:hover { background: var(--blue-light); }
+    .tfp-pair-opt strong { flex: 0 0 84px; font-variant-numeric: tabular-nums; }
+    .tfp-pair-opt span { flex: 1; color: var(--text-secondary); }
+    .tfp-pair-cfg {
+      flex: 0 0 auto;
+      font-style: normal;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    /* Config Value igual ao do S&S: é o par provável. */
+    .tfp-pair-cfg.igual {
+      padding: 1px 6px;
+      color: #0e6027;
+      background: var(--success-light);
+      border-radius: 2px;
+      font-weight: 600;
+    }
+    .tfp-pair-empty { margin: 0; padding: 12px; font-size: 12px; color: var(--text-muted); }
+    .tfp-pair-actions { display: flex; justify-content: flex-end; }
+
+    /* ── Modal de produto ────────────────────────────────────────────────── */
+    /* Começa oculto; o JS troca para display:flex ao abrir o produto. */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(22, 22, 22, 0.5);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+      max-width: 900px;
+      width: 100%;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--surface-subtle);
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+    .modal-header h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color); }
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      font-size: 20px;
+      line-height: 1;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: var(--radius);
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .modal-close-btn:hover { background: var(--gray-20); color: var(--text-color); }
+    .modal-body { padding: 20px 22px; overflow-y: auto; }
+    .modal-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 760px) { .modal-grid-2 { grid-template-columns: 1fr; } }
+    .modal-card {
+      background: var(--surface-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .modal-card-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+    .modal-card-val { font-size: 14px; font-weight: 500; color: var(--text-color); }
+
+    .ai-summary-box {
+      background: var(--accent-light);
+      border: 1px solid #d9c7ff;
+      border-left: 2px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-top: 16px;
+    }
+    .ai-summary-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 500;
+      color: #491d8b;
+      margin-bottom: 8px;
+    }
+    .ai-summary-text { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+  
+    /* ── Elementos da versão nova do painel ──────────────────────────────── */
+
+    /* Filtros (data / status) e menu de exportação */
+    .status-filter-frame { box-shadow: none !important; }
+
+    input[type="date"] {
+      font-family: var(--font);
+      font-size: 12.5px !important;
+      padding: 6px 9px !important;
+      border: 1px solid var(--border-strong) !important;
+      border-radius: var(--radius) !important;
+      background: var(--surface-subtle);
+      color: var(--text-color);
+    }
+    input[type="date"]:focus { outline: 2px solid var(--ibm-blue); outline-offset: -1px; }
+
+    /* Chips de status gerados pelo painel (estilo inline sobrescrito) */
+    #statusCheckboxContainer label {
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      border-radius: var(--radius) !important;
+      padding: 4px 9px !important;
+      border-color: var(--border-strong) !important;
+    }
+    #statusCheckboxContainer input { accent-color: var(--ibm-blue); }
+
+    /* Menu suspenso de exportação */
+    #exportDropdownMenu {
+      border: 1px solid var(--border-strong) !important;
+      border-radius: var(--radius) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14) !important;
+    }
+    #exportDropdownMenu button {
+      font-size: 12.5px !important;
+      font-weight: 500 !important;
+      color: var(--text-color) !important;
+      border-bottom: 1px solid var(--border-color) !important;
+      transition: background 0.12s ease;
+    }
+    #exportDropdownMenu button:last-child { border-bottom: none !important; }
+    #exportDropdownMenu button:hover { background: var(--surface-hover) !important; }
+
+    /* Indicadores de ordenação nas tabelas do painel */
+    th.sort-asc::after { content: ' ↑'; color: var(--ibm-blue); }
+    th.sort-desc::after { content: ' ↓'; color: var(--ibm-blue); }
+    th.sort-asc, th.sort-desc { color: var(--ibm-blue); background: var(--blue-light); }
+
+    /* Barra de ações do cabeçalho do cliente (início / excluir) */
+    .client-card button, .header-card button {
+      font-family: var(--font);
+      border-radius: var(--radius) !important;
+    }
+
+    /* ── Barra de módulos do IBM Z Control Desk ───────────────────────────────────── */
+    .tfp-topbar {
+      background: #161616;
+      color: #fff;
+      position: sticky;
+      top: 0;
+      z-index: 500;
+      border-bottom: 1px solid #393939;
+    }
+    .tfp-topbar-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 0 20px;
+      min-height: 52px;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .tfp-brand { display: flex; align-items: stretch; gap: 18px; }
+    .tfp-brand > div { display: flex; align-items: center; }
+    .tfp-brand-mark {
+      align-self: center;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: #fff;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 1.4px;
+      border-radius: var(--radius);
+      padding: 5px 8px;
+    }
+    .tfp-brand h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+      color: #fff;
+      white-space: nowrap;
+      align-self: center;
+    }
+    .tfp-module-nav { display: flex; align-items: stretch; }
+    .tfp-module-nav a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.72);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+      white-space: nowrap;
+    }
+    .tfp-module-nav a:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+    .tfp-module-nav a.active {
+      color: #fff;
+      border-bottom-color: var(--ibm-blue);
+      background: rgba(255, 255, 255, 0.06);
+    }
+    @media (max-width: 900px) {
+      .tfp-module-nav { margin-left: 0; width: 100%; justify-content: center; }
+    }
+
+    /* Avisos vindos do servidor (ex.: inventário salvo em cliente divergente) */
+    .tfp-banner {
+      margin: 16px 0 -4px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      line-height: 1.55;
+      background: #fcf4d6;
+      border-left: 3px solid #f1c21b;
+      color: #8e6a00;
+    }
+
+    /* Botões com estilo inline do painel: padronizados pelo sistema visual.
+       Selecionados pelo onclick (estável entre versões do painel). */
+    button[onclick*="toggleExportMenu"],
+    button[onclick*="goHome"],
+    button[onclick*="deleteActiveCustomerRecord"] {
+      border-radius: var(--radius) !important;
+      font-family: var(--font);
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      padding: 8px 14px !important;
+    }
+    button[onclick*="toggleExportMenu"] {
+      background: var(--ibm-blue) !important;
+      border-color: var(--ibm-blue) !important;
+      color: #fff !important;
+    }
+    button[onclick*="goHome"] {
+      background: transparent !important;
+      color: var(--text-secondary) !important;
+      border: 1px solid var(--border-strong) !important;
+    }
+    button[onclick*="deleteActiveCustomerRecord"] {
+      background: transparent !important;
+      color: var(--danger) !important;
+      border: 1px solid var(--border-strong) !important;
+    }
+    button[onclick*="deleteActiveCustomerRecord"]:hover {
+      background: #fff1f1 !important;
+      border-color: var(--danger) !important;
+    }
+
+    /* Rótulos das barras de filtro em micro-label neutro */
+    .filter-bar > div > span:first-child,
+    .status-filter-frame span[style*="font-weight:700"],
+    .status-filter-frame span[style*="font-weight: 700"] {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-muted) !important;
+    }
+    .status-filter-frame { border-left: 2px solid var(--ibm-blue) !important; }
+
+    /* ── Tooltip dos status de inventário ────────────────────────────────── */
+    /* Badges de status (cinza) ganham cursor de ajuda; categorias (lic/S&S) não. */
+    .badge:not(.badge-lic):not(.badge-ss) {
+      cursor: help;
+      border-bottom: 1px dotted var(--text-muted);
+    }
+
+    .tfp-status-tip {
+      position: absolute;
+      z-index: 2000;
+      max-width: 380px;
+      background: #ffffff;
+      color: var(--text-color);
+      border: 1px solid var(--border-strong);
+      border-left: 3px solid var(--ibm-blue);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+      padding: 12px 14px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      pointer-events: none;
+    }
+    .tfp-tip-item + .tfp-tip-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); }
+    .tfp-tip-code {
+      display: inline-block;
+      font-weight: 600;
+      color: var(--ibm-blue);
+      font-family: var(--mono, monospace);
+      margin-right: 6px;
+    }
+    .tfp-status-tip ul { margin: 6px 0 0; padding-left: 16px; }
+    .tfp-status-tip li { margin: 3px 0; }
+
+    /* ── Barra: seletor de cliente + menu do usuário (igual aos outros módulos) ── */
+    .tfp-topbar-actions { display: flex; align-items: center; gap: 10px; padding: 8px 0; flex-wrap: wrap; }
+    .tfp-client-select-wrap {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: var(--radius); padding: 5px 10px;
+    }
+    .tfp-client-select-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+      color: rgba(255, 255, 255, 0.6); white-space: nowrap;
+    }
+    .tfp-client-select {
+      background: transparent; border: none; color: #fff;
+      font-family: var(--font); font-size: 13px; font-weight: 500;
+      outline: none; max-width: 320px; cursor: pointer; padding: 0;
+    }
+    .tfp-client-select option { color: var(--text-color); }
+
+    .user-menu { position: relative; display: flex; align-items: center; }
+    .user-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #fff;
+      padding: 5px 10px 5px 6px; border-radius: 999px;
+      cursor: pointer; font-family: var(--font); font-size: 12.5px; line-height: 1;
+    }
+    .user-chip:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.55); }
+    .user-avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--ibm-blue); color: #fff; font-weight: 600; font-size: 11px;
+      letter-spacing: 0.3px; flex-shrink: 0;
+    }
+    .user-avatar.lg { width: 40px; height: 40px; font-size: 15px; }
+    .user-chip-text { display: flex; flex-direction: column; gap: 2px; text-align: left; max-width: 150px; }
+    .user-chip-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-chip-role { font-size: 10.5px; opacity: 0.7; }
+    .user-chip svg { opacity: 0.7; }
+    .user-pop {
+      position: absolute; top: calc(100% + 8px); right: 0; z-index: 600;
+      min-width: 232px; background: var(--card-bg); color: var(--text-color);
+      border: 1px solid var(--border-strong); border-radius: var(--radius);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16); overflow: hidden;
+    }
+    .user-pop.hidden { display: none; }
+    .user-pop-head { display: flex; gap: 10px; align-items: center; padding: 14px; border-bottom: 1px solid var(--border-color); }
+    .user-pop-head strong { display: block; font-size: 13.5px; }
+    .user-pop-head .muted { display: block; font-size: 11.5px; margin-top: 1px; word-break: break-all; color: var(--text-secondary); }
+    .user-pop-item {
+      display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+      background: none; border: none; border-top: 1px solid var(--border-color);
+      padding: 11px 14px; font-family: var(--font); font-size: 13px; color: var(--text-color);
+      cursor: pointer; text-decoration: none;
+    }
+    .user-pop-item:first-of-type { border-top: none; }
+    .user-pop-item:hover { background: var(--surface-hover); }
+    .user-pop-item svg { opacity: 0.65; }
+    .user-pop-item.danger { color: var(--danger); }
+    .user-pop-item.danger:hover { background: #fff1f1; }
+
+    .readonly-badge {
+      display: none; align-items: center; gap: 6px;
+      background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.28);
+      color: #fff; border-radius: 999px; padding: 5px 11px 5px 9px;
+      font-size: 11.5px; font-weight: 500; letter-spacing: 0.2px; white-space: nowrap;
+    }
+    body.view-only .readonly-badge { display: inline-flex; }
+    body.view-only [data-requires-edit] { display: none !important; }
+    body:not(.is-admin) [data-requires-admin] { display: none !important; }
+
+    @media (max-width: 720px) { .user-chip-text { display: none; } }
+
+  </style>
+</head>
+<body>
+
+  <!-- Barra de módulos do IBM Z Control Desk (gerada por scripts/build-inventario.js) -->
+  <header class="tfp-topbar">
+    <div class="tfp-topbar-inner">
+      <div class="tfp-brand">
+        <div class="tfp-brand-mark">Z</div>
+        <div><h1>IBM Z Control Desk</h1></div>
+        <nav class="tfp-module-nav" aria-label="Módulos">
+          <a href="/consumo"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Consumo zOTC (SCRT)</a>
+          <a href="/mlc"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Consumo MLC (SCRT)</a>
+          <a href="/inventario" class="active" aria-current="page"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>Inventário</a>
+          <a href="/infra"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Infraestrutura</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+
+  <div class="container">
+    
+    <!-- Header -->
+    <div class="header-card">
+      <div>
+        <h1>Gestão & Análise de Inventário zSystems</h1>
+        <p>Processamento Local de Inventário IBM SW Material</p>
+      </div>
+
+      <input 
+        type="file" 
+        id="fileInputInventario" 
+        accept=".html,.htm" 
+        style="display: none;" 
+      />
+    </div>
+
+    <!-- Seletor de Cliente Principal -->
+    <div class="client-select-card" style="background: var(--card-bg); padding: 18px 24px; border-radius: 4px; box-shadow: none; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; border-left: 2px solid var(--ibm-blue);">
+      <div style="display:flex; align-items:center; gap:16px;">
+        <label for="selectCustomer" style="font-weight:700; font-size:0.95rem; color:var(--text-color); display:flex; align-items:center; gap:6px;">
+          <span></span> Selecionar Cliente:
+        </label>
+        <select id="selectCustomer" style="padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.95rem; background: #f4f6f8; font-weight: 600; color: var(--text-color); cursor: pointer; min-width: 320px;" onchange="onCustomerSelectChanged()">
+          <!-- Opções geradas dinamicamente via JS -->
+        </select>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button type="button" class="btn-inventario" style="background: #393939; font-size: 0.9rem;" onclick="goHome()" title="Retornar à tela inicial">
+           Home
+        </button>
+        <span id="savedStorageBadge" style="font-size:0.8rem; color:#198038; font-weight:600; background:#defbe6; padding:6px 12px; border-radius: 4px; display:none;">Salvo no banco</span>
+        <button type="button" id="btnCarregarInventario" class="btn-inventario">
+          Carregar inventário
+        </button>
+      </div>
+    </div>
+
+    <!-- Card de Boas-Vindas / Seleção Inicial de Cliente -->
+    <div id="emptyStateSection" style="display: block; background: var(--card-bg); padding: 50px 30px; border-radius: 4px; text-align: center; box-shadow: none; margin-bottom: 20px; border: 2px dashed #b5b5b5;">
+      <div style="margin-bottom:14px; color:#c6c6c6; display:flex; justify-content:center;"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 20h18M4 20V9.5L12 4l8 5.5V20M9 20v-5.5h6V20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <h2 style="margin: 0 0 8px 0; color: var(--ibm-blue); font-size: 1.4rem;">Selecione um Cliente ou Carregue um Inventário</h2>
+      <p style="color: #525252; max-width: 580px; margin: 0 auto 24px auto; font-size: 0.95rem; line-height: 1.5;">
+        Para iniciar a análise, escolha um cliente já cadastrado no menu superior ou faça a <strong>carga do relatório de inventário IBM zSystems (SW Material HTML/HTM)</strong>.
+      </p>
+      
+      <div style="display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+        <button type="button" class="btn-inventario" style="font-size: 0.95rem; padding: 12px 24px; background: #393939;" onclick="focarSeletorCliente()">
+          Selecionar cliente
+        </button>
+        <button type="button" class="btn-inventario" style="font-size: 0.95rem; padding: 12px 24px;" onclick="document.getElementById('fileInputInventario').click()">
+          Carregar inventário
+        </button>
+      </div>
+    </div>
+
+    <!-- Seção do Cliente (Cabeçalho com Detalhes) -->
+    <div id="clientHeaderSection" class="client-card" style="display: none;">
+      <div class="client-info-group">
+        <span class="client-info-label">Nome do Cliente (Customer Name)</span>
+        <span class="client-info-value" id="hdrClientName">Não Identificado</span>
+      </div>
+      <div class="client-info-group">
+        <span class="client-info-label">Customer Number (No.)</span>
+        <span class="client-info-value" id="hdrCustomerNumber">Não Identificado</span>
+      </div>
+      <div class="client-info-group">
+        <span class="client-info-label">Última Atualização</span>
+        <span class="client-info-value" id="hdrLastUpdated" style="font-size: 0.95rem; color: #525252;">-</span>
+      </div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+        <button type="button" class="btn-inventario" style="background:#da1e28; color:white; font-size:0.85rem; padding:8px 14px;" onclick="deleteActiveCustomerRecord()" title="Excluir o inventário deste cliente do histórico">
+           Apagar Este Registro
+        </button>
+      </div>
+    </div>
+
+    <!-- Painel Analítico -->
+    <div id="analyticsSection" style="display: none;">
+      
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="title">Total de Registros</div>
+          <div class="value" id="kpiTotalProducts">0</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: #0043ce;">
+          <div class="title">PIDs Únicos Consolidados</div>
+          <div class="value" id="kpiUniquePids">0</div>
+        </div>
+        <div class="kpi-card licence">
+          <div class="title">Licenças (Inicia '5')</div>
+          <div class="value" id="kpiTotalLicence">0</div>
+        </div>
+        <div class="kpi-card ss">
+          <div class="title">S&S (Suporte)</div>
+          <div class="value" id="kpiTotalSS">0</div>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros -->
+      <div class="filter-bar" style="display: flex; flex-direction: column; gap: 14px; align-items: flex-start; text-align: left;">
+        
+        <!-- Linha 1: Tipo de Licença e Range de Data (Alinhados à Esquerda) -->
+        <div style="display: flex; align-items: center; justify-content: flex-start; gap: 16px; flex-wrap: wrap; width: 100%;">
+          <!-- Tipo de Licença (Alinhado à Esquerda) -->
+          <div style="display: flex; align-items: center; justify-content: flex-start; gap: 8px; background: #ffffff; padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border-color);">
+            <span style="font-size:0.85rem; font-weight:700; color:#393939; text-align: left;">Tipo de Licença:</span>
+            <button class="btn-filter active" onclick="setCategoryFilter('ALL', event)">Todos</button>
+            <button class="btn-filter" onclick="setCategoryFilter('LICENCE', event)">Apenas Licenças</button>
+            <button class="btn-filter" onclick="setCategoryFilter('SS', event)">Apenas S&S</button>
+          </div>
+
+          <!-- Frame Range de Data (Eff. Date) (Alinhado à Esquerda) -->
+          <div style="display: flex; align-items: center; justify-content: flex-start; gap: 8px; background: #ffffff; padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border-color);">
+            <span style="font-size:0.85rem; font-weight:700; color:#393939; text-align: left;">Effective date</span>
+            <input type="date" id="dtStartEffDate" style="padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.8rem;" onchange="onFilterChanged()" title="Data Inicial do Effective Date" />
+            <span style="font-size: 0.8rem; color: #6e6e6e;">até</span>
+            <input type="date" id="dtEndEffDate" style="padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.8rem;" onchange="onFilterChanged()" title="Data Final do Effective Date" />
+            <button type="button" style="padding: 4px 8px; font-size: 0.75rem; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight:600;" onclick="clearDateFilter()">Limpar</button>
+          </div>
+        </div>
+
+        <!-- FRAME SEPARADO ABAIXO DE "TIPO DE LICENÇA": Status do Produto (ECUS, INAC, AVLB, EDEL, SLBP, ESTO, QUBP, QUVC, YREM) -->
+        <div class="status-filter-frame" style="width: 100%; box-sizing: border-box; background: #ffffff; padding: 12px 18px; border-radius: 4px; border: 1px solid var(--border-color); border-left: 2px solid #0f62fe; box-shadow: none;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <span style="font-size:0.85rem; font-weight:700; color:#0f62fe; display:flex; align-items:center; gap:6px;">
+              <span></span> Status do Produto (Filtrar por Status Válidos IBM):
+            </span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button type="button" style="padding: 3px 10px; font-size: 0.75rem; background: #edf5ff; color: #0f62fe; border: 1px solid #a6c8ff; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick="selectAllStatuses(true)">Selecionar todos</button>
+              <button type="button" style="padding: 3px 10px; font-size: 0.75rem; background: #f4f4f4; color: #525252; border: 1px solid #ccc; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick="selectAllStatuses(false)">Desmarcar todos</button>
+              <button type="button" style="padding: 3px 10px; font-size: 0.75rem; background: #e8daff; color: #6929c4; border: 1px solid #d4bbff; border-radius: 4px; font-weight: 600; cursor: pointer;" onclick="resetStatusToECUS()">Apenas ECUS (padrão)</button>
+            </div>
+          </div>
+          
+          <div id="statusCheckboxContainer" style="display: flex; align-items: center; justify-content: flex-start; gap: 10px; flex-wrap: wrap; min-height: 28px;">
+            <!-- Checkboxes dos 9 status válidos gerados via JS -->
+          </div>
+        </div>
+
+        <!-- Linha 3: Campo de Busca Alinhado à Esquerda -->
+        <div style="display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%;">
+          <input 
+            type="text" 
+            id="txtSearchInput" 
+            placeholder="Buscar por PID, descrição, status ou serial" 
+            style="padding: 8px 16px; border: 1px solid var(--border-color); border-radius: 20px; font-size: 0.85rem; width: 400px; max-width: 100%; outline: none;" 
+            oninput="onSearchInputChanged()" 
+          />
+        </div>
+      </div>
+
+      <!-- Abas Alinhadas com Botão de Exportação no Lado Direito -->
+      <div class="nav-tabs" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--border-color); margin-bottom: 20px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="tab-btn active" onclick="switchTab('tabVisaoGeral', event)">Visão Hierárquica (SW Material)</button>
+          <button class="tab-btn" onclick="switchTab('tabConsolidado', event)">Consolidado por PID</button>
+        </div>
+
+        <!-- Botão de Exportação Alinhado no Lado Direito com as Abas -->
+        <div style="position: relative; margin-bottom: 6px;">
+          <button type="button" class="btn-filter" style="background:#198038; color:white; border-color:#198038; font-weight:bold; padding: 8px 18px;" onclick="toggleExportMenu(event)">
+             Exportar Relatório ▾
+          </button>
+          <div id="exportDropdownMenu" style="display:none; position:absolute; right:0; top:42px; background:white; border:1px solid #ccc; border-radius: 4px; box-shadow:0 6px 16px rgba(0,0,0,0.18); z-index:100; min-width:340px; overflow:hidden;">
+            <button type="button" style="display:block; width:100%; text-align:left; padding:12px 16px; border:none; background:none; font-size:0.85rem; font-weight:600; cursor:pointer; color:#161616; border-bottom:1px solid #eee;" onclick="exportConsolidatedByVU()">
+               1. Consolidado por PID (com Value Units)
+            </button>
+            <button type="button" style="display:block; width:100%; text-align:left; padding:12px 16px; border:none; background:none; font-size:0.85rem; font-weight:600; cursor:pointer; color:#161616; border-bottom:1px solid #eee;" onclick="exportConsolidatedByYear()">
+               2. Consolidado por PID e Ano (Eff. Date)
+            </button>
+            <button type="button" style="display:block; width:100%; text-align:left; padding:12px 16px; border:none; background:none; font-size:0.85rem; font-weight:600; cursor:pointer; color:#161616;" onclick="exportHierarchicalCSV()">
+               3. Visão Hierárquica Detalhada (SW Material)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aba 1: Hierárquica -->
+      <div id="tabVisaoGeral" class="tab-content active">
+        <h3>SW Material - Produtos e Features Capturadas <span style="font-size: 0.8rem; font-weight: normal; color: #6e6e6e;">(Clique em qualquer linha para ver detalhes por IA)</span></h3>
+        <table id="tblHierarquica">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 0)">PID / Feature</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 1)">SW Serial</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 2)">Effective Date (Data Efetivação)</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 3)">Descrição do Produto</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 4)">Categoria</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 5)">Status</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 6)">Métrica</th>
+              <th class="sortable" onclick="sortTable('tblHierarquica', 7)">Config. Value (Qtd)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Aba 2: Consolidado -->
+      <div id="tabConsolidado" class="tab-content">
+        <h3>Consolidação de SW Material por Código PID <span style="font-size: 0.8rem; font-weight: normal; color: #6e6e6e;">(Agrupa PIDs duplicados e soma quantidades/VUs)</span></h3>
+        <table id="tblConsolidado">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 0)">PID</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 1)">Descrição do Produto</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 2)">Total de Registros</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 3)">SW Seriais</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 4)">Tipo de Licença</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 5)">Status</th>
+              <th class="sortable" onclick="sortTable('tblConsolidado', 6)">Total Value Units (VUs)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Modal de Detalhes do Produto -->
+  <div id="productDetailModal" class="modal-overlay" onclick="closeModalOnOverlay(event)">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2>
+          <span></span>
+          <span id="mdlTitle">Detalhes do Produto</span>
+        </h2>
+        <button type="button" class="modal-close-btn" onclick="closeProductModal()" aria-label="Fechar"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      </div>
+
+      <div class="modal-body">
+        
+        <!-- Grid Resumo do Produto -->
+        <div class="modal-grid-2">
+          <div class="modal-card">
+            <div class="modal-card-title">Identificação do PID</div>
+            <div class="modal-card-val" id="mdlPidCode">-</div>
+            <div style="font-size: 0.85rem; color: #525252; margin-top: 4px;" id="mdlSwSerial">Serial: -</div>
+          </div>
+          <div class="modal-card">
+            <div class="modal-card-title"> Licenciamento & Categoria</div>
+            <div class="modal-card-val" id="mdlCategory">-</div>
+            <div style="font-size: 0.85rem; color: var(--ibm-blue); margin-top: 4px;" id="mdlTotalVU">Total VUs: -</div>
+          </div>
+        </div>
+
+        <!-- O que Faz / Resumo por IA -->
+        <div class="ai-summary-box">
+          <div class="ai-summary-title">Resumo do produto</div>
+          <p class="ai-summary-text" id="mdlAiSummary">Carregando informações...</p>
+        </div>
+
+        <!-- Seções VUE e Carta de Anúncio -->
+        <div class="modal-grid-2">
+          <div class="modal-card">
+            <div class="modal-card-title">Carta de anúncio &amp; termos (IBM CSOL)</div>
+            <div style="font-size:0.9rem; font-weight:600; color:var(--text-color);" id="mdlAnnouncement">IBM zSystems Announcement</div>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+              <a id="mdlAnnouncementCsolLink" href="https://www.ibm.com/support/customer/csol/terms/" target="_blank" style="color:var(--ibm-blue); font-size:0.85rem; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                Consultar no portal IBM CSOL
+              </a>
+              <a id="mdlAnnouncementLink" href="#" target="_blank" style="color:#525252; font-size:0.82rem; text-decoration:underline;">
+                 Buscar Carta de Anúncio Mais Atual →
+              </a>
+            </div>
+          </div>
+          <div class="modal-card">
+            <div class="modal-card-title">VUE (Value Unit Exhibit)</div>
+            <div style="font-size:0.9rem; font-weight:600; color:var(--text-color);" id="mdlVueCode">VUE Code: VUE007</div>
+            <div style="font-size:0.82rem; color:#525252; margin-top:4px;" id="mdlVueDesc">Régua de conversão MSU x Value Units aplicada a Mainframes IBM zSystems.</div>
+          </div>
+        </div>
+
+        <!-- Tabela de Sub-features -->
+        <div>
+          <h4 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 0.95rem;">Features Capturadas no Inventário</h4>
+          <table id="tblModalFeatures" style="margin-top: 0;">
+            <thead>
+              <tr style="background:#525252;">
+                <th>Código Feature</th>
+                <th>Descrição da Feature</th>
+                <th>Métrica</th>
+                <th>Qtd Configurada</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <!-- Tabela de Registros do PID e Effective Dates -->
+        <div style="margin-top: 24px;">
+          <h4 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
+            <span>Registros do PID &amp; effective dates</span>
+          </h4>
+          <table id="tblModalRecords" style="margin-top: 0;">
+            <thead>
+              <tr style="background:#0f62fe; color:white;">
+                <th>SW Serial</th>
+                <th>Effective Date (Data Efetivação)</th>
+                <th>PO Number</th>
+                <th>Categoria</th>
+                <th>Status</th>
+                <th>VUs do Registro</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let globalInventoryData = [];
+    let clientInfo = { name: "Não Identificado", number: "Não Identificado" };
+    let currentCategoryFilter = 'ALL';
+    let currentSortStates = {};
+
+    const STORAGE_KEY = 'ibm_zsystems_inventories_v3';
+    const ACTIVE_CUST_KEY = 'ibm_zsystems_active_cust_v3';
+
+    // GATILHO DO BOTÃO DE CARREGAR / ATUALIZAR INVENTÁRIO
+    document.getElementById('btnCarregarInventario').addEventListener('click', () => {
+      document.getElementById('fileInputInventario').click();
+    });
+
+    document.getElementById('fileInputInventario').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const parsedResult = parseIBMLicenseReport(evt.target.result);
+        
+        globalInventoryData = parsedResult.products;
+        clientInfo = parsedResult.client;
+        const updatedAt = new Date().toLocaleString('pt-BR');
+
+        // Salva cliente no armazenamento multi-cliente
+        saveCustomerInventory(clientInfo, globalInventoryData, updatedAt);
+
+        // Atualiza a lista de clientes no dropdown
+        populateCustomerDropdown(clientInfo.number);
+
+        // Exibe o inventário na tela
+        displayInventory(clientInfo, globalInventoryData, updatedAt);
+      };
+
+      reader.readAsText(file);
+      this.value = '';
+    });
+
+    function getStoredInventories() {
+      try {
+        let store = localStorage.getItem(STORAGE_KEY);
+        if (store) return JSON.parse(store);
+
+        // Migração automática de v1 para v2 se existir
+        const oldStore = localStorage.getItem('ibm_zsystems_inventory_cache_v1');
+        if (oldStore) {
+          const oldData = JSON.parse(oldStore);
+          if (oldData && oldData.client && oldData.products) {
+            const custNum = oldData.client.number !== 'Não Identificado' ? oldData.client.number : 'default';
+            const newStore = {};
+            newStore[custNum] = {
+              customerNumber: oldData.client.number,
+              clientName: oldData.client.name,
+              updatedAt: oldData.updatedAt || new Date().toLocaleString('pt-BR'),
+              products: oldData.products
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(newStore));
+            localStorage.setItem(ACTIVE_CUST_KEY, custNum);
+            return newStore;
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao ler armazenamento de inventários:', err);
+      }
+      return {};
+    }
+
+    function saveCustomerInventory(client, products, updatedAt) {
+      try {
+        const store = getStoredInventories();
+        const custId = client.number !== 'Não Identificado' ? client.number : `cust_${Date.now()}`;
+        
+        store[custId] = {
+          customerNumber: client.number,
+          clientName: client.name,
+          updatedAt: updatedAt,
+          products: products
+        };
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        localStorage.setItem(ACTIVE_CUST_KEY, custId);
+        
+        const badge = document.getElementById('savedStorageBadge');
+        if (badge) badge.style.display = 'inline-block';
+      } catch (err) {
+        console.warn('Erro ao salvar inventário:', err);
+      }
+    }
+
+    function populateCustomerDropdown(selectedCustId = null) {
+      const select = document.getElementById('selectCustomer');
+      select.innerHTML = '';
+
+      const store = getStoredInventories();
+      const keys = Object.keys(store);
+
+      // Opção neutra padrão
+      const optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.innerText = keys.length === 0 ? '-- Nenhum Cliente Cadastrado --' : '-- Selecione o Cliente --';
+      select.appendChild(optDefault);
+
+      keys.forEach(custId => {
+        const item = store[custId];
+        const opt = document.createElement('option');
+        opt.value = custId;
+        opt.innerText = `${item.clientName} (No. ${item.customerNumber})`;
+        select.appendChild(opt);
+      });
+
+      // Opção extra para carregar novo inventário
+      const optAdd = document.createElement('option');
+      optAdd.value = 'ADD_NEW';
+      optAdd.innerText = 'Carregar novo inventário…';
+      select.appendChild(optAdd);
+
+      if (selectedCustId && store[selectedCustId]) {
+        select.value = selectedCustId;
+        loadCustomerData(selectedCustId);
+      } else {
+        select.value = '';
+        showEmptyState();
+      }
+    }
+
+    function focarSeletorCliente() {
+      const sel = document.getElementById('selectCustomer');
+      if (sel) {
+        sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        sel.focus();
+        if (typeof sel.showPicker === 'function') {
+          try { sel.showPicker(); } catch (e) {}
+        }
+        sel.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+        sel.style.borderColor = '#0f62fe';
+        sel.style.boxShadow = '0 0 0 4px rgba(15, 98, 254, 0.4)';
+        setTimeout(() => {
+          sel.style.borderColor = '';
+          sel.style.boxShadow = '';
+        }, 2200);
+      }
+    }
+
+    function onCustomerSelectChanged() {
+      const select = document.getElementById('selectCustomer');
+      const val = select.value;
+
+      if (!val) {
+        showEmptyState();
+      } else if (val === 'ADD_NEW' || val === 'NEW_LOAD') {
+        showEmptyState();
+        document.getElementById('fileInputInventario').click();
+      } else {
+        localStorage.setItem(ACTIVE_CUST_KEY, val);
+        loadCustomerData(val);
+      }
+    }
+
+    function loadCustomerData(custId) {
+      const store = getStoredInventories();
+      const item = store[custId];
+      if (!item) {
+        showEmptyState();
+        return;
+      }
+
+      globalInventoryData = item.products;
+      clientInfo = { name: item.clientName, number: item.customerNumber };
+      displayInventory(clientInfo, globalInventoryData, item.updatedAt);
+
+      const badge = document.getElementById('savedStorageBadge');
+      if (badge) badge.style.display = 'inline-block';
+    }
+
+    function showEmptyState() {
+      document.getElementById('clientHeaderSection').style.display = 'none';
+      document.getElementById('analyticsSection').style.display = 'none';
+      document.getElementById('emptyStateSection').style.display = 'block';
+      const badge = document.getElementById('savedStorageBadge');
+      if (badge) badge.style.display = 'none';
+    }
+
+    function displayInventory(client, products, updatedAt) {
+      document.getElementById('emptyStateSection').style.display = 'none';
+
+      document.getElementById('hdrClientName').innerText = client.name;
+      document.getElementById('hdrCustomerNumber').innerText = client.number;
+      if (document.getElementById('hdrLastUpdated')) {
+        document.getElementById('hdrLastUpdated').innerText = updatedAt;
+      }
+      document.getElementById('clientHeaderSection').style.display = 'flex';
+
+      renderStatusCheckboxes(products);
+      updateKPIs(products);
+      renderAllTables();
+
+      document.getElementById('analyticsSection').style.display = 'block';
+    }
+
+    const ALLOWED_STATUSES = ['ECUS', 'INAC', 'AVLB', 'EDEL', 'SLBP', 'ESTO', 'QUBP', 'QUVC', 'YREM'];
+
+    function renderStatusCheckboxes(products = globalInventoryData) {
+      const container = document.getElementById('statusCheckboxContainer');
+      if (!container) return;
+
+      const existingChecked = new Set(
+        Array.from(container.querySelectorAll('.chk-status-item:checked')).map(c => c.value.toUpperCase())
+      );
+
+      const isInitialState = container.children.length === 0;
+
+      container.innerHTML = '';
+
+      ALLOWED_STATUSES.forEach(st => {
+        const isChecked = isInitialState ? (st === 'ECUS') : existingChecked.has(st);
+        const label = document.createElement('label');
+        label.style.cssText = `
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: ${st === 'ECUS' ? '#0f62fe' : '#393939'};
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          background: ${st === 'ECUS' ? '#edf5ff' : '#ffffff'};
+          border: 1px solid ${st === 'ECUS' ? '#a6c8ff' : '#d0d0d0'};
+          border-radius: 6px;
+          user-select: none;
+          transition: all 0.15s ease;
+        `;
+
+        label.innerHTML = `
+          <input type="checkbox" class="chk-status-item" value="${st}" ${isChecked ? 'checked' : ''} onchange="onFilterChanged()" />
+          <span>${st}</span> ${st === 'ECUS' ? '' : ''}
+        `;
+        container.appendChild(label);
+      });
+    }
+
+    function selectAllStatuses(selectAll = true) {
+      document.querySelectorAll('.chk-status-item').forEach(chk => {
+        chk.checked = selectAll;
+      });
+      onFilterChanged();
+    }
+
+    function resetStatusToECUS() {
+      document.querySelectorAll('.chk-status-item').forEach(chk => {
+        chk.checked = (chk.value.toUpperCase() === 'ECUS');
+      });
+      onFilterChanged();
+    }
+
+    // Carrega dados salvos assim que a página é aberta
+    window.addEventListener('DOMContentLoaded', () => {
+      populateCustomerDropdown();
+    });
+
+    // PARSER COM EXTRAÇÃO ROBUSTA DE CABEÇALHO E REGRAS ESTRITAS (SW Material)
+    function parseIBMLicenseReport(htmlContent) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, 'text/html');
+      
+      let clientName = "";
+      let customerNumber = "";
+
+      // --- EXTRAÇÃO ROBUSTA DE NOME E CÓDIGO DO CLIENTE ---
+      function cleanHeaderValue(val) {
+        if (!val) return "";
+        let cleaned = val.replace(/\u00a0/g, ' ').replace(/^[:\s.-]+/, '').trim();
+        // Remove eventuais rótulos residuais que tenham vindo no mesmo texto
+        cleaned = cleaned.replace(/(?:customer\s*no|customer\s*name|cust\s*no|customer\s*\#).*/i, '');
+        return cleaned.trim();
+      }
+
+      function isHeaderLabel(txt) {
+        if (!txt) return true;
+        const clean = txt.replace(/\u00a0/g, ' ').trim().replace(/[:.-]+$/, '').trim().toLowerCase();
+        return ['name', 'customer name', 'cust name', 'customer no', 'customer no.', 'customer num', 'customer number', 'customer #', 'cust no', 'cust no.', 'sap customer no', 'sap customer no.'].includes(clean);
+      }
+
+      const allRows = Array.from(doc.querySelectorAll('tr'));
+
+      // Estratégia 1: Mapeamento de Tabela com Linha de Títulos de Coluna (Row N) e Linha de Dados (Row N+1)
+      allRows.forEach((row, rowIndex) => {
+        const cells = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.replace(/\u00a0/g, ' ').trim());
+        let custNoColIndex = -1;
+        let nameColIndex = -1;
+
+        cells.forEach((cellText, colIndex) => {
+          if (custNoColIndex === -1 && /(?:customer|cust)\.?\s*(?:no|num|number|\#)/i.test(cellText)) {
+            if (!/sap\s*customer/i.test(cellText)) { // Ignora a coluna de SAP Customer No.
+              custNoColIndex = colIndex;
+            }
+          }
+
+          if (nameColIndex === -1 && (/(?:^(?:customer\s*|cust\s*)?name\b)/i.test(cellText) || cellText.toLowerCase() === 'name')) {
+            if (!/(?:product|feature|machine|type|file|system|contact|vendor|sap)\s*name/i.test(cellText)) {
+              nameColIndex = colIndex;
+            }
+          }
+        });
+
+        if ((custNoColIndex !== -1 || nameColIndex !== -1) && allRows[rowIndex + 1]) {
+          const nextRowCells = Array.from(allRows[rowIndex + 1].querySelectorAll('td, th')).map(c => c.textContent.replace(/\u00a0/g, ' ').trim());
+
+          if (!customerNumber && custNoColIndex !== -1 && nextRowCells[custNoColIndex]) {
+            const val = cleanHeaderValue(nextRowCells[custNoColIndex]);
+            if (val && !isHeaderLabel(val)) customerNumber = val;
+          }
+
+          if (!clientName && nameColIndex !== -1 && nextRowCells[nameColIndex]) {
+            const val = cleanHeaderValue(nextRowCells[nameColIndex]);
+            if (val && !isHeaderLabel(val)) clientName = val;
+          }
+        }
+      });
+
+      // Estratégia 2: Percorrer células da tabela buscando pares de chave-valor individuais
+      if (!customerNumber || !clientName) {
+        allRows.forEach((row, rowIndex) => {
+          const cells = Array.from(row.querySelectorAll('td, th'));
+          
+          cells.forEach((cell, colIndex) => {
+            const cellText = cell.textContent.replace(/\u00a0/g, ' ').trim();
+            
+            // --- CUSTOMER NUMBER / CUSTOMER NO. ---
+            if (!customerNumber && /(?:customer|cust)\.?\s*(?:no|num|number|\#)\.?:?/i.test(cellText)) {
+              if (!/sap\s*customer/i.test(cellText)) {
+                if (cellText.includes(':')) {
+                  const val = cellText.split(':').slice(1).join(':').trim();
+                  if (val && !isHeaderLabel(val)) customerNumber = cleanHeaderValue(val);
+                }
+                if (!customerNumber && cell.nextElementSibling) {
+                  const nextVal = cell.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+                  if (nextVal && !isHeaderLabel(nextVal)) customerNumber = cleanHeaderValue(nextVal);
+                }
+              }
+            }
+
+            // --- CUSTOMER NAME / NAME ---
+            if (!clientName) {
+              const isNameLabel = (/(?:^(?:customer\s*|cust\s*)?name\s*:?$)/i.test(cellText) || 
+                                  /^name\s*:?/i.test(cellText) || 
+                                  /customer\s*name/i.test(cellText)) && 
+                                 !/(?:product|feature|machine|type|file|system|contact|vendor|sap)\s*name/i.test(cellText);
+              
+              if (isNameLabel) {
+                if (cellText.includes(':')) {
+                  const val = cellText.split(':').slice(1).join(':').trim();
+                  if (val && !isHeaderLabel(val)) clientName = cleanHeaderValue(val);
+                }
+                if (!clientName && cell.nextElementSibling) {
+                  const nextVal = cell.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+                  if (nextVal && !isHeaderLabel(nextVal)) clientName = cleanHeaderValue(nextVal);
+                }
+              }
+            }
+          });
+        });
+      }
+
+      // Estratégia 3: Se não encontrou em tabelas, busca em elementos de bloco (div, p, span, li)
+      if (!customerNumber || !clientName) {
+        const blocks = Array.from(doc.querySelectorAll('div, p, span, li, dt, dd, b, strong'));
+        blocks.forEach(el => {
+          const txt = el.textContent.replace(/\u00a0/g, ' ').trim();
+          
+          if (!customerNumber && /(?:customer|cust)\.?\s*(?:no|num|number|\#)\.?:?/i.test(txt)) {
+            if (!/sap\s*customer/i.test(txt)) {
+              if (txt.includes(':')) {
+                const val = txt.split(':').slice(1).join(':').trim();
+                if (val && !isHeaderLabel(val)) customerNumber = cleanHeaderValue(val);
+              } else if (el.nextElementSibling) {
+                const nextVal = el.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+                if (nextVal && !isHeaderLabel(nextVal)) customerNumber = cleanHeaderValue(nextVal);
+              }
+            }
+          }
+          
+          if (!clientName && /(?:^(?:customer\s*|cust\s*)?name\s*:?)/i.test(txt) && !/(?:product|feature|machine|type|file|system|contact|vendor|sap)\s*name/i.test(txt)) {
+            if (txt.includes(':')) {
+              const val = txt.split(':').slice(1).join(':').trim();
+              if (val && !isHeaderLabel(val)) clientName = cleanHeaderValue(val);
+            } else if (el.nextElementSibling) {
+              const nextVal = el.nextElementSibling.textContent.replace(/\u00a0/g, ' ').trim();
+              if (nextVal && !isHeaderLabel(nextVal)) clientName = cleanHeaderValue(nextVal);
+            }
+          }
+        });
+      }
+
+      // Estratégia 4: Expressões Regulares de Fallback no texto completo do documento
+      const fullText = (doc.body ? doc.body.textContent : doc.documentElement.textContent).replace(/\u00a0/g, ' ');
+
+      if (!customerNumber) {
+        const numMatch = fullText.match(/(?:customer|cust)\.?\s*(?:no|num|number|\#)\.?:?\s*([0-9A-Z]{5,15})/i);
+        if (numMatch) customerNumber = cleanHeaderValue(numMatch[1]);
+      }
+
+      if (!clientName) {
+        const nameMatch = fullText.match(/(?:customer\s*name|cust\s*name)\s*[:.-]?\s*([^\r\n\t<]+)/i) ||
+                          fullText.match(/\bName\s*[:.-]\s*([^\r\n\t<]+)/i);
+        if (nameMatch) {
+          clientName = cleanHeaderValue(nameMatch[1]);
+        }
+      }
+
+      // --- EXTRAÇÃO DOS PRODUTOS (SW MATERIAL + PREFIXOS 5 / S) ---
+      const products = [];
+      let currentProduct = null;
+
+      const rows = doc.querySelectorAll('tr');
+
+      rows.forEach(row => {
+        const cols = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.trim());
+
+        if (cols.length < 3) return;
+
+        const codeOrFeature = cols[0] || "";
+        const swSerial = cols[1] || "";
+        const description = cols[2] || "";
+        const metric = cols[3] || "";
+        const configVal = cols[4] || "";
+        let extractedEffDate = "-";
+        // 1. Tentar coluna 5 ("Eff. Dat")
+        if (cols[5] && cols[5].trim() !== "" && cols[5].trim() !== "-") {
+          extractedEffDate = cols[5].trim();
+        }
+        // 2. Tentar encontrar padrão de data em qualquer célula da linha
+        if (extractedEffDate === "-" || !/\d{2}[\./-]\d{2}[\./-]\d{4}|\d{4}[\./-]\d{2}[\./-]\d{2}/.test(extractedEffDate)) {
+          for (let i = 0; i < cols.length; i++) {
+            const cellText = cols[i] ? cols[i].trim() : "";
+            const match = cellText.match(/\d{2}\.\d{2}\.\d{4}/) || cellText.match(/\d{2}\/\d{2}\/\d{4}/) || cellText.match(/\d{4}-\d{2}-\d{2}/);
+            if (match) {
+              extractedEffDate = match[0];
+              break;
+            }
+          }
+        }
+
+        let extractedPO = "-";
+        cols.forEach(c => {
+          if (extractedPO === "-" && /^\d{8,12}$/.test(c.trim())) {
+            extractedPO = c.trim();
+          }
+        });
+        if (extractedPO === "-" && cols[8] && cols[8].trim() !== "" && cols[8].trim() !== "-") {
+          extractedPO = cols[8].trim();
+        }
+
+        let extractedStatus = "-";
+        cols.forEach(c => {
+          if (extractedStatus === "-") {
+            const candidate = c.trim().toUpperCase();
+            if (ALLOWED_STATUSES.includes(candidate)) {
+              extractedStatus = candidate;
+            }
+          }
+        });
+
+        // Regra: Apenas linhas com SW Serial que começam com '5'
+        if (swSerial !== "") {
+          if (codeOrFeature.startsWith("5")) {
+            const descUpper = description.toUpperCase();
+            const isSS = descUpper.includes("S&S") || descUpper.includes("SUBSCRIPTION") || descUpper.includes("SUPP");
+
+            currentProduct = {
+              productId: codeOrFeature,
+              swSerial: swSerial,
+              description: description,
+              category: isSS ? 'SS' : 'LICENCE',
+              effDate: extractedEffDate,
+              poNumber: extractedPO,
+              status: extractedStatus,
+              features: []
+            };
+            products.push(currentProduct);
+          } else {
+            currentProduct = null; // Ignora se não iniciar com '5'
+          }
+        } 
+        // Regra: Features que começam com 'S'
+        else if (currentProduct) {
+          if (codeOrFeature.startsWith("S")) {
+            const rawNum = configVal.replace(/,/g, '');
+            const numericVal = parseInt(rawNum, 10) || 0;
+
+            currentProduct.features.push({
+              featureCode: codeOrFeature,
+              description: description,
+              metric: metric,
+              configValue: configVal,
+              numericValue: numericVal
+            });
+          }
+        }
+      });
+
+      return {
+        client: { 
+          name: clientName || "Não Identificado", 
+          number: customerNumber || "Não Identificado" 
+        },
+        products: products
+      };
+    }
+
+    function updateKPIs(data) {
+      let totalLicence = 0;
+      let totalSS = 0;
+      let totalVU = 0;
+      const uniquePids = new Set();
+
+      data.forEach(p => {
+        if (p.productId) uniquePids.add(p.productId);
+        if (p.category === 'SS') totalSS++;
+        else totalLicence++;
+
+        p.features.forEach(f => {
+          if (f.metric.toLowerCase().includes("value unit") || f.metric.toLowerCase().includes("vu")) {
+            totalVU += f.numericValue;
+          }
+        });
+      });
+
+      document.getElementById('kpiTotalProducts').innerText = data.length;
+      document.getElementById('kpiUniquePids').innerText = uniquePids.size;
+      document.getElementById('kpiTotalLicence').innerText = totalLicence;
+      document.getElementById('kpiTotalSS').innerText = totalSS;
+    }
+
+    function goHome() {
+      const select = document.getElementById('selectCustomer');
+      if (select) select.value = '';
+      localStorage.removeItem(ACTIVE_CUST_KEY);
+      showEmptyState();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function deleteActiveCustomerRecord() {
+      const select = document.getElementById('selectCustomer');
+      const activeCustId = select ? select.value : null;
+
+      if (!activeCustId || activeCustId === 'ADD_NEW') {
+        alert('Nenhum cliente selecionado para apagar.');
+        return;
+      }
+
+      const store = getStoredInventories();
+      const item = store[activeCustId];
+      const name = item ? item.clientName : activeCustId;
+      const num = item ? item.customerNumber : '';
+
+      const confirmMsg = `Tem certeza que deseja APAGAR PERMANENTEMENTE o registro do cliente:\n\n"${name}" (No. ${num})?\n\nEsta ação excluirá o histórico local deste cliente.`;
+
+      if (confirm(confirmMsg)) {
+        delete store[activeCustId];
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        } catch (err) {
+          console.warn('Erro ao atualizar storage após exclusão:', err);
+        }
+        localStorage.removeItem(ACTIVE_CUST_KEY);
+        populateCustomerDropdown(null);
+        goHome();
+        alert(`O registro de "${name}" foi apagado com sucesso.`);
+      }
+    }
+
+    function parseEffDateToISO(effDateStr) {
+      if (!effDateStr || effDateStr === '-') return null;
+      const cleaned = effDateStr.trim();
+      
+      const ptMatch = cleaned.match(/^(\d{2})[\./-](\d{2})[\./-](\d{4})$/);
+      if (ptMatch) {
+        return `${ptMatch[3]}-${ptMatch[2]}-${ptMatch[1]}`;
+      }
+
+      const isoMatch = cleaned.match(/^(\d{4})[\./-](\d{2})[\./-](\d{2})$/);
+      if (isoMatch) {
+        return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+      }
+
+      return null;
+    }
+
+    function extractYearFromEffDate(effDateStr) {
+      if (!effDateStr || effDateStr === '-') return 'Sem Data';
+      const iso = parseEffDateToISO(effDateStr);
+      if (iso) return iso.substring(0, 4);
+      return 'Sem Data';
+    }
+
+    function clearDateFilter() {
+      const dtStart = document.getElementById('dtStartEffDate');
+      const dtEnd = document.getElementById('dtEndEffDate');
+      if (dtStart) dtStart.value = '';
+      if (dtEnd) dtEnd.value = '';
+      onFilterChanged();
+    }
+
+    let searchQuery = '';
+
+    function onSearchInputChanged() {
+      searchQuery = document.getElementById('txtSearchInput').value.trim().toLowerCase();
+      renderAllTables();
+    }
+
+    function onFilterChanged() {
+      renderAllTables();
+    }
+
+    function getFilteredData() {
+      const checkedBoxes = Array.from(document.querySelectorAll('.chk-status-item:checked')).map(c => c.value.toUpperCase());
+      const dtStartVal = document.getElementById('dtStartEffDate') ? document.getElementById('dtStartEffDate').value : '';
+      const dtEndVal = document.getElementById('dtEndEffDate') ? document.getElementById('dtEndEffDate').value : '';
+
+      return globalInventoryData.filter(p => {
+        // 1. Tipo de Licença (antiga Categoria)
+        const matchesCategory = (currentCategoryFilter === 'ALL') || (p.category === currentCategoryFilter);
+        if (!matchesCategory) return false;
+
+        // 2. Filtro por Checkboxes de Status
+        if (checkedBoxes.length > 0) {
+          const pStatus = (p.status || '').trim().toUpperCase();
+          if (!checkedBoxes.includes(pStatus)) return false;
+        } else {
+          return false; // Se nenhuma box estiver marcada, oculta
+        }
+
+        // 3. Range de Data (Eff. Date)
+        if (dtStartVal || dtEndVal) {
+          const pDateISO = parseEffDateToISO(p.effDate);
+          if (!pDateISO) {
+            return false;
+          }
+          if (dtStartVal && pDateISO < dtStartVal) return false;
+          if (dtEndVal && pDateISO > dtEndVal) return false;
+        }
+
+        // 4. Busca Textual
+        if (!searchQuery) return true;
+
+        const inPid = p.productId.toLowerCase().includes(searchQuery);
+        const inDesc = p.description.toLowerCase().includes(searchQuery);
+        const inSerial = p.swSerial.toLowerCase().includes(searchQuery);
+        const inStatus = (p.status || '').toLowerCase().includes(searchQuery);
+        const inFeatures = p.features.some(f => f.featureCode.toLowerCase().includes(searchQuery) || f.description.toLowerCase().includes(searchQuery));
+
+        return inPid || inDesc || inSerial || inStatus || inFeatures;
+      });
+    }
+
+    function setCategoryFilter(filterType, evt) {
+      currentCategoryFilter = filterType;
+      document.querySelectorAll('.btn-filter').forEach(btn => {
+        if (btn.id !== 'txtSearchInput' && !btn.textContent.includes('Exportar')) btn.classList.remove('active');
+      });
+      evt.target.classList.add('active');
+      renderAllTables();
+    }
+
+    function toggleExportMenu(evt) {
+      if (evt) evt.stopPropagation();
+      const menu = document.getElementById('exportDropdownMenu');
+      if (menu) {
+        menu.style.display = (menu.style.display === 'none' || !menu.style.display) ? 'block' : 'none';
+      }
+    }
+
+    document.addEventListener('click', (evt) => {
+      const menu = document.getElementById('exportDropdownMenu');
+      if (menu && !evt.target.closest('#exportDropdownMenu') && !evt.target.textContent.includes('Exportar Relatório')) {
+        menu.style.display = 'none';
+      }
+    });
+
+    function exportConsolidatedByVU() {
+      const filtered = getFilteredData();
+      if (!filtered || filtered.length === 0) {
+        alert('Nenhum dado disponível para exportar com os filtros atuais.');
+        return;
+      }
+
+      const cName = `"${clientInfo.name.replace(/"/g, '""')}"`;
+      const cNum = `"${clientInfo.number.replace(/"/g, '""')}"`;
+
+      let csv = 'Customer Name;Customer Number;PID;Descrição do Produto;Total de Registros;SW Seriais;Tipo de Licença;Status;Total Value Units (VUs)\n';
+
+      const map = {};
+      filtered.forEach(prod => {
+        const pid = prod.productId;
+        if (!map[pid]) {
+          map[pid] = {
+            productId: prod.productId,
+            description: prod.description,
+            category: prod.category,
+            statuses: [],
+            serials: [],
+            count: 0,
+            totalVU: 0
+          };
+        }
+        map[pid].count += 1;
+        if (prod.swSerial && prod.swSerial !== '-' && !map[pid].serials.includes(prod.swSerial)) {
+          map[pid].serials.push(prod.swSerial);
+        }
+        if (prod.status && prod.status !== '-' && !map[pid].statuses.includes(prod.status)) {
+          map[pid].statuses.push(prod.status);
+        }
+        prod.features.forEach(f => {
+          map[pid].totalVU += f.numericValue;
+        });
+      });
+
+      Object.values(map).forEach(item => {
+        const serials = `"${item.serials.join(', ').replace(/"/g, '""')}"`;
+        const catLabel = item.category === 'SS' ? 'S&S Suporte' : 'Licença';
+        const statusText = item.statuses.length > 0 ? item.statuses.join(', ') : '-';
+        csv += `${cName};${cNum};"${item.productId}";"${item.description.replace(/"/g, '""')}";${item.count};${serials};"${catLabel}";"${statusText}";${item.totalVU}\n`;
+      });
+
+      downloadCSV(csv, `inventario_${clientInfo.number}_consolidado_PID_VUs_${new Date().toISOString().slice(0,10)}.csv`);
+    }
+
+    function exportConsolidatedByYear() {
+      const filtered = getFilteredData();
+      if (!filtered || filtered.length === 0) {
+        alert('Nenhum dado disponível para exportar com os filtros atuais.');
+        return;
+      }
+
+      const cName = `"${clientInfo.name.replace(/"/g, '""')}"`;
+      const cNum = `"${clientInfo.number.replace(/"/g, '""')}"`;
+
+      let csv = 'Customer Name;Customer Number;PID;Ano (Eff. Date);Descrição do Produto;Total de Registros;SW Seriais;Tipo de Licença;Status;Total Value Units (VUs)\n';
+
+      const map = {};
+      filtered.forEach(prod => {
+        const year = extractYearFromEffDate(prod.effDate);
+        const key = `${prod.productId}_${year}`;
+
+        if (!map[key]) {
+          map[key] = {
+            productId: prod.productId,
+            year: year,
+            description: prod.description,
+            category: prod.category,
+            statuses: [],
+            serials: [],
+            count: 0,
+            totalVU: 0
+          };
+        }
+        map[key].count += 1;
+        if (prod.swSerial && prod.swSerial !== '-' && !map[key].serials.includes(prod.swSerial)) {
+          map[key].serials.push(prod.swSerial);
+        }
+        if (prod.status && prod.status !== '-' && !map[key].statuses.includes(prod.status)) {
+          map[key].statuses.push(prod.status);
+        }
+        prod.features.forEach(f => {
+          map[key].totalVU += f.numericValue;
+        });
+      });
+
+      const list = Object.values(map);
+      list.sort((a, b) => a.productId.localeCompare(b.productId) || a.year.localeCompare(b.year));
+
+      list.forEach(item => {
+        const serials = `"${item.serials.join(', ').replace(/"/g, '""')}"`;
+        const catLabel = item.category === 'SS' ? 'S&S Suporte' : 'Licença';
+        const statusText = item.statuses.length > 0 ? item.statuses.join(', ') : '-';
+        csv += `${cName};${cNum};"${item.productId}";"${item.year}";"${item.description.replace(/"/g, '""')}";${item.count};${serials};"${catLabel}";"${statusText}";${item.totalVU}\n`;
+      });
+
+      downloadCSV(csv, `inventario_${clientInfo.number}_consolidado_Ano_${new Date().toISOString().slice(0,10)}.csv`);
+    }
+
+    function exportHierarchicalCSV() {
+      const filtered = getFilteredData();
+      if (!filtered || filtered.length === 0) {
+        alert('Nenhum dado disponível para exportar.');
+        return;
+      }
+
+      const cName = `"${clientInfo.name.replace(/"/g, '""')}"`;
+      const cNum = `"${clientInfo.number.replace(/"/g, '""')}"`;
+
+      let csv = 'Customer Name;Customer Number;PID/Feature;SW Serial;Effective Date;Descrição;Tipo de Licença;Status;Métrica;Config Value\n';
+      filtered.forEach(p => {
+        const catLabel = p.category === 'SS' ? 'S&S Suporte' : 'Licença';
+        csv += `${cName};${cNum};"${p.productId}";"${p.swSerial}";"${p.effDate}";"${p.description.replace(/"/g, '""')}";"${catLabel}";"${p.status}";"-";"-"\n`;
+        p.features.forEach(f => {
+          csv += `${cName};${cNum};"  ↳ ${f.featureCode}";"-";"-";"${f.description.replace(/"/g, '""')}";"-";"-";"${f.metric}";"${f.configValue}"\n`;
+        });
+      });
+
+      downloadCSV(csv, `inventario_${clientInfo.number}_hierarquico_${new Date().toISOString().slice(0,10)}.csv`);
+    }
+
+    function downloadCSV(csvContent, filename) {
+      const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      const menu = document.getElementById('exportDropdownMenu');
+      if (menu) menu.style.display = 'none';
+    }
+
+    function getProductKnowledge(productId, description) {
+      const rawPid = (productId || "").toUpperCase().trim();
+      const cleanPid = rawPid.replace(/[^A-Z0-9]/g, '');
+      const desc = (description || "").toUpperCase().trim();
+
+      // 1. Mapeamento direto e preciso por Código PID (normalizado sem traços/espaços)
+      const pidCatalog = {
+        // --- Db2 Utilities & Tools ---
+        "5648D68": {
+          summary: "O **IBM Db2 Utilities Suite for z/OS (S&S)** provê suporte e subscrição para o conjunto completo de utilitários essenciais do Db2 (LOAD, REORG, UNLOAD, CHECK, RECOVER, COPY), otimizados para alta disponibilidade e integridade do banco de dados no mainframe.",
+          vueCode: "VUE007 (Db2 Utilities Exhibit)",
+          vueDesc: "Licenciamento por Value Units (VUs) para utilitários z/OS.",
+          announcement: "IBM Db2 Utilities Suite for z/OS Announcement (ENUS215-001)"
+        },
+        "5655DB2": {
+          summary: "O **IBM Db2 for z/OS** é o sistema gerenciador de banco de dados relacional (RDBMS) enterprise carro-chefe da IBM para mainframes. Oferece alta disponibilidade, segurança criptográfica e processamento analítico e transacional em larga escala.",
+          vueCode: "VUE007 (Db2 Core Exhibit)",
+          vueDesc: "Métrica por Value Units (VUs) calculada sobre a capacidade em MSUs.",
+          announcement: "IBM Db2 for z/OS Software Announcement (ENUS215-001)"
+        },
+        "5655DT2": {
+          summary: "O **IBM Db2 Administration Tool for z/OS V12** simplifica a gestão de objetos, esquemas, autorizações e alteração de estruturas no Db2, automatizando tarefas de administração de banco de dados no z/OS.",
+          vueCode: "VUE007 (Db2 Admin Tools Exhibit)",
+          vueDesc: "Licenciamento por Value Units alocado à capacidade z/OS.",
+          announcement: "IBM Db2 Administration Tool for z/OS V12 Announcement (ENUS216-105)"
+        },
+        "5655E90": {
+          summary: "O **IBM Db2 Administration Tool for z/OS S&S** provê suporte técnico contínuo e direito a novas versões para a ferramenta de administração de banco de dados Db2.",
+          vueCode: "VUE007 (Db2 Admin Tools Exhibit)",
+          vueDesc: "Suporte e Subscrição em Value Units.",
+          announcement: "IBM Db2 Administration Tool S&S Announcement (ENUS216-105)"
+        },
+        "5655AB4": {
+          summary: "O **IBM Db2 Query Workload Tuner for z/OS** provê recomendações automatizadas de otimização de consultas SQL, estatísticas de catálogo e indexação para melhorar o desempenho de aplicações Db2.",
+          vueCode: "VUE007 (Db2 Tuning Tools Exhibit)",
+          vueDesc: "Métrica por Value Units calculada sobre os recursos do mainframe.",
+          announcement: "IBM Db2 Query Workload Tuner for z/OS Announcement (ENUS214-040)"
+        },
+        "5655DRQ": {
+          summary: "O **IBM InfoSphere Data Replication for Db2 for z/OS** realiza captura e replicação de alterações de dados em tempo real (CDC) entre o Db2 no mainframe e outros bancos corporativos com latência mínima.",
+          vueCode: "VUE007 (Data Replication Exhibit)",
+          vueDesc: "Licenciamento baseado em Value Units para replicação de dados.",
+          announcement: "IBM InfoSphere Data Replication for Db2 Announcement (ENUS213-180)"
+        },
+        "5655DRS": {
+          summary: "O **IBM InfoSphere Data Replication for z/OS S&S** é o serviço de suporte e subscrição para soluções de replicação de dados IBM zSystems.",
+          vueCode: "VUE007 (Data Replication Exhibit)",
+          vueDesc: "Suporte e Subscrição por Value Units.",
+          announcement: "IBM InfoSphere Data Replication S&S Announcement (ENUS213-180)"
+        },
+
+        // --- CICS Suite ---
+        "5655Y04": {
+          summary: "O **IBM CICS Transaction Server for z/OS V5.x** é o servidor de aplicações corporativo de ultra-alta velocidade projetado para processar bilhões de transações online e em lote por dia com resiliência máxima.",
+          vueCode: "VUE001 (CICS TS Exhibit)",
+          vueDesc: "Métrica por Value Units (VUs) de execução online no z/OS.",
+          announcement: "IBM CICS Transaction Server for z/OS Announcement (ENUS220-142)"
+        },
+
+        // --- Integration & MQ ---
+        "5655AB1": {
+          summary: "O **IBM Integration Bus for z/OS V10 (App Connect)** é o barramento de integração corporativo (ESB) que conecta aplicações mainframe z/OS com microsserviços REST/JSON e nuvem.",
+          vueCode: "VUE007 (Integration Middleware Exhibit)",
+          vueDesc: "Métrica por Value Units atrelada às MSUs configuradas.",
+          announcement: "IBM Integration Bus for z/OS Announcement (ENUS215-045)"
+        },
+        "5655F81": {
+          summary: "O **IBM WebSphere MQ / Support for z/OS S&S** provê suporte e subscrição para a infraestrutura de mensageria corporativa assíncrona garantida entre aplicações z/OS e sistemas distribuídos.",
+          vueCode: "VUE007 (MQ Middleware Exhibit)",
+          vueDesc: "Licenciamento por Value Units para servidores de mensagens.",
+          announcement: "IBM WebSphere MQ for z/OS Announcement (ENUS221-310)"
+        },
+
+        // --- OMEGAMON & Monitoring ---
+        "5608S83": {
+          summary: "A suíte **IBM Tivoli OMEGAMON for Messaging for z/OS S&S** provê monitoramento profundo de desempenho em tempo real e diagnósticos automatizados para ambientes de mensageria IBM MQ no z/OS.",
+          vueCode: "VUE020 (Tivoli Management Suite Exhibit)",
+          vueDesc: "Régua de Value Units calculada sobre os recursos z/OS monitorados.",
+          announcement: "IBM Tivoli OMEGAMON Performance Management Announcement (ENUS219-088)"
+        },
+
+        // --- z/OS Core ---
+        "5650ZOS": {
+          summary: "O **IBM z/OS Operating System** é o sistema operacional de 64 bits de missão crítica da IBM. Desenvolvido para computação resiliente a falhas (99.999% uptime), suporta workloads de IA e contêineres zCX.",
+          vueCode: "VUE027 (z/OS Platform Core Exhibit)",
+          vueDesc: "Tabela de precificação por Value Units derivada do modelo de capacidade z/Architecture.",
+          announcement: "IBM z/OS Operating System Announcement (ENUS222-015)"
+        }
+      };
+
+      if (pidCatalog[cleanPid]) {
+        const item = pidCatalog[cleanPid];
+        return {
+          summary: item.summary,
+          vueCode: item.vueCode,
+          vueDesc: item.vueDesc,
+          announcement: item.announcement
+        };
+      }
+
+      // 2. Se não estiver no catálogo direto por código PID, avalia termos específicos na descrição
+      let summary = "";
+      let vueCode = "VUE007";
+      let vueDesc = "Régua padrão de conversão de MSUs para Value Units (VUs) em softwares IBM zSystems.";
+      let announcement = `Carta de Anúncio IBM zSystems (${rawPid})`;
+
+      if (desc.includes("DB2 ADMINISTRATION TOOL") || desc.includes("DB2 ADMIN TOOL")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) é uma ferramenta especializada de administração e gestão de esquemas do banco de dados IBM Db2 no z/OS.`;
+        vueCode = "VUE007 (Db2 Admin Tools Exhibit)";
+        vueDesc = "Métrica de Value Units para ferramentas de gerenciamento Db2.";
+        announcement = `IBM Db2 Administration Tool Announcement (${rawPid})`;
+      } else if (desc.includes("DB2 QUERY WORKLOAD TUNER") || desc.includes("QUERY WORKLOAD TUNER")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) provê diagnósticos inteligentes e recomendações de otimização de consultas SQL no IBM Db2 for z/OS.`;
+        vueCode = "VUE007 (Db2 Tuning Tools Exhibit)";
+        vueDesc = "Licenciamento por Value Units para suíte de otimização de banco de dados.";
+        announcement = `IBM Db2 Query Workload Tuner Announcement (${rawPid})`;
+      } else if (desc.includes("DB2 UTILITIES") || desc.includes("UTILITIES SUITE")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) reúne os utilitários de alta performance (REORG, LOAD, UNLOAD, CHECK) para manutenção de tabelas Db2.`;
+        vueCode = "VUE007 (Db2 Utilities Exhibit)";
+        vueDesc = "Métrica por Value Units atrelada ao licenciamento de utilitários.";
+        announcement = `IBM Db2 Utilities Suite Announcement (${rawPid})`;
+      } else if (desc.includes("DATA REP") || desc.includes("DATA REPLICATION")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) realiza replicação de dados e alteração em tempo real (CDC) no ambiente IBM zSystems.`;
+        vueCode = "VUE007 (Data Replication Exhibit)";
+        vueDesc = "Métrica de Value Units associada à replicação de dados z/OS.";
+        announcement = `IBM Data Replication Announcement (${rawPid})`;
+      } else if (desc.includes("INTEGRATION BUS") || desc.includes("APP CONNECT")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) é o barramento de integração corporativo (ESB) para conexão de sistemas z/OS com APIs e nuvem.`;
+        vueCode = "VUE007 (Integration Middleware Exhibit)";
+        vueDesc = "Value Units calculadas sobre a capacidade do servidor de integração.";
+        announcement = `IBM Integration Bus Announcement (${rawPid})`;
+      } else if (desc.includes("CICS")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) faz parte da família IBM CICS Transaction Server para processamento de transações de alto volume no z/OS.`;
+        vueCode = "VUE001 (CICS TS Exhibit)";
+        vueDesc = "Métrica por Value Units (VUs) de execução online no z/OS.";
+        announcement = `IBM CICS Announcement (${rawPid})`;
+      } else if (desc.includes("OMEGAMON")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) pertence à linha IBM OMEGAMON de monitoramento contínuo e gestão de desempenho z/OS.`;
+        vueCode = "VUE020 (Tivoli Management Suite Exhibit)";
+        vueDesc = "Régua de Value Units calculada sobre a infraestrutura z/OS monitorada.";
+        announcement = `IBM OMEGAMON Announcement (${rawPid})`;
+      } else if (desc.includes("WEBSPHERE") || desc.includes("MQ")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) integra a plataforma IBM MQ / WebSphere para mensagens corporativas assíncronas de missão crítica.`;
+        vueCode = "VUE007 (WebSphere Middleware Exhibit)";
+        vueDesc = "Licenciamento por Value Units para servidores de mensagens.";
+        announcement = `IBM WebSphere / MQ Announcement (${rawPid})`;
+      } else if (desc.includes("Z/OS")) {
+        summary = `O produto **${description}** (PID: ${rawPid}) é um componente do ecossistema do sistema operacional IBM z/OS para mainframes zSystems.`;
+        vueCode = "VUE027 (z/OS Platform Core Exhibit)";
+        vueDesc = "Métrica de Value Units derivada do modelo de capacidade z/Architecture.";
+        announcement = `IBM z/OS Announcement (${rawPid})`;
+      } else {
+        const catText = desc.includes("S&S") || desc.includes("SUPP") || desc.includes("SUBSCRIPTION") ? "Suporte e Subscrição (S&S)" : "Licença de Software";
+        summary = `O produto **${description}** (Código PID: ${rawPid}) é um componente de software especializado da IBM para mainframes zSystems, classificado na categoria **${catText}**. Ele atua no ecossistema z/OS garantindo resiliência, disponibilidade e conformidade de infraestrutura.`;
+        vueCode = "VUE007 (IBM zSystems Standard)";
+        vueDesc = "Métrica por Value Units (VUs) associada aos recursos computacionais configurados no servidor zSystems.";
+        announcement = `Carta de Anúncio Oficial IBM zSystems (${rawPid})`;
+      }
+
+      return { summary, vueCode, vueDesc, announcement };
+    }
+
+    function openProductModal(productId) {
+      const allInstances = globalInventoryData.filter(p => p.productId === productId);
+      if (allInstances.length === 0) return;
+
+      const firstProd = allInstances[0];
+      const serialsList = [...new Set(allInstances.map(p => p.swSerial).filter(s => s && s !== '-'))];
+      
+      const knowledge = getProductKnowledge(firstProd.productId, firstProd.description);
+
+      // Consolidar VUs e Sub-features de todas as instâncias do PID
+      let totalVUConsolidated = 0;
+      const featuresMap = {};
+
+      allInstances.forEach(p => {
+        p.features.forEach(f => {
+          totalVUConsolidated += f.numericValue;
+          if (!featuresMap[f.featureCode]) {
+            featuresMap[f.featureCode] = {
+              featureCode: f.featureCode,
+              description: f.description,
+              metric: f.metric,
+              numericValue: 0
+            };
+          }
+          featuresMap[f.featureCode].numericValue += f.numericValue;
+        });
+      });
+
+      const consolidatedFeatures = Object.values(featuresMap);
+      const countBadgeText = allInstances.length > 1 ? ` (${allInstances.length} Ocorrências Consolidadas)` : '';
+
+      document.getElementById('mdlTitle').innerText = `${firstProd.productId} - ${firstProd.description}${countBadgeText}`;
+      document.getElementById('mdlPidCode').innerText = `${firstProd.productId}${countBadgeText}`;
+      
+      const serialsDisplay = serialsList.length > 0 ? serialsList.join(', ') : 'Não informado';
+      document.getElementById('mdlSwSerial').innerText = `Seriais (${serialsList.length}): ${serialsDisplay}`;
+      
+      const isSS = firstProd.category === 'SS';
+      document.getElementById('mdlCategory').innerHTML = isSS ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>';
+      document.getElementById('mdlTotalVU').innerText = `Total VUs Consolidadas: ${totalVUConsolidated > 0 ? totalVUConsolidated.toLocaleString('pt-BR') : '-'}`;
+      
+      document.getElementById('mdlAiSummary').innerHTML = knowledge.summary;
+      document.getElementById('mdlAnnouncement').innerText = knowledge.announcement;
+      
+      const cleanPidCode = firstProd.productId.replace(/[^A-Z0-9]/g, '');
+      const csolUrl = `https://www.ibm.com/support/customer/csol/terms/?q=${encodeURIComponent(cleanPidCode)}`;
+      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent('site:ibm.com "announcement letter" ' + firstProd.productId + ' ' + firstProd.description)}`;
+      
+      const csolLink = document.getElementById('mdlAnnouncementCsolLink');
+      if (csolLink) {
+        csolLink.href = csolUrl;
+        csolLink.innerText = `Consultar no portal IBM CSOL (${firstProd.productId})`;
+      }
+
+      const annLink = document.getElementById('mdlAnnouncementLink');
+      if (annLink) {
+        annLink.href = searchUrl;
+        annLink.innerText = ` Buscar Carta de Anúncio Mais Atual (${firstProd.productId}) →`;
+      }
+
+      document.getElementById('mdlVueCode').innerText = knowledge.vueCode;
+      document.getElementById('mdlVueDesc').innerText = knowledge.vueDesc;
+
+      // Preenche a tabela de sub-features no modal
+      const tbodyModal = document.querySelector('#tblModalFeatures tbody');
+      tbodyModal.innerHTML = '';
+      
+      if (consolidatedFeatures.length === 0) {
+        tbodyModal.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#6e6e6e;">Nenhuma sub-feature capturada para este PID.</td></tr>';
+      } else {
+        consolidatedFeatures.forEach(f => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><strong>↳ ${f.featureCode}</strong></td>
+            <td>${f.description}</td>
+            <td>${f.metric}</td>
+            <td class="val-highlight">${f.numericValue > 0 ? f.numericValue.toLocaleString('pt-BR') : '-'}</td>
+          `;
+          tbodyModal.appendChild(row);
+        });
+      }
+
+      // Preenche a tabela de registros (com Effective Date e Status) no modal
+      const tbodyRecords = document.querySelector('#tblModalRecords tbody');
+      if (tbodyRecords) {
+        tbodyRecords.innerHTML = '';
+        allInstances.forEach(p => {
+          const row = document.createElement('tr');
+          const vuCount = p.features.reduce((s, f) => s + f.numericValue, 0);
+          row.innerHTML = `
+            <td><strong>${p.swSerial}</strong></td>
+            <td style="color:#0f62fe; font-weight:700;">${p.effDate || '-'}</td>
+            <td>${p.poNumber || '-'}</td>
+            <td>${p.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+            <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${p.status || '-'}</span></td>
+            <td class="val-highlight">${vuCount > 0 ? vuCount.toLocaleString('pt-BR') : '-'}</td>
+          `;
+          tbodyRecords.appendChild(row);
+        });
+      }
+
+      document.getElementById('productDetailModal').style.display = 'flex';
+    }
+
+    function closeProductModal() {
+      document.getElementById('productDetailModal').style.display = 'none';
+    }
+
+    function closeModalOnOverlay(evt) {
+      if (evt.target.id === 'productDetailModal') {
+        closeProductModal();
+      }
+    }
+
+    document.addEventListener('keydown', (evt) => {
+      if (evt.key === 'Escape') closeProductModal();
+    });
+
+    function toggleExpandPIDRow(evt, pid) {
+      if (evt) evt.stopPropagation();
+      const subRow = document.getElementById(`expand-row-${pid}`);
+      const btn = document.getElementById(`btn-expand-${pid}`);
+      
+      if (!subRow) return;
+
+      const isHidden = subRow.style.display === 'none' || !subRow.style.display;
+      if (isHidden) {
+        subRow.style.display = 'table-row';
+        if (btn) btn.innerHTML = `${btn.dataset.count}x · recolher`;
+      } else {
+        subRow.style.display = 'none';
+        if (btn) btn.innerHTML = `${btn.dataset.count}x · expandir`;
+      }
+    }
+
+    function renderAllTables() {
+      const filtered = getFilteredData();
+      renderHierarchicalTable(filtered);
+      renderConsolidatedTable(filtered);
+    }
+
+    function renderHierarchicalTable(data) {
+      const tbody = document.querySelector('#tblHierarquica tbody');
+      tbody.innerHTML = '';
+
+      data.forEach(prod => {
+        const pRow = document.createElement('tr');
+        pRow.className = 'row-parent row-clickable';
+        pRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+        pRow.title = "Clique para abrir detalhes, carta de anúncio e VUE do produto";
+        pRow.innerHTML = `
+          <td><strong>${prod.productId}</strong></td>
+          <td>${prod.swSerial}</td>
+          <td style="color:#0f62fe; font-weight:600;">${prod.effDate || '-'}</td>
+          <td>${prod.description}</td>
+          <td>${prod.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${prod.status || '-'}</span></td>
+          <td>-</td>
+          <td>-</td>
+        `;
+        tbody.appendChild(pRow);
+
+        prod.features.forEach(feat => {
+          const fRow = document.createElement('tr');
+          fRow.className = 'row-child row-clickable';
+          fRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+          fRow.title = "Clique para abrir detalhes do produto pai";
+          fRow.innerHTML = `
+            <td style="padding-left: 28px;">↳ ${feat.featureCode}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${feat.description}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${feat.metric}</td>
+            <td class="val-highlight">${feat.configValue}</td>
+          `;
+          tbody.appendChild(fRow);
+        });
+      });
+    }
+
+    let currentConsolidatedMap = {};
+    let expandedSortStates = {};
+
+    function sortExpandedPIDRecords(evt, pid, colIdx) {
+      if (evt) evt.stopPropagation();
+      
+      if (!expandedSortStates[pid]) {
+        expandedSortStates[pid] = { colIdx: colIdx, asc: true };
+      } else if (expandedSortStates[pid].colIdx === colIdx) {
+        expandedSortStates[pid].asc = !expandedSortStates[pid].asc;
+      } else {
+        expandedSortStates[pid] = { colIdx: colIdx, asc: true };
+      }
+
+      renderSubRecordsTable(pid);
+    }
+
+    function renderSubRecordsTable(pid) {
+      const container = document.getElementById(`sub-records-container-${pid}`);
+      if (!container) return;
+
+      const item = currentConsolidatedMap[pid];
+      if (!item) return;
+
+      const sortState = expandedSortStates[pid] || { colIdx: 2, asc: true };
+      const records = [...item.records];
+
+      records.sort((a, b) => {
+        let valA, valB;
+        if (sortState.colIdx === 1) { valA = a.swSerial; valB = b.swSerial; }
+        else if (sortState.colIdx === 2) { valA = a.effDate; valB = b.effDate; }
+        else if (sortState.colIdx === 3) { valA = a.poNumber; valB = b.poNumber; }
+        else if (sortState.colIdx === 4) { valA = a.category; valB = b.category; }
+        else if (sortState.colIdx === 5) { valA = a.status; valB = b.status; }
+        else if (sortState.colIdx === 6) { valA = a.vuCount; valB = b.vuCount; }
+
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return sortState.asc ? valA - valB : valB - valA;
+        }
+        return sortState.asc 
+          ? String(valA || '').localeCompare(String(valB || ''), 'pt-BR', { numeric: true })
+          : String(valB || '').localeCompare(String(valA || ''), 'pt-BR', { numeric: true });
+      });
+
+      const getSortIcon = (idx) => {
+        if (sortState.colIdx !== idx) return '↕';
+        return sortState.asc ? '▲' : '▼';
+      };
+
+      container.innerHTML = `
+        <table style="width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 6px; overflow: hidden; box-shadow: none;">
+          <thead>
+            <tr style="background: #393939; color: #ffffff; font-size: 0.78rem; text-transform: uppercase;">
+              <th style="padding: 6px 10px; text-align: left;">#</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 1)">SW Serial ${getSortIcon(1)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 2)">Effective Date ${getSortIcon(2)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 3)">PO Number ${getSortIcon(3)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 4)">Categoria ${getSortIcon(4)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 5)">Status ${getSortIcon(5)}</th>
+              <th style="padding: 6px 10px; text-align: right; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 6)">VUs da Instância ${getSortIcon(6)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${records.map((rec, idx) => `
+              <tr style="border-bottom: 1px solid #e0e0e0; font-size: 0.85rem;">
+                <td style="padding: 6px 10px; color: #6e6e6e;">${idx + 1}</td>
+                <td style="padding: 6px 10px;"><strong>${rec.swSerial}</strong></td>
+                <td style="padding: 6px 10px; color: #0f62fe; font-weight: 700;">${rec.effDate}</td>
+                <td style="padding: 6px 10px; color: #525252;">${rec.poNumber}</td>
+                <td style="padding: 6px 10px;">${rec.category === 'SS' ? '<span class="badge badge-ss">S&S</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+                <td style="padding: 6px 10px;"><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${rec.status}</span></td>
+                <td style="padding: 6px 10px; text-align: right; font-weight: bold; color: #161616;">${rec.vuCount > 0 ? rec.vuCount.toLocaleString('pt-BR') : '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderConsolidatedTable(data) {
+      const tbody = document.querySelector('#tblConsolidado tbody');
+      tbody.innerHTML = '';
+
+      const consolidatedMap = {};
+
+      data.forEach(prod => {
+        const pid = prod.productId;
+        if (!consolidatedMap[pid]) {
+          consolidatedMap[pid] = {
+            productId: prod.productId,
+            description: prod.description,
+            category: prod.category,
+            records: [],
+            serials: [],
+            statuses: [],
+            count: 0,
+            totalVU: 0,
+            featuresMap: {}
+          };
+        }
+
+        consolidatedMap[pid].count += 1;
+        consolidatedMap[pid].records.push({
+          swSerial: prod.swSerial,
+          effDate: prod.effDate || '-',
+          poNumber: prod.poNumber || '-',
+          category: prod.category,
+          status: prod.status || '-',
+          vuCount: prod.features.reduce((s, f) => s + f.numericValue, 0)
+        });
+
+        if (prod.swSerial && prod.swSerial !== '-' && !consolidatedMap[pid].serials.includes(prod.swSerial)) {
+          consolidatedMap[pid].serials.push(prod.swSerial);
+        }
+
+        if (prod.status && prod.status !== '-' && !consolidatedMap[pid].statuses.includes(prod.status)) {
+          consolidatedMap[pid].statuses.push(prod.status);
+        }
+
+        prod.features.forEach(f => {
+          consolidatedMap[pid].totalVU += f.numericValue;
+          if (!consolidatedMap[pid].featuresMap[f.featureCode]) {
+            consolidatedMap[pid].featuresMap[f.featureCode] = {
+              featureCode: f.featureCode,
+              description: f.description,
+              metric: f.metric,
+              numericValue: 0
+            };
+          }
+          consolidatedMap[pid].featuresMap[f.featureCode].numericValue += f.numericValue;
+        });
+      });
+
+      currentConsolidatedMap = consolidatedMap;
+      let consolidatedList = Object.values(consolidatedMap);
+
+      if (currentSortState.tableId === 'tblConsolidado') {
+        const { columnIndex, asc } = currentSortState;
+        consolidatedList.sort((a, b) => {
+          let valA, valB;
+          if (columnIndex === 0) { valA = a.productId; valB = b.productId; }
+          else if (columnIndex === 1) { valA = a.description; valB = b.description; }
+          else if (columnIndex === 2) { valA = a.count; valB = b.count; }
+          else if (columnIndex === 3) { valA = a.serials.join(', '); valB = b.serials.join(', '); }
+          else if (columnIndex === 4) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 5) { valA = a.statuses.join(', '); valB = b.statuses.join(', '); }
+          else if (columnIndex === 6) { valA = a.totalVU; valB = b.totalVU; }
+
+          if (typeof valA === 'number' && typeof valB === 'number') {
+            return asc ? valA - valB : valB - valA;
+          }
+          return asc 
+            ? String(valA || '').localeCompare(String(valB || ''), 'pt-BR', { numeric: true })
+            : String(valB || '').localeCompare(String(valA || ''), 'pt-BR', { numeric: true });
+        });
+      }
+
+      if (consolidatedList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#6e6e6e;">Nenhum produto encontrado.</td></tr>';
+        return;
+      }
+
+      consolidatedList.forEach(item => {
+        const serialsText = item.serials.length > 0 
+          ? (item.serials.length <= 2 ? item.serials.join(', ') : `${item.serials[0]} (+${item.serials.length - 1})`)
+          : '-';
+
+        const statusText = item.statuses.length > 0
+          ? (item.statuses.length <= 2 ? item.statuses.join(', ') : `${item.statuses[0]} (+${item.statuses.length - 1})`)
+          : '-';
+
+        const row = document.createElement('tr');
+        row.className = 'row-clickable';
+        row.setAttribute('onclick', `openProductModal('${item.productId}')`);
+        row.title = `Clique na linha para ver modal completo ou clique no botão de Total de Registros para expandir`;
+        row.innerHTML = `
+          <td><strong>${item.productId}</strong></td>
+          <td>${item.description}</td>
+          <td>
+            <button type="button" id="btn-expand-${item.productId}" data-count="${item.count}" class="btn-expand-records" onclick="toggleExpandPIDRow(event, '${item.productId}')" title="Clique para expandir e ver Effective Date dos ${item.count} registros">
+              ${item.count}x · expandir
+            </button>
+          </td>
+          <td><span title="${item.serials.join(', ')}">${serialsText}</span></td>
+          <td>${item.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;" title="${item.statuses.join(', ')}">${statusText}</span></td>
+          <td class="val-highlight" data-value="${item.totalVU}">${item.totalVU > 0 ? item.totalVU.toLocaleString('pt-BR') : '-'}</td>
+        `;
+        tbody.appendChild(row);
+
+        const expRow = document.createElement('tr');
+        expRow.id = `expand-row-${item.productId}`;
+        expRow.style.display = 'none';
+        expRow.innerHTML = `
+          <td colspan="7" style="padding: 12px 18px; background: #f0f4f9; border-bottom: 2px solid #0f62fe;">
+            <div style="font-weight: 700; font-size: 0.85rem; color: #0f62fe; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <span>Registros individuais do PID ${item.productId}</span>
+              <span style="font-weight: normal; font-size: 0.8rem; color: #525252;">${item.count} registro(s)</span>
+            </div>
+            <div id="sub-records-container-${item.productId}"></div>
+          </td>
+        `;
+        tbody.appendChild(expRow);
+        renderSubRecordsTable(item.productId);
+      });
+    }
+
+    let currentSortState = { tableId: null, columnIndex: null, asc: true };
+
+    function sortTable(tableId, columnIndex) {
+      if (currentSortState.tableId === tableId && currentSortState.columnIndex === columnIndex) {
+        currentSortState.asc = !currentSortState.asc;
+      } else {
+        currentSortState = { tableId, columnIndex, asc: true };
+      }
+
+      const isAsc = currentSortState.asc;
+
+      globalInventoryData.sort((a, b) => {
+        let valA, valB;
+
+        if (tableId === 'tblHierarquica') {
+          if (columnIndex === 0) { valA = a.productId; valB = b.productId; }
+          else if (columnIndex === 1) { valA = a.swSerial; valB = b.swSerial; }
+          else if (columnIndex === 2) { valA = a.effDate; valB = b.effDate; }
+          else if (columnIndex === 3) { valA = a.description; valB = b.description; }
+          else if (columnIndex === 4) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 5) { valA = a.status; valB = b.status; }
+          else if (columnIndex === 6) { valA = a.features[0] ? a.features[0].metric : ''; valB = b.features[0] ? b.features[0].metric : ''; }
+          else if (columnIndex === 7) { 
+            valA = a.features.reduce((sum, f) => sum + f.numericValue, 0); 
+            valB = b.features.reduce((sum, f) => sum + f.numericValue, 0); 
+          }
+        } else if (tableId === 'tblConsolidado') {
+          if (columnIndex === 0) { valA = a.productId; valB = b.productId; }
+          else if (columnIndex === 1) { valA = a.description; valB = b.description; }
+          else if (columnIndex === 2) { valA = a.swSerial; valB = b.swSerial; }
+          else if (columnIndex === 3) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 4) { valA = a.category; valB = b.category; }
+          else if (columnIndex === 5) { valA = a.status; valB = b.status; }
+          else if (columnIndex === 6) { 
+            valA = a.features.reduce((sum, f) => sum + f.numericValue, 0); 
+            valB = b.features.reduce((sum, f) => sum + f.numericValue, 0); 
+          }
+        }
+
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return isAsc ? valA - valB : valB - valA;
+        } else {
+          return isAsc 
+            ? String(valA || '').localeCompare(String(valB || ''), 'pt-BR', { numeric: true })
+            : String(valB || '').localeCompare(String(valA || ''), 'pt-BR', { numeric: true });
+        }
+      });
+
+      // Atualiza ícones nos cabeçalhos
+      document.querySelectorAll('th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+      const table = document.getElementById(tableId);
+      if (table) {
+        const headers = table.querySelectorAll('th');
+        if (headers[columnIndex]) {
+          headers[columnIndex].classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+        }
+      }
+
+      renderAllTables();
+    }
+
+    function switchTab(tabId, evt) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      evt.target.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+  </script>
+
+<script src="/auth-client.js"></script>
+<script>
+/* ==========================================================================
+   Ponte IBM Z Control Desk — anexada pelo scripts/build-inventario.js
+   ==========================================================================
+   O painel de inventário é preservado como veio: parse, filtros, tabelas,
+   modais e exportações continuam sendo o código original. Este script apenas
+   redefine a camada de persistência para gravar no MongoDB via API, em vez de
+   localStorage, e amarra o painel à lista de clientes do IBM Z Control Desk.
+
+   Como funciona: declarações de função em <script> compartilham o escopo
+   global, então as definições abaixo substituem as do painel (que já rodou).
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  const ACTIVE_KEY = 'tfp_inventario_ultimo_cliente';
+
+  // Cache em memória: clientId (IBM Z Control Desk) -> { clientName, customerNumber, updatedAt, products, pairOverrides }
+  const invStore = {};
+  window.tfpClients = [];
+
+  // Cliente na tela e seus ajustes manuais de par Licença↔S&S.
+  let activeClientId = null;
+  let pairOverrides = []; // [{ ssPid, licPid|null }]
+
+  async function invApi(path, opts = {}) {
+    const res = await fetch(`/api${path}`, opts);
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* sem corpo */ }
+    if (!res.ok) throw new Error((body && body.error) || `Erro ${res.status}`);
+    return body;
+  }
+
+  function showBanner(messages) {
+    document.querySelectorAll('.tfp-banner').forEach((b) => b.remove());
+    if (!messages || !messages.length) return;
+    const div = document.createElement('div');
+    div.className = 'tfp-banner';
+    div.textContent = messages.join(' · ');
+    const container = document.querySelector('.container');
+    if (container) container.prepend(div);
+  }
+
+  function setBadge(visible) {
+    const badge = document.getElementById('savedStorageBadge');
+    if (!badge) return;
+    badge.innerText = 'Salvo no banco';
+    badge.style.display = visible ? 'inline-block' : 'none';
+  }
+
+  function selectedClientId() {
+    const sel = document.getElementById('selectCustomer');
+    const v = sel ? sel.value : '';
+    return v && v !== 'ADD_NEW' && v !== 'NEW_LOAD' ? v : null;
+  }
+
+  // ── Persistência (substitui as funções do painel) ────────────────────────
+
+  /** O painel chama isto sem clientId; usamos o cliente escolhido no seletor. */
+  window.saveCustomerInventory = async function (client, products, updatedAt, sourceFileName) {
+    const clientId = selectedClientId();
+    if (!clientId) {
+      alert('Selecione o cliente do IBM Z Control Desk antes de carregar o inventário.');
+      return null;
+    }
+    const result = await invApi(`/clients/${clientId}/inventory`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientName: client.name,
+        customerNumber: client.number,
+        products,
+        reportUpdatedAt: updatedAt,
+        sourceFileName: sourceFileName || null,
+      }),
+    });
+    invStore[clientId] = {
+      clientName: client.name,
+      customerNumber: client.number,
+      updatedAt,
+      products,
+      // O PUT do inventário não mexe nos ajustes manuais; preserva o que havia.
+      pairOverrides: (invStore[clientId] && invStore[clientId].pairOverrides) || [],
+    };
+    setBadge(true);
+    return result;
+  };
+
+  /** Lista os clientes do IBM Z Control Desk, marcando quais já têm inventário. */
+  window.populateCustomerDropdown = async function (selectedClientId = null) {
+    const select = document.getElementById('selectCustomer');
+    if (!select) return;
+    let inventories = [];
+    try {
+      const [clients, invs] = await Promise.all([invApi('/clients'), invApi('/inventories')]);
+      window.tfpClients = clients;
+      inventories = invs;
+    } catch (err) {
+      select.innerHTML = '<option value="">-- erro ao carregar clientes --</option>';
+      showBanner([`Não foi possível falar com o servidor: ${err.message}`]);
+      return;
+    }
+
+    const byClient = new Map(inventories.map((i) => [String(i.client && i.client._id), i]));
+    select.innerHTML = '';
+
+    const optDefault = document.createElement('option');
+    optDefault.value = '';
+    optDefault.innerText = window.tfpClients.length
+      ? '-- Selecione o cliente --'
+      : '-- Nenhum cliente cadastrado (cadastre no módulo de Consumo) --';
+    select.appendChild(optDefault);
+
+    window.tfpClients.forEach((c) => {
+      const inv = byClient.get(String(c._id));
+      const opt = document.createElement('option');
+      opt.value = c._id;
+      opt.innerText = inv
+        ? `${c.name} — ${inv.productCount} produtos${inv.customerNumber ? ` (No. ${inv.customerNumber})` : ''}`
+        : `${c.name} — sem inventário`;
+      select.appendChild(opt);
+    });
+
+    const target = selectedClientId || localStorage.getItem(ACTIVE_KEY);
+    if (target && window.tfpClients.some((c) => String(c._id) === String(target))) {
+      select.value = target;
+      await window.loadCustomerData(target);
+    } else {
+      select.value = '';
+      showEmptyState();
+    }
+  };
+
+  /** Carrega o inventário do cliente (cache em memória ou banco). */
+  window.loadCustomerData = async function (clientId) {
+    showBanner(null);
+    let item = invStore[clientId];
+    if (!item) {
+      try {
+        const inv = await invApi(`/clients/${clientId}/inventory`);
+        item = {
+          clientName: inv.clientName || 'Não Identificado',
+          customerNumber: inv.customerNumber || 'Não Identificado',
+          updatedAt: inv.reportUpdatedAt || new Date(inv.updatedAt).toLocaleString('pt-BR'),
+          products: normalizeProducts(inv.products || []),
+          pairOverrides: inv.pairOverrides || [],
+        };
+        invStore[clientId] = item;
+        if (inv.warnings && inv.warnings.length) showBanner(inv.warnings);
+      } catch (err) {
+        showEmptyState(); // 404 = cliente ainda sem inventário
+        return;
+      }
+    }
+    activeClientId = clientId;
+    pairOverrides = item.pairOverrides || [];
+    globalInventoryData = item.products;
+    clientInfo = { name: item.clientName, number: item.customerNumber };
+    displayInventory(clientInfo, globalInventoryData, item.updatedAt);
+    setBadge(true);
+  };
+
+  window.onCustomerSelectChanged = function () {
+    const val = document.getElementById('selectCustomer').value;
+    if (!val) { showEmptyState(); return; }
+    if (val === 'ADD_NEW' || val === 'NEW_LOAD') {
+      showEmptyState();
+      document.getElementById('fileInputInventario').click();
+      return;
+    }
+    localStorage.setItem(ACTIVE_KEY, val);
+    window.loadCustomerData(val);
+  };
+
+  window.goHome = function () {
+    const select = document.getElementById('selectCustomer');
+    if (select) select.value = '';
+    localStorage.removeItem(ACTIVE_KEY);
+    showEmptyState();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /** Exclui o inventário do cliente no banco (não apaga o cliente). */
+  window.deleteActiveCustomerRecord = async function () {
+    const clientId = selectedClientId();
+    if (!clientId) { alert('Nenhum cliente selecionado.'); return; }
+    const item = invStore[clientId];
+    const nome = item ? item.clientName : 'este cliente';
+    if (!confirm(`Excluir o inventário de "${nome}" do banco de dados?\n\nO cliente continua cadastrado; apenas o inventário é removido.`)) return;
+    try {
+      await invApi(`/clients/${clientId}/inventory`, { method: 'DELETE' });
+    } catch (err) {
+      alert(`Falha ao excluir: ${err.message}`);
+      return;
+    }
+    delete invStore[clientId];
+    localStorage.removeItem(ACTIVE_KEY);
+    await window.populateCustomerDropdown(null);
+    window.goHome();
+  };
+
+  // Não é mais usado (dados vêm da API), mas o painel pode chamá-lo.
+  window.getStoredInventories = function () { return invStore; };
+
+  // ── Link para o IBM ProductPages (w3) ────────────────────────────────────
+  // O portal exige sessão w3 (SSO) e não libera CORS, então não dá para trazer
+  // os dados (equipe, EOS, GA, carta de anúncio) para cá automaticamente.
+  // A alternativa é abrir a página do PID, onde o usuário já está autenticado.
+
+  const W3_PRODUCT_PAGE = 'https://w3.ibm.com/systems/productpages/index.html?pid=';
+
+  const ICON_EXTERNAL =
+    '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="margin-left:2px">' +
+    '<path d="M6.5 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' +
+    '<path d="M9.5 2H14v4.5M14 2 7.5 8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  /** PID exibido no modal (o painel preenche #mdlPidCode / #mdlTitle). */
+  function currentModalPid() {
+    const el = document.getElementById('mdlPidCode');
+    const fromCode = el && el.innerText ? el.innerText.trim() : '';
+    if (/^[A-Z0-9]{6,8}$/i.test(fromCode)) return fromCode;
+    const title = (document.getElementById('mdlTitle') || {}).innerText || '';
+    const m = title.match(/\b([0-9]{4}[A-Z0-9]{3})\b/i);
+    return m ? m[1] : '';
+  }
+
+  /** Insere no modal o link para a página do produto no w3. */
+  function injectW3Link() {
+    const pid = currentModalPid();
+    const anchor = document.getElementById('mdlAnnouncementCsolLink');
+    if (!pid || !anchor || !anchor.parentNode) return;
+
+    let link = document.getElementById('tfpW3ProductLink');
+    if (!link) {
+      link = document.createElement('a');
+      link.id = 'tfpW3ProductLink';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.style.cssText =
+        'color:var(--ibm-blue); font-size:0.85rem; font-weight:600; text-decoration:none;' +
+        'display:inline-flex; align-items:center; gap:4px;';
+      anchor.parentNode.insertBefore(link, anchor);
+    }
+    link.href = W3_PRODUCT_PAGE + encodeURIComponent(pid);
+    link.title = `Abrir ${pid} no IBM ProductPages (equipe, EOS, GA, carta de anúncio)`;
+    link.innerHTML = `Ver ${pid} no IBM ProductPages${ICON_EXTERNAL}`;
+  }
+
+  // Envolve a função do painel: abre o modal como sempre e acrescenta o link.
+  const originalOpenProductModal = window.openProductModal;
+  if (typeof originalOpenProductModal === 'function') {
+    window.openProductModal = function () {
+      const r = originalOpenProductModal.apply(this, arguments);
+      try { injectW3Link(); } catch (e) { /* não impede o modal de abrir */ }
+      return r;
+    };
+  }
+
+  // ── Upload: exige cliente selecionado e grava no banco ───────────────────
+  // Substitui os listeners do painel clonando os elementos.
+  function rebindUpload() {
+    const oldInput = document.getElementById('fileInputInventario');
+    const oldBtn = document.getElementById('btnCarregarInventario');
+    if (!oldInput) return;
+
+    const input = oldInput.cloneNode(true);
+    oldInput.parentNode.replaceChild(input, oldInput);
+    if (oldBtn) {
+      const btn = oldBtn.cloneNode(true);
+      oldBtn.parentNode.replaceChild(btn, oldBtn);
+      btn.addEventListener('click', () => {
+        if (!selectedClientId()) {
+          alert('Selecione primeiro o cliente para o qual este inventário será salvo.');
+          if (typeof focarSeletorCliente === 'function') focarSeletorCliente();
+          return;
+        }
+        input.click();
+      });
+    }
+
+    input.addEventListener('change', function () {
+      const file = this.files[0];
+      this.value = '';
+      if (!file) return;
+
+      const clientId = selectedClientId();
+      if (!clientId) {
+        alert('Selecione primeiro o cliente para o qual este inventário será salvo.');
+        if (typeof focarSeletorCliente === 'function') focarSeletorCliente();
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async function (evt) {
+        let parsed;
+        try {
+          parsed = parseIBMLicenseReport(evt.target.result);
+        } catch (err) {
+          alert(`Não foi possível interpretar o inventário: ${err.message}`);
+          return;
+        }
+        if (!parsed.products || !parsed.products.length) {
+          alert('O arquivo foi lido, mas nenhum produto foi encontrado. Confira se é o relatório IBM SW Material.');
+          return;
+        }
+        normalizeProducts(parsed.products); // grava já limpo e classificado
+
+        const updatedAt = new Date().toLocaleString('pt-BR');
+        let saved;
+        try {
+          saved = await window.saveCustomerInventory(parsed.client, parsed.products, updatedAt, file.name);
+        } catch (err) {
+          alert(`Falha ao salvar o inventário: ${err.message}`);
+          return;
+        }
+        if (!saved) return;
+        showBanner(saved.warnings);
+
+        globalInventoryData = parsed.products;
+        clientInfo = parsed.client;
+        await window.populateCustomerDropdown(clientId);
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // ── Tooltip dos status de inventário (iERP S/4HANA) ──────────────────────
+  // Passar o mouse sobre o código de status (ECUS, AVLB, INAC, ECUS SLBP…)
+  // mostra o significado. Definições internas do iERP.
+
+  const STATUS_INFO = {
+    ECUS: { t: 'ECUS', d: 'Produto ativo.' },
+    AVLB: { t: 'AVLB', d: 'Produto reservado (booked), mas ainda não entregue.' },
+    INAC: { t: 'INAC', d: 'Produto inativo (foi removido).' },
+    ESTO: { t: 'ESTO', d: 'Relacionado a remoção pendente — ver "ECUS ESTO YREM".' },
+    YREM: { t: 'YREM', d: 'Relacionado a remoção pendente — ver "ECUS ESTO YREM".' },
+    QUBP: {
+      t: 'QUBP',
+      d: 'Há uma cotação não processada no histórico da licença. Sem efeito negativo — a Techline ainda pode configurar outra cotação ou bump. Quando a cotação é processada ou rejeitada, o QUBP some. (Pode haver restrição para criar configuração de bump no Danube.)',
+    },
+    SLBP: {
+      t: 'SLBP',
+      d: 'Há um pedido incompleto no histórico da licença, impedindo o bump (na GUI ou no CFSW/Techline). "Incompleto" pode significar:',
+      bullets: [
+        'O pedido está realmente incompleto — falta alguma informação obrigatória (ex.: erro de preço, nº de segmento de lucro). Some quando o pedido é completado.',
+        'Um pedido com entrega ainda não foi totalmente entregue. Some quando o status muda para totalmente entregue.',
+        'A licença pode ter ECUS SLBP sem nenhuma das condições acima — o status pode ter vindo copiado do CBS. Corrige-se na IQ02 com acesso de super-usuário.',
+      ],
+    },
+    'ECUS ESTO YREM': { t: 'ECUS ESTO YREM', d: 'Produto ativo, mas aguardando remoção.' },
+    'AVLB INAC': { t: 'AVLB INAC', d: 'Produto não foi entregue e foi rejeitado.' },
+    'ECUS QUBP': null, // usa a definição de QUBP
+    'ECUS SLBP': null, // usa a definição de SLBP
+    'ECUS INAC': {
+      t: 'ECUS INAC',
+      d: 'Produto ativo que foi rejeitado — está errado. Corrigir no iERP S/4HANA criando um pedido de remoção ou excluindo a rejeição.',
+    },
+  };
+  STATUS_INFO['ECUS QUBP'] = { t: 'ECUS QUBP', d: STATUS_INFO.QUBP.d };
+  STATUS_INFO['ECUS SLBP'] = { t: 'ECUS SLBP', d: STATUS_INFO.SLBP.d, bullets: STATUS_INFO.SLBP.bullets };
+
+  const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  /** Descreve um texto de status (simples, composto, ou lista separada por vírgula). */
+  function describeStatus(text) {
+    const norm = String(text || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    if (!norm || norm === '-') return null;
+    if (STATUS_INFO[norm]) return [STATUS_INFO[norm]];
+
+    // Consolidado: vários status separados por vírgula ("ECUS, AVLB").
+    if (norm.includes(',')) {
+      const parts = norm.split(',').map((p) => p.trim()).filter(Boolean);
+      const infos = parts.map((p) => STATUS_INFO[p] || tokensInfo(p)).flat().filter(Boolean);
+      return infos.length ? infos : null;
+    }
+    return tokensInfo(norm);
+  }
+
+  /** Combinação desconhecida: explica cada código conhecido que aparece. */
+  function tokensInfo(norm) {
+    const infos = norm.split(' ').map((tok) => STATUS_INFO[tok]).filter(Boolean);
+    return infos.length ? infos : null;
+  }
+
+  function statusTooltipHtml(infos) {
+    return infos.map((i) => {
+      const bullets = i.bullets ? `<ul>${i.bullets.map((b) => `<li>${escHtml(b)}</li>`).join('')}</ul>` : '';
+      return `<div class="tfp-tip-item"><span class="tfp-tip-code">${escHtml(i.t)}</span>${escHtml(i.d)}${bullets}</div>`;
+    }).join('');
+  }
+
+  function setupStatusTooltips() {
+    if (document.getElementById('tfp-status-tip')) return;
+    const tip = document.createElement('div');
+    tip.id = 'tfp-status-tip';
+    tip.className = 'tfp-status-tip';
+    tip.style.display = 'none';
+    document.body.appendChild(tip);
+
+    let current = null;
+
+    const position = (badge) => {
+      const r = badge.getBoundingClientRect();
+      tip.style.display = 'block';
+      const tr = tip.getBoundingClientRect();
+      let left = r.left + window.scrollX;
+      let top = r.bottom + window.scrollY + 6;
+      // Mantém dentro da tela (horizontal) e mostra acima se não couber abaixo.
+      const maxLeft = window.scrollX + document.documentElement.clientWidth - tr.width - 10;
+      if (left > maxLeft) left = Math.max(window.scrollX + 10, maxLeft);
+      if (r.bottom + tr.height + 12 > document.documentElement.clientHeight) {
+        top = r.top + window.scrollY - tr.height - 6;
+      }
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+    };
+
+    const statusBadge = (el) => {
+      const badge = el && el.closest && el.closest('.badge');
+      if (!badge || badge.classList.contains('badge-lic') || badge.classList.contains('badge-ss')) return null;
+      return describeStatus(badge.textContent) ? badge : null;
+    };
+
+    document.addEventListener('mouseover', (e) => {
+      const badge = statusBadge(e.target);
+      if (!badge || badge === current) return;
+      current = badge;
+      tip.innerHTML = statusTooltipHtml(describeStatus(badge.textContent));
+      position(badge);
+    });
+    document.addEventListener('mouseout', (e) => {
+      if (!current) return;
+      const to = e.relatedTarget;
+      if (to && current.contains(to)) return;
+      current = null;
+      tip.style.display = 'none';
+    });
+    // Fecha ao rolar (a posição fixa ficaria deslocada).
+    window.addEventListener('scroll', () => { if (current) { current = null; tip.style.display = 'none'; } }, true);
+  }
+
+  // ── Classificação Licença × S&S ──────────────────────────────────────────
+  // O painel marca como S&S qualquer descrição que contenha "SUPP", e isso
+  // pega licenças cujo nome tem "Support": "IMS ETO Support", "Tivoli Decision
+  // Support", "Device Supp Facilities (ICKDSF)". Aqui só valem os marcadores
+  // inequívocos de Subscription & Support.
+
+  /** "S&S" (inclusive colado, "VerifierS&S"), "Subscription…" ou "SNS". */
+  function isSupportItem(desc) {
+    const u = String(desc || '').toUpperCase();
+    // O (?![A-Z0-9]) evita casar o "S&S" de dentro de "TOOLS&SERVICES".
+    return /S\s*&\s*S(?![A-Z0-9])/.test(u) || u.includes('SUBSCRIPTION') || /\bSNS\b/.test(u);
+  }
+
+  /**
+   * Arruma os produtos recém-carregados — vale também para o que já está
+   * gravado, porque roda a cada carga:
+   *  - recalcula a categoria (Licença × S&S);
+   *  - troca NBSP (char 160) por espaço comum. O relatório da IBM vem cheio
+   *    deles, e por isso buscar "Data Gate" não achava "Data Gate for z/OS"
+   *    nem aqui nem no campo de busca do painel.
+   */
+  function normalizeProducts(products) {
+    const limpa = (s) => String(s == null ? '' : s).replace(/[ \s]+/g, ' ').trim();
+    (products || []).forEach((p) => {
+      p.description = limpa(p.description);
+      p.status = limpa(p.status);
+      (p.features || []).forEach((f) => {
+        f.description = limpa(f.description);
+        f.metric = limpa(f.metric);
+      });
+      p.category = isSupportItem(p.description) ? 'SS' : 'LICENCE';
+    });
+    return products || [];
+  }
+
+  // ── Licença ↔ S&S: traz o suporte junto da licença ───────────────────────
+  // Nos relatórios ESW da IBM a licença e o seu S&S NUNCA compartilham o mesmo
+  // PID (ex.: 5698DG3 "Data Gate for z/OS" ↔ 5698DGS "Data Gate for z/OS S&S"),
+  // então o casamento usa dois sinais: a família do produto (descrição sem os
+  // marcadores de S&S) e o par Effective Date + Config Value. Em "Tipo de
+  // Licença: Todos", o S&S casado é desenhado logo abaixo da sua licença, para
+  // mostrar que, além da licença, o cliente tem suporte para aquele produto.
+
+  const FAM_STOPWORDS = new Set(['for', 'and', 'the', 'of', 'ibm', 'zos', 'os', 'sw', 'v', 'ver', 'version', 'tiv', 'tivoli']);
+  const FAM_MIN = 0.6; // semelhança mínima de família para casar sem data/quantidade
+  const FAM_WEAK = 0.3; // piso de família mesmo quando data e quantidade batem
+
+  /** Acrescenta um valor à lista da chave (usado pelos índices e pelos pares). */
+  function push(map, k, v) {
+    if (!k) return;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(v);
+  }
+
+  /**
+   * Identidade de um registro. PID + SW Serial, porque o serial se repete
+   * entre PIDs diferentes (na CAIXA há 49 seriais repetidos).
+   */
+  function recKey(p) {
+    return `${p.productId}|${p.swSerial}`;
+  }
+
+  /** Quantidade do produto: soma dos Config Values das features. */
+  function configTotal(p) {
+    return (p.features || []).reduce((a, f) => a + (f.numericValue || 0), 0);
+  }
+
+  /** Tokens da família: tira marcadores de S&S, versões e palavras de ruído. */
+  function familyTokens(desc) {
+    return String(desc || '').toLowerCase()
+      .replace(/subscription\s*&\s*support/g, ' ')
+      .replace(/\bs\s*&\s*s\b/g, ' ')
+      .replace(/\b(sns|supp|support|subscription)\b/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(' ')
+      // Fora: letras soltas ("z" de z/VM, z/OS), que inflariam a semelhança
+      // ("z/VM" casaria com "OMEGAMON z/VM S&S"), e números de versão soltos
+      // ou no formato "v2"/"v13" — a licença traz a versão e o S&S não.
+      .filter((t) => t.length > 1 && !/^\d+$/.test(t) && !/^v\d+$/.test(t) && !FAM_STOPWORDS.has(t));
+  }
+
+  /**
+   * Peso de cada token pela raridade (IDF) no inventário do cliente.
+   * Sem isso, o "ruído" comum a muitos produtos ("db2", "solution", "pack")
+   * casaria "DB2 Perform Solution Pack" com "DB2 Utilities Sol Pack S&S" —
+   * produtos diferentes. O que distingue são justamente os tokens raros.
+   */
+  function buildTokenWeights(data) {
+    const df = new Map();
+    data.forEach((p) => {
+      new Set(familyTokens(p.description)).forEach((t) => df.set(t, (df.get(t) || 0) + 1));
+    });
+    const n = data.length || 1;
+    const w = new Map();
+    df.forEach((freq, t) => w.set(t, Math.log((n + 1) / (freq + 1))));
+    return w;
+  }
+
+  /**
+   * Compara duas famílias. Devolve { score, blocked }:
+   *  - score 0..1 ponderado por raridade (token igual ou prefixo do outro,
+   *    para abreviações como "Comparison"/"Comp", "Solution"/"Sol");
+   *  - blocked: um termo distintivo aparece de um lado e não do outro, o que
+   *    denuncia produtos diferentes ("DB2 *Utilities* Sol Pack" não é
+   *    "DB2 *Admin* Sol Pack", ainda que o resto da descrição coincida).
+   */
+  function compareFamily(a, b, weights, distinctiveMin) {
+    if (!a.length || !b.length) return { score: 0, blocked: true };
+    const w = (t) => {
+      const v = weights.get(t);
+      return v === undefined ? 1 : v;
+    };
+    const casa = (ta, tb) => ta === tb
+      || (ta.length >= 3 && tb.length >= 3 && (ta.startsWith(tb) || tb.startsWith(ta)));
+
+    const usedB = new Set();
+    const missA = [];
+    let matched = 0;
+    for (const ta of a) {
+      let hit = -1;
+      for (let i = 0; i < b.length; i++) {
+        if (!usedB.has(i) && casa(ta, b[i])) { hit = i; break; }
+      }
+      if (hit < 0) missA.push(ta);
+      else {
+        usedB.add(hit);
+        matched += Math.min(w(ta), w(b[hit])); // abreviação: fica com o menor peso
+      }
+    }
+    const missB = b.filter((_, i) => !usedB.has(i));
+
+    const sum = (list) => list.reduce((acc, t) => acc + w(t), 0);
+    const denom = Math.max(sum(a), sum(b));
+    // Descrições feitas só de termos comuns (peso ~0): cai na contagem simples.
+    const score = denom < 0.01 ? usedB.size / Math.max(a.length, b.length) : matched / denom;
+
+    // Dois vetos, que pegam erros de naturezas diferentes:
+    //  1) sobrou um termo raro de um lado só — "z/VM" não é "OMEGAMON z/VM";
+    //  2) sobrou termo dos DOIS lados — "IMS HP Unload" não é "DB2 HP Unload".
+    //     Aqui o peso não denuncia: "ims" e "db2" são comuns no inventário,
+    //     mas são exatamente o que separa um produto do outro.
+    const raroSobrando = missA.concat(missB).some((t) => w(t) >= distinctiveMin);
+    const sobraDosDoisLados = missA.length > 0 && missB.length > 0;
+    return { score, blocked: raroSobrando || sobraDosDoisLados };
+  }
+
+  /**
+   * Casa REGISTRO a REGISTRO, 1 para 1.
+   *
+   * Um PID de S&S costuma ter dezenas de registros (bumps e renovações), cada
+   * um com o seu Config Value: o 5655E90 da CAIXA tem 37. Pendurar todos numa
+   * licença daria a impressão de que o produto tem vários S&S, o que não é o
+   * caso — cada registro de licença tem o SEU registro de S&S.
+   *
+   * Regra: mesmo Config Value (exato, obrigatório) + nome compatível. A mesma
+   * Eff. Date é desempate, não requisito. Cada registro de S&S é usado uma vez.
+   * Ex.: 5655DT2 (cfg 477 e cfg 8164) casa com os dois registros do 5655E90
+   * que têm exatamente esses valores — e só com eles.
+   *
+   * Devolve { byLic: Map(registroLicença -> {rec, basis}), usedSs: Set }.
+   */
+  function pairLicenceWithSS(data) {
+    const licRecs = data.filter((p) => p.category !== 'SS');
+    const ssRecs = data.filter((p) => p.category === 'SS');
+    const par = { byLic: new Map(), usedSs: new Set() };
+    if (!licRecs.length || !ssRecs.length) return applyOverrides(par, licRecs, ssRecs);
+
+    const weights = buildTokenWeights(data);
+    // Acima deste peso, o termo identifica o produto (aparece em poucos itens).
+    const distinctiveMin = 0.45 * Math.log(data.length + 1);
+
+    // Índice dos S&S pelo Config Value — é o eixo obrigatório do casamento.
+    const ssPorCfg = new Map();
+    ssRecs.forEach((s) => push(ssPorCfg, configTotal(s), s));
+
+    const cacheTokens = new Map();
+    const tokensDe = (p) => {
+      if (!cacheTokens.has(p.productId)) cacheTokens.set(p.productId, familyTokens(p.description));
+      return cacheTokens.get(p.productId);
+    };
+    const mesmaData = (a, b) => {
+      const x = String(a.effDate || '').trim();
+      return x !== '' && x !== '-' && x === String(b.effDate || '').trim();
+    };
+
+    // Duas passadas: primeiro quem também bate a data (evidência mais forte),
+    // para que esses pares não sejam "roubados" por um registro de outra data.
+    [true, false].forEach((exigirData) => {
+      licRecs.forEach((l) => {
+        if (par.byLic.has(l)) return;
+        const cfg = configTotal(l);
+        if (!cfg) return; // sem Config Value não há o que casar
+        let melhor = null;
+        (ssPorCfg.get(cfg) || []).forEach((s) => {
+          if (par.usedSs.has(s)) return; // 1:1
+          const comData = mesmaData(s, l);
+          if (exigirData && !comData) return;
+          const fam = compareFamily(tokensDe(s), tokensDe(l), weights, distinctiveMin);
+          if (fam.blocked || fam.score < FAM_MIN) return;
+          if (!melhor || fam.score > melhor.score) melhor = { rec: s, score: fam.score, comData };
+        });
+        if (!melhor) return;
+        par.usedSs.add(melhor.rec);
+        par.byLic.set(l, {
+          rec: melhor.rec,
+          basis: melhor.comData
+            ? 'mesmo Config Value, mesma Eff. Date e nome compatível'
+            : 'mesmo Config Value e nome compatível',
+        });
+      });
+    });
+
+    return applyOverrides(par, licRecs, ssRecs);
+  }
+
+  /**
+   * Ajustes manuais vencem o automático. Identidade do registro = PID + SW
+   * Serial: o serial sozinho não serve, porque se repete entre PIDs diferentes
+   * (na CAIXA, W00011K é 5698A50 e também 5770AF4).
+   */
+  function applyOverrides(par, licRecs, ssRecs) {
+    if (!pairOverrides.length) return par;
+    const ajuste = new Map(pairOverrides.map((o) => [
+      `${o.ssPid}|${o.ssSerial}`,
+      o.licPid && o.licSerial ? `${o.licPid}|${o.licSerial}` : null,
+    ]));
+
+    // Solta os pares automáticos que envolvem um S&S ajustado.
+    [...par.byLic.entries()].forEach(([l, m]) => {
+      if (ajuste.has(recKey(m.rec))) {
+        par.byLic.delete(l);
+        par.usedSs.delete(m.rec);
+      }
+    });
+
+    const ssPorChave = new Map(ssRecs.map((s) => [recKey(s), s]));
+    const licPorChave = new Map(licRecs.map((l) => [recKey(l), l]));
+
+    // Refaz os que o usuário mandou casar (licença nula = "não casar").
+    ajuste.forEach((chaveLic, chaveSs) => {
+      if (!chaveLic) return;
+      const s = ssPorChave.get(chaveSs);
+      const l = licPorChave.get(chaveLic);
+      if (!s || !l) return; // registro saiu do inventário ou do filtro atual
+      const anterior = par.byLic.get(l); // 1:1 — a licença solta o par antigo
+      if (anterior) par.usedSs.delete(anterior.rec);
+      par.byLic.set(l, { rec: s, basis: 'ajuste manual', manual: true });
+      par.usedSs.add(s);
+    });
+    return par;
+  }
+
+  /** Grava os ajustes no banco e redesenha. */
+  async function savePairOverrides() {
+    if (!activeClientId) return;
+    try {
+      const r = await invApi(`/clients/${activeClientId}/inventory/pairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairOverrides }),
+      });
+      pairOverrides = r.pairOverrides || [];
+      if (invStore[activeClientId]) invStore[activeClientId].pairOverrides = pairOverrides;
+    } catch (err) {
+      alert(`Não foi possível salvar o ajuste: ${err.message}`);
+      return;
+    }
+    renderAllTables();
+  }
+
+  /**
+   * Define (ou remove) o ajuste de um registro de S&S.
+   * `lic` = registro de licença, `null` para não casar, `undefined` para
+   * apagar o ajuste e voltar ao automático.
+   */
+  function setOverride(ssPid, ssSerial, lic) {
+    pairOverrides = pairOverrides.filter((o) => !(o.ssPid === ssPid && o.ssSerial === ssSerial));
+    // 1:1 — se essa licença já estava presa a outro S&S à mão, solta o anterior.
+    if (lic) {
+      pairOverrides = pairOverrides.filter(
+        (o) => !(o.licPid === lic.productId && o.licSerial === lic.swSerial)
+      );
+    }
+    if (lic !== undefined) {
+      pairOverrides.push({
+        ssPid,
+        ssSerial,
+        licPid: lic ? lic.productId : null,
+        licSerial: lic ? lic.swSerial : null,
+      });
+    }
+    savePairOverrides();
+  }
+
+  window.tfpUnpairSS = function (evt, ssPid, ssSerial) {
+    evt.stopPropagation();
+    setOverride(ssPid, ssSerial, null); // não casa com ninguém
+  };
+
+  window.tfpAutoPairSS = function (evt, ssPid, ssSerial) {
+    evt.stopPropagation();
+    setOverride(ssPid, ssSerial, undefined); // sem ajuste = volta ao automático
+  };
+
+  window.tfpPickLicence = function (evt, ssPid, ssSerial) {
+    evt.stopPropagation();
+    openPairPicker(ssPid, ssSerial);
+  };
+
+  // ── Seletor da licença (usado pelo botão "Casar…") ───────────────────────
+
+  let pickerSs = null;
+
+  function ensurePairPicker() {
+    if (document.getElementById('tfp-pair-modal')) return;
+    const el = document.createElement('div');
+    el.id = 'tfp-pair-modal';
+    el.className = 'tfp-pair-modal';
+    el.style.display = 'none';
+    el.innerHTML =
+      '<div class="tfp-pair-box" role="dialog" aria-modal="true" aria-labelledby="tfp-pair-title">'
+      + '<h3 id="tfp-pair-title">Casar S&amp;S com uma licença</h3>'
+      + '<p class="tfp-pair-sub" id="tfp-pair-sub"></p>'
+      + '<input type="text" id="tfp-pair-search" placeholder="Buscar por PID ou descrição" autocomplete="off">'
+      + '<div class="tfp-pair-list" id="tfp-pair-list"></div>'
+      + '<div class="tfp-pair-actions"><button type="button" class="tfp-pair-btn" id="tfp-pair-cancel">Cancelar</button></div>'
+      + '</div>';
+    document.body.appendChild(el);
+
+    el.addEventListener('click', (e) => { if (e.target === el) closePairPicker(); });
+    document.getElementById('tfp-pair-cancel').addEventListener('click', closePairPicker);
+    document.getElementById('tfp-pair-search').addEventListener('input', renderPairOptions);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && el.style.display !== 'none') closePairPicker();
+    });
+  }
+
+  function openPairPicker(ssPid, ssSerial) {
+    ensurePairPicker();
+    const s = (globalInventoryData || []).find(
+      (p) => p.productId === ssPid && p.swSerial === ssSerial
+    );
+    pickerSs = s || null;
+    document.getElementById('tfp-pair-sub').textContent = s
+      ? `${s.productId} · serial ${s.swSerial} · ${s.effDate || 's/ data'} · Config Value ${configTotal(s)} — ${s.description}`
+      : ssSerial;
+    const busca = document.getElementById('tfp-pair-search');
+    busca.value = '';
+    renderPairOptions();
+    document.getElementById('tfp-pair-modal').style.display = 'flex';
+    busca.focus();
+  }
+
+  function closePairPicker() {
+    const el = document.getElementById('tfp-pair-modal');
+    if (el) el.style.display = 'none';
+    pickerSs = null;
+  }
+
+  const MAX_OPCOES = 60;
+
+  function renderPairOptions() {
+    const termo = (document.getElementById('tfp-pair-search').value || '').trim().toLowerCase();
+    const alvoCfg = pickerSs ? configTotal(pickerSs) : null;
+
+    // Lista REGISTROS de licença (não PIDs): o par é registro a registro.
+    let lista = (globalInventoryData || []).filter((p) => p.category !== 'SS');
+    if (termo) {
+      lista = lista.filter((p) =>
+        p.productId.toLowerCase().includes(termo)
+        || String(p.description || '').toLowerCase().includes(termo)
+        || String(p.swSerial || '').toLowerCase().includes(termo));
+    }
+    // Os de Config Value igual ao do S&S vêm primeiro — é o par provável.
+    lista.sort((a, b) => {
+      const ia = configTotal(a) === alvoCfg ? 0 : 1;
+      const ib = configTotal(b) === alvoCfg ? 0 : 1;
+      if (ia !== ib) return ia - ib;
+      return String(a.description).localeCompare(String(b.description), 'pt-BR');
+    });
+
+    const el = document.getElementById('tfp-pair-list');
+    el.innerHTML = lista.slice(0, MAX_OPCOES).map((p) => {
+      const cfg = configTotal(p);
+      const igual = cfg === alvoCfg;
+      return `<button type="button" class="tfp-pair-opt" data-key="${escHtml(recKey(p))}">`
+        + `<strong>${escHtml(p.productId)}</strong>`
+        + `<span>${escHtml(p.description)}</span>`
+        + `<em class="tfp-pair-cfg${igual ? ' igual' : ''}" title="${igual ? 'Config Value igual ao do S&S' : 'Config Value diferente do S&S'}">`
+        + `${escHtml(p.swSerial)} · ${escHtml(p.effDate || 's/ data')} · cfg ${cfg}</em></button>`;
+    }).join('') || '<p class="tfp-pair-empty">Nenhuma licença encontrada.</p>';
+    if (lista.length > MAX_OPCOES) {
+      el.insertAdjacentHTML('beforeend',
+        `<p class="tfp-pair-empty">Mostrando ${MAX_OPCOES} de ${lista.length} — refine a busca.</p>`);
+    }
+
+    el.querySelectorAll('.tfp-pair-opt').forEach((b) => {
+      b.addEventListener('click', () => {
+        const lic = (globalInventoryData || []).find((p) => recKey(p) === b.dataset.key);
+        const ss = pickerSs;
+        closePairPicker();
+        if (ss && lic) setOverride(ss.productId, ss.swSerial, lic);
+      });
+    });
+  }
+
+  /** Botões de ajuste manual, só nas linhas de S&S da visão "Todos". */
+  function pairControls(prod, paired) {
+    if (prod.category !== 'SS') return '';
+    const ajustado = pairOverrides.some(
+      (o) => o.ssPid === prod.productId && o.ssSerial === prod.swSerial
+    );
+    const args = `'${escHtml(prod.productId)}', '${escHtml(prod.swSerial)}'`;
+    const btn = (fn, txt, title) =>
+      `<button type="button" class="tfp-pair-btn" onclick="${fn}(event, ${args})"`
+      + ` title="${escHtml(title)}">${escHtml(txt)}</button>`;
+
+    let html = paired
+      ? btn('tfpUnpairSS', 'Separar', 'Este S&S não é desta licença — desfazer o par')
+      : btn('tfpPickLicence', 'Casar…', 'Escolher manualmente a licença deste S&S');
+    if (ajustado) {
+      html += btn('tfpAutoPairSS', 'auto', 'Descartar o ajuste manual e voltar ao casamento automático');
+    }
+    return html;
+  }
+
+  /** Desenha a linha do produto (e suas features) na visão hierárquica. */
+  function appendProductRows(tbody, prod, opts) {
+    opts = opts || {};
+    const paired = opts.attachedTo;
+    // As duas pontas do par ganham o verde: a licença e o S&S dela.
+    const marca = paired ? ' tfp-row-ss-pair' : (opts.coverage ? ' tfp-row-lic-pair' : '');
+    const row = document.createElement('tr');
+    row.className = `row-parent row-clickable${marca}`;
+    row.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+    row.title = paired
+      ? `S&S da licença ${paired.lic.productId} (serial ${paired.lic.swSerial})`
+        + ` — casado por ${paired.basis}`
+      : 'Clique para abrir detalhes, carta de anúncio e VUE do produto';
+
+    let categoria = prod.category === 'SS'
+      ? '<span class="badge badge-ss">S&S Suporte</span>'
+      : '<span class="badge badge-lic">Licença</span>';
+    if (opts.coverage) {
+      const s = opts.coverage.rec;
+      const detalhe = `Este produto também tem S&S: ${s.productId} (serial ${s.swSerial},`
+        + ` Config Value ${configTotal(s)}) — casado por ${opts.coverage.basis}`;
+      categoria += `<span class="badge tfp-badge-cov" title="${escHtml(detalhe)}">+ S&amp;S</span>`;
+    }
+    if (paired) {
+      categoria += `<span class="tfp-pair-note">da licença ${escHtml(paired.lic.productId)}</span>`;
+    }
+    categoria += pairControls(prod, Boolean(paired));
+
+    row.innerHTML =
+      `<td><strong>${escHtml(prod.productId)}</strong></td>` +
+      `<td>${escHtml(prod.swSerial)}</td>` +
+      `<td style="color:#0f62fe; font-weight:600;">${escHtml(prod.effDate || '-')}</td>` +
+      `<td>${escHtml(prod.description)}</td>` +
+      `<td>${categoria}</td>` +
+      `<td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${escHtml(prod.status || '-')}</span></td>` +
+      '<td>-</td><td>-</td>';
+    tbody.appendChild(row);
+
+    (prod.features || []).forEach((feat) => {
+      const fRow = document.createElement('tr');
+      fRow.className = `row-child row-clickable${marca}`;
+      fRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+      fRow.innerHTML =
+        `<td style="padding-left: 28px;">↳ ${escHtml(feat.featureCode)}</td>` +
+        '<td>-</td><td>-</td>' +
+        `<td>${escHtml(feat.description)}</td>` +
+        '<td>-</td><td>-</td>' +
+        `<td>${escHtml(feat.metric)}</td>` +
+        `<td class="val-highlight">${escHtml(feat.configValue)}</td>`;
+      tbody.appendChild(fRow);
+    });
+  }
+
+  // Substitui a montagem da tabela hierárquica do painel.
+  const panelRenderHierarchical = window.renderHierarchicalTable;
+
+  window.renderHierarchicalTable = function (data) {
+    const tbody = document.querySelector('#tblHierarquica tbody');
+    const filtro = typeof currentCategoryFilter !== 'undefined' ? currentCategoryFilter : 'ALL';
+    // Só faz sentido juntar quando as duas categorias estão na tela.
+    if (!tbody || filtro !== 'ALL' || !Array.isArray(data) || !data.length) {
+      return panelRenderHierarchical.call(this, data);
+    }
+
+    let par;
+    try {
+      par = pairLicenceWithSS(data);
+    } catch (err) {
+      console.warn('Pareamento Licença/S&S falhou; mostrando a tabela original.', err);
+      return panelRenderHierarchical.call(this, data);
+    }
+
+    tbody.innerHTML = '';
+    data.forEach((prod) => {
+      // S&S casado não aparece solto: entra logo abaixo da sua licença.
+      if (prod.category === 'SS' && par.usedSs.has(prod)) return;
+
+      const cobertura = par.byLic.get(prod) || null;
+      appendProductRows(tbody, prod, { coverage: cobertura });
+      if (cobertura) {
+        appendProductRows(tbody, cobertura.rec, { attachedTo: { lic: prod, basis: cobertura.basis } });
+      }
+    });
+  };
+
+  /* ── Ocultar "MSU Registration" ─────────────────────────────
+   * Botão ao lado de "Exportar Relatório" que esconde os registros cuja
+   * métrica é "MSU Registration" (dominam o S&S e poluem a visão). */
+  const MSU_REG_KEY = 'tfp.inv.hideMsuReg';
+  let hideMsuReg = localStorage.getItem(MSU_REG_KEY) === '1';
+
+  const isMsuRegistration = (p) =>
+    (p.features || []).some((f) => /^\s*msu\s+registration\s*$/i.test(f.metric || ''));
+
+  // O painel usa getFilteredData nas tabelas e nas exportações — filtrar aqui
+  // faz o "ocultar" valer para os dois, como os demais filtros.
+  if (typeof window.getFilteredData === 'function') {
+    const origGetFiltered = window.getFilteredData;
+    window.getFilteredData = function () {
+      const data = origGetFiltered.apply(this, arguments);
+      return hideMsuReg ? data.filter((p) => !isMsuRegistration(p)) : data;
+    };
+  }
+
+  function updateMsuRegBtn() {
+    const btn = document.getElementById('tfp-hide-msureg');
+    if (!btn) return;
+    btn.classList.toggle('tfp-toggle-on', hideMsuReg);
+    btn.setAttribute('aria-pressed', hideMsuReg ? 'true' : 'false');
+    btn.textContent = hideMsuReg ? 'Mostrar MSU registration' : 'Ocultar MSU registration';
+  }
+
+  function injectMsuRegButton() {
+    if (document.getElementById('tfp-hide-msureg')) return;
+    const exportBtn = document.querySelector('[onclick*="toggleExportMenu"]');
+    if (!exportBtn) return;
+    const exportWrap = exportBtn.parentElement; // div position:relative
+    const parent = exportWrap.parentElement; // .nav-tabs (flex, space-between)
+    if (!parent) return;
+
+    // Agrupa [botão][exportar] à direita, lado a lado.
+    const group = document.createElement('div');
+    group.style.cssText = 'display:flex; align-items:center; gap:8px;';
+    parent.insertBefore(group, exportWrap);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'tfp-hide-msureg';
+    btn.className = 'btn-filter tfp-toggle';
+    btn.style.marginBottom = '6px';
+    btn.title = 'Esconder/mostrar os registros com métrica "MSU Registration"';
+    btn.addEventListener('click', () => {
+      hideMsuReg = !hideMsuReg;
+      localStorage.setItem(MSU_REG_KEY, hideMsuReg ? '1' : '0');
+      updateMsuRegBtn();
+      if (typeof window.renderAllTables === 'function') window.renderAllTables();
+    });
+    group.appendChild(btn);
+    group.appendChild(exportWrap); // move o "Exportar" pra dentro do grupo
+    updateMsuRegBtn();
+  }
+
+  /**
+   * Leva o seletor de cliente para a barra do topo, igual aos outros módulos.
+   * Move o próprio <select id="selectCustomer"> (preserva o onchange e as opções
+   * que o bridge popula) para um .tfp-topbar-actions dentro do topbar — onde o
+   * auth-client também encaixa o menu do usuário e o selo "somente leitura".
+   */
+  function relocateClientSelector() {
+    const inner = document.querySelector('.tfp-topbar-inner');
+    const select = document.getElementById('selectCustomer');
+    if (!inner || !select || document.querySelector('.tfp-topbar-actions')) return;
+
+    const actions = document.createElement('div');
+    actions.className = 'tfp-topbar-actions';
+
+    const wrap = document.createElement('label');
+    wrap.className = 'tfp-client-select-wrap';
+    wrap.setAttribute('for', 'selectCustomer');
+    const lbl = document.createElement('span');
+    lbl.className = 'tfp-client-select-label';
+    lbl.textContent = 'Cliente';
+    wrap.appendChild(lbl);
+
+    const origParent = select.parentElement; // div à esquerda do card
+    select.removeAttribute('style');          // tira o estilo claro embutido
+    select.classList.add('tfp-client-select');
+    wrap.appendChild(select);
+
+    actions.appendChild(wrap);
+    inner.appendChild(actions);
+
+    // Some com o rótulo antigo que sobrou no card e mantém os botões à direita.
+    const card = document.querySelector('.client-select-card');
+    if (origParent && origParent !== card) origParent.style.display = 'none';
+    if (card) card.style.justifyContent = 'flex-end';
+  }
+
+  function init() {
+    relocateClientSelector();
+    rebindUpload();
+    setupStatusTooltips();
+    injectMsuRegButton();
+    window.populateCustomerDropdown();
+  }
+
+  // Reposiciona já (síncrono, o topbar e o seletor já foram parseados acima), pra
+  // que o menu do usuário do auth-client encontre o .tfp-topbar-actions pronto.
+  relocateClientSelector();
+
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+
+</script>
+</body>
+</html>

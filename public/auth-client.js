@@ -83,6 +83,7 @@
 
   function renderMenu() {
     const host = document.querySelector('.topbar-actions')
+      || document.querySelector('.tfp-topbar-actions')
       || document.querySelector('.topbar-inner')
       || document.querySelector('.tfp-topbar-inner');
     if (!host || !me) return;
