@@ -17,6 +17,7 @@ async function main() {
   const { connectDb } = require('../src/db');
   const { app } = require('../server');
   await connectDb(process.env.MONGODB_URI);
+  await require('../src/lsprSeed').seedLspr({ log: console.log });
 
   const port = process.env.PORT || 3000;
   app.listen(port, () => {

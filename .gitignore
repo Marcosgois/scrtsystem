@@ -4,8 +4,9 @@ node_modules/
 .DS_Store
 ~$*.xlsx
 
-# Banco MongoDB local (dados da aplicação)
-data/
+# Banco MongoDB local (dados da aplicação) — só a pasta data/ da raiz.
+# (Ancorado com "/" para não pegar src/data/, que guarda referências versionadas.)
+/data/
 
 # ─────────────────────────────────────────────────────────────────────────
 # DADOS REAIS DE CLIENTES — não versionar (privacidade / dados de terceiros)

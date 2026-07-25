@@ -109,6 +109,10 @@
       <label class="field"><span>Variante</span><input type="text" id="machine-variant" maxlength="60"></label>
       <label class="field"><span>Feature model (capacidade)</span><input type="text" id="machine-feature" maxlength="40" placeholder="Ex.: Max32"></label>
       <label class="field"><span>Serial</span><input type="text" id="machine-serial" maxlength="60" placeholder="liga com o SCRT"></label>
+      <label class="field"><span>LSPR (referência de capacidade)</span>
+        <input type="text" id="machine-lspr" list="lspr-suggestions" maxlength="20" placeholder="ex.: 3931-705" autocomplete="off">
+        <datalist id="lspr-suggestions"></datalist>
+      </label>
       <label class="field"><span>Ano</span><input type="number" id="machine-year" min="1990" max="2100"></label>
       <label class="field"><span>Site</span><select id="machine-site"></select></label>
       <label class="field"><span>IFLs ativos</span><input type="number" id="machine-ifls" min="0" step="any"></label>
@@ -116,6 +120,7 @@
       <label class="field"><span>Storage (TB)</span><input type="number" id="machine-storage" min="0" step="any"></label>
       <label class="field"><span>Storage adicional (TB)</span><input type="number" id="machine-storage-add" min="0" step="any"></label>
     </div>
+    <div class="lspr-info hidden" id="machine-lspr-info"></div>
     <label class="field"><span>Notas</span><input type="text" id="machine-notes" maxlength="240"></label>
     <label class="toggle machine-dormant"><input type="checkbox" id="machine-dormant"> Máquina dormente (não em produção)</label>
     <p class="form-error hidden" id="machine-error"></p>

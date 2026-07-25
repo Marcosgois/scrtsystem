@@ -54,6 +54,8 @@ function toast(message, kind = 'success') {
 }
 const jsonPut = (path, body) => api(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const jsonPost = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const lsprCache = new Map(); // model LSPR -> linha (cache do combobox de referência)
+let lsprTimer = null;
 
 function showView(which) {
   ['empty-clients', 'infra-view'].forEach((id) => $(id).classList.toggle('hidden', id !== which));
@@ -220,6 +222,7 @@ function renderMachines() {
       <input type="search" id="machine-search" class="infra-search" placeholder="Buscar por modelo ou serial" value="${esc(machineFilter.q)}">
       <select id="machine-filter-site">${sitesOpts}</select>
       <select id="machine-filter-model">${modelOpts}</select>
+      <button class="btn btn-ghost btn-sm" id="btn-import-scrt" data-requires-edit title="Criar/atualizar máquinas a partir do último SCRT do cliente">${iconDownload()} Importar do SCRT</button>
     </div>
     <div class="card">
       <div class="table-responsive">
@@ -227,7 +230,7 @@ function renderMachines() {
           <thead><tr>
             <th>Modelo</th><th>Site</th><th>Serial</th>
             <th class="num">IFLs</th><th class="num">Storage</th><th class="num">Ano</th>
-            <th>Consumo (SCRT)</th><th class="infra-actions-col">Ações</th>
+            <th>Capacidade (LSPR)</th><th>Consumo (SCRT)</th><th class="infra-actions-col">Ações</th>
           </tr></thead>
           <tbody id="machine-rows"></tbody>
         </table>
@@ -237,6 +240,7 @@ function renderMachines() {
   $('machine-search').addEventListener('input', (e) => { machineFilter.q = e.target.value; renderMachineRows(); });
   $('machine-filter-site').addEventListener('change', (e) => { machineFilter.site = e.target.value; renderMachineRows(); });
   $('machine-filter-model').addEventListener('change', (e) => { machineFilter.model = e.target.value; renderMachineRows(); });
+  $('btn-import-scrt').addEventListener('click', importFromScrt);
 }
 
 function renderMachineRows() {
@@ -248,13 +252,19 @@ function renderMachineRows() {
     return true;
   });
   const tbody = $('machine-rows');
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="muted small" style="padding:14px">Nenhuma máquina.</td></tr>'; return; }
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" class="muted small" style="padding:14px">Nenhuma máquina.</td></tr>'; return; }
   tbody.innerHTML = rows.map((m) => {
     const grad = /linuxone/i.test(m.model) ? 'grad-linuxone' : 'grad-z';
     const r = m.site && ROLES[m.site.role];
     const siteCell = m.site
       ? `<span class="badge" style="background:${r.color}1a;color:${r.color}">${esc(ROLES[m.site.role].label)}</span> ${esc(m.site.name)}`
       : '<span class="muted small">—</span>';
+    let lsprCell = '<span class="muted small">—</span>';
+    if (m.lspr) {
+      lsprCell = `${fmt(m.lspr.msu)} MSU <span class="muted small">· ${fmt(m.lspr.mips)} MIPS</span><div class="muted small"><span class="mono">${esc(m.lspr.model)}</span> · ${m.lspr.cps} CP</div>`;
+    } else if (m.lsprModel) {
+      lsprCell = `<span class="mono small">${esc(m.lsprModel)}</span> <span class="muted small">(sem ref.)</span>`;
+    }
     let scrtCell = '<span class="muted small">—</span>';
     if (m.scrt) {
       const tag = m.scrt.tag ? ` <span class="badge badge-neutral">${esc(m.scrt.tag)}</span>` : '';
@@ -268,6 +278,7 @@ function renderMachineRows() {
       <td class="num">${fmt(m.iflsActive)}${m.iflsSpare ? ` <span class="muted small">+${m.iflsSpare}</span>` : ''}</td>
       <td class="num">${num1((m.storageTB || 0) + (m.storageAddTB || 0))} TB</td>
       <td class="num">${m.year || '—'}</td>
+      <td>${lsprCell}</td>
       <td>${scrtCell}</td>
       <td class="infra-actions">
         <button class="row-action" data-lpars="${m._id}" title="LPARs (${lpc})">${iconCpu()}</button>
@@ -358,6 +369,9 @@ function openMachineModal(machineId) {
   set('machine-variant', m ? m.variant : '');
   set('machine-feature', m ? m.featureModel : '');
   set('machine-serial', m ? m.serial : '');
+  set('machine-lspr', m ? m.lsprModel : '');
+  if (m && m.lspr) lsprCache.set(m.lspr.model, m.lspr);
+  renderLsprInfo(m ? m.lspr : null);
   set('machine-year', m ? m.year : '');
   set('machine-ifls', m ? m.iflsActive : '');
   set('machine-ifls-spare', m ? m.iflsSpare : '');
@@ -379,6 +393,7 @@ async function saveMachine() {
     model: $('machine-model').value.trim(),
     variant: $('machine-variant').value.trim(),
     featureModel: $('machine-feature').value.trim(),
+    lsprModel: $('machine-lspr').value.trim(),
     serial: $('machine-serial').value.trim(),
     year: $('machine-year').value === '' ? null : Number($('machine-year').value),
     site: $('machine-site').value || null,
@@ -397,6 +412,61 @@ async function saveMachine() {
     await loadInfra();
     toast('Máquina salva.');
   } catch (err) { showErr('machine-error', err.message); }
+}
+
+/* ------------------------------------------------------------------ *
+ *  LSPR (referência de capacidade) + importação do SCRT
+ * ------------------------------------------------------------------ */
+function renderLsprInfo(lspr) {
+  const el = $('machine-lspr-info');
+  if (!el) return;
+  if (!lspr) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="lspr-info-head"><strong>${esc(lspr.family || lspr.model)}</strong> <span class="mono small">${esc(lspr.model)}</span></div>
+    <div class="lspr-metrics">
+      <span><b>${fmt(lspr.msu)}</b> MSU</span>
+      <span><b>${fmt(lspr.mips)}</b> MIPS</span>
+      <span><b>${fmt(lspr.cps)}</b> CPs</span>
+      <span><b>${fmt(lspr.ifls)}</b> IFLs máx.</span>
+    </div>`;
+}
+
+// Combobox do LSPR: busca sob demanda em /lspr e resolve a referência exata.
+async function onLsprInput() {
+  const val = $('machine-lspr').value.trim();
+  renderLsprInfo(val && lsprCache.has(val) ? lsprCache.get(val) : null);
+  clearTimeout(lsprTimer);
+  if (val.length < 2) return;
+  lsprTimer = setTimeout(async () => {
+    try {
+      const rows = await api(`/lspr?q=${encodeURIComponent(val)}&limit=25`);
+      rows.forEach((r) => lsprCache.set(r.model, r));
+      $('lspr-suggestions').innerHTML = rows
+        .map((r) => `<option value="${esc(r.model)}">${esc(r.family)} · ${fmt(r.msu)} MSU · ${r.cps} CP</option>`).join('');
+      const cur = $('machine-lspr').value.trim();
+      if (cur && lsprCache.has(cur)) renderLsprInfo(lsprCache.get(cur));
+    } catch (e) { /* silencioso */ }
+  }, 220);
+}
+
+async function importFromScrt() {
+  if (!state.clientId) return;
+  const btn = $('btn-import-scrt');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await jsonPost(`/clients/${state.clientId}/infra/machines/import-scrt`, {});
+    await loadInfra();
+    const parts = [];
+    if (r.created) parts.push(`${r.created} criada(s)`);
+    if (r.updated) parts.push(`${r.updated} atualizada(s)`);
+    if (!r.created && !r.updated) parts.push('nada novo');
+    parts.push(`${r.linked} ligada(s) ao LSPR`);
+    toast(`SCRT ${r.periodLabel || ''}: ${parts.join(', ')}.`);
+  } catch (err) {
+    toast(err.message, 'error');
+    const b = $('btn-import-scrt'); if (b) b.disabled = false;
+  }
 }
 
 async function deleteMachine(id) {
@@ -619,6 +689,7 @@ const iconCpu = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="non
 const iconFile = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M9 1.5H4.5A1 1 0 0 0 3.5 2.5v11a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5L9 1.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9 1.5V5h3.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconEdit = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M11 2.5l2.5 2.5L6 12.5l-3 .5.5-3L11 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconTrash = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const iconDownload = () => '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v7M5 6.5 8 9.5l3-3M3 12.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /* ------------------------------------------------------------------ *
  *  Eventos globais
@@ -637,6 +708,7 @@ $('btn-new-site').addEventListener('click', () => { if (state.clientId) openSite
 $('btn-new-machine').addEventListener('click', () => { if (state.clientId) openMachineModal(null); });
 $('btn-save-site').addEventListener('click', saveSite);
 $('btn-save-machine').addEventListener('click', saveMachine);
+$('machine-lspr').addEventListener('input', onLsprInput);
 $('btn-save-config').addEventListener('click', saveConfig);
 $('btn-add-lpar').addEventListener('click', () => openLparForm(null));
 

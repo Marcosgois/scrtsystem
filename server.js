@@ -97,6 +97,9 @@ async function main() {
 
   try {
     await connectDb(uri);
+    // Referência LSPR (dados públicos IBM): popula na 1ª vez, idempotente depois.
+    const { seedLspr } = require('./src/lsprSeed');
+    await seedLspr({ log: console.log }).catch((e) => console.warn('[LSPR] seed ignorado:', e.message));
   } catch (err) {
     console.error(`\n[MongoDB] Não foi possível conectar em ${uri}`);
     console.error(`[MongoDB] ${err.message}`);

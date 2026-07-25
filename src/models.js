@@ -230,6 +230,7 @@ const infraMachineSchema = new mongoose.Schema(
     model: { type: String, default: '' }, // ex.: "LinuxONE Emperor 5", "IBM z17"
     variant: { type: String, default: '' },
     featureModel: { type: String, default: '' }, // capacidade física (ex.: "Max32")
+    lsprModel: { type: String, default: '' }, // liga com LsprModel.model (ex.: "3931-705")
     serial: { type: String, default: '', index: true }, // normalizado em maiúsculas
     year: { type: Number, default: null },
     iflsActive: { type: Number, default: 0 },
@@ -300,6 +301,28 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ── LSPR: referência de capacidade por modelo IBM Z (zPCR Configuration Summary) ──
+// Dados públicos da IBM (MIPS/MSU/#CPs máximos por modelo), não são de cliente.
+// A chave é o type-model (ex.: "3931-705"), igual ao "Machine Type and Model" do SCRT.
+const lsprModelSchema = new mongoose.Schema(
+  {
+    model: { type: String, required: true, unique: true, index: true }, // "3931-705"
+    machineType: { type: String, default: '', index: true },            // "3931"
+    generation: { type: String, default: '', index: true },             // "z16"
+    family: { type: String, default: '' },                              // "IBM Z z16/700"
+    mips: { type: Number, default: null },
+    msu: { type: Number, default: null },
+    partitions: { type: Number, default: null },
+    cps: { type: Number, default: null },
+    ifls: { type: Number, default: null },
+    icfs: { type: Number, default: null },
+    zaaps: { type: Number, default: null },
+    ziips: { type: Number, default: null },
+    source: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+
 const Client = mongoose.model('Client', clientSchema);
 const ScrtReport = mongoose.model('ScrtReport', scrtReportSchema);
 const Inventory = mongoose.model('Inventory', inventorySchema);
@@ -307,5 +330,6 @@ const InfraSite = mongoose.model('InfraSite', infraSiteSchema);
 const InfraMachine = mongoose.model('InfraMachine', infraMachineSchema);
 const InfraLpar = mongoose.model('InfraLpar', infraLparSchema);
 const User = mongoose.model('User', userSchema);
+const LsprModel = mongoose.model('LsprModel', lsprModelSchema);
 
-module.exports = { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User };
+module.exports = { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel };

@@ -5,7 +5,7 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar } = require('./models');
+const { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, LsprModel } = require('./models');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
@@ -1172,6 +1172,40 @@ async function scrtBySerialLatest(client) {
   return map;
 }
 
+/** Máquinas do último mês de SCRT (deduplicadas por serial, com type-model). */
+async function scrtLatestMachines(client) {
+  const out = [];
+  if (!client) return out;
+  const raw = await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean();
+  if (!raw.length) return out;
+  const merged = mergeByMonth(raw, tagContextOf(client));
+  const latest = merged[merged.length - 1];
+  const seen = new Set();
+  for (const m of (latest.machines || [])) {
+    const s = serialOf(m);
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push({
+      serial: s,
+      typeModel: String(m.typeModel || '').trim(),
+      ratedCapacityMsus: m.ratedCapacityMsus || null,
+      msuConsumed: m.msuConsumed || null,
+      identifier: m.identifier || '',
+      periodLabel: latest.periodLabel,
+    });
+  }
+  return out;
+}
+
+/** Anexa a linha LSPR (m.lspr) a cada máquina de infra que tenha lsprModel. */
+async function attachLspr(machines) {
+  const ids = [...new Set(machines.map((m) => String(m.lsprModel || '').trim()).filter(Boolean))];
+  const rows = ids.length ? await LsprModel.find({ model: { $in: ids } }).lean() : [];
+  const byModel = new Map(rows.map((r) => [r.model, r]));
+  for (const m of machines) m.lspr = byModel.get(String(m.lsprModel || '').trim()) || null;
+  return machines;
+}
+
 // Atualização parcial: só grava os campos presentes no corpo.
 function siteUpdate(body) {
   const set = {};
@@ -1188,6 +1222,7 @@ function machineUpdate(body) {
   if (body.model !== undefined) set.model = String(body.model || '').trim();
   if (body.variant !== undefined) set.variant = String(body.variant || '').trim();
   if (body.featureModel !== undefined) set.featureModel = String(body.featureModel || '').trim();
+  if (body.lsprModel !== undefined) set.lsprModel = String(body.lsprModel || '').trim();
   if (body.serial !== undefined) set.serial = String(body.serial || '').trim().toUpperCase();
   if (body.year !== undefined) set.year = body.year === '' || body.year === null ? null : numOf(body.year);
   ['iflsActive', 'iflsSpare', 'storageTB', 'storageAddTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
@@ -1218,6 +1253,42 @@ function lparUpdate(body) {
   if (body.notes !== undefined) set.notes = String(body.notes || '');
   return set;
 }
+
+// ── LSPR: referência de capacidade por modelo IBM Z (consulta, dados públicos) ──
+router.get('/lspr/meta', asyncHandler(async (req, res) => {
+  const total = await LsprModel.estimatedDocumentCount();
+  const [generations, machineTypes, sample] = await Promise.all([
+    LsprModel.distinct('generation'),
+    LsprModel.distinct('machineType'),
+    LsprModel.findOne().select('source').lean(),
+  ]);
+  res.json({
+    total,
+    generations: generations.filter(Boolean).sort(),
+    machineTypes: machineTypes.filter(Boolean).sort(),
+    source: (sample && sample.source) || '',
+  });
+}));
+
+router.get('/lspr', asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.type) filter.machineType = String(req.query.type).trim();
+  if (req.query.generation) filter.generation = String(req.query.generation).trim();
+  const q = String(req.query.q || '').trim();
+  if (q) {
+    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$or = [{ model: rx }, { family: rx }, { generation: rx }, { machineType: rx }];
+  }
+  const limit = Math.min(Number(req.query.limit) || 50, 500);
+  const rows = await LsprModel.find(filter).sort({ machineType: 1, cps: 1 }).limit(limit).lean();
+  res.json(rows);
+}));
+
+router.get('/lspr/:model', asyncHandler(async (req, res) => {
+  const row = await LsprModel.findOne({ model: String(req.params.model || '').trim() }).lean();
+  if (!row) return res.status(404).json({ error: 'Modelo LSPR não encontrado.' });
+  res.json(row);
+}));
 
 // ── Sites ──
 router.get('/clients/:id/infra/sites', asyncHandler(async (req, res) => {
@@ -1267,6 +1338,7 @@ router.get('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
   // Cruza com o SCRT pelo serial (consumo/tag do último mês).
   const bySerial = await scrtBySerialLatest(client);
   for (const m of machines) m.scrt = bySerial.get(String(m.serial || '').trim().toUpperCase()) || null;
+  await attachLspr(machines); // referência de capacidade LSPR (m.lspr)
   res.json(machines);
 }));
 
@@ -1283,11 +1355,58 @@ router.post('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
   res.status(201).json(await InfraMachine.create({ client: client._id, ...set }));
 }));
 
+// Puxa as máquinas do último SCRT: cria as que faltam e atualiza type-model/LSPR
+// das existentes (casadas pelo serial). Liga automaticamente ao LSPR pelo type-model.
+router.post('/clients/:id/infra/machines/import-scrt', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const scrtMachines = await scrtLatestMachines(client);
+  if (!scrtMachines.length) {
+    return res.status(422).json({ error: 'Nenhum SCRT com máquinas encontrado para este cliente.' });
+  }
+
+  // Resolve de uma vez os type-models presentes no SCRT contra a tabela LSPR.
+  const typeModels = [...new Set(scrtMachines.map((m) => m.typeModel).filter(Boolean))];
+  const lsprRows = typeModels.length ? await LsprModel.find({ model: { $in: typeModels } }).lean() : [];
+  const lsprByModel = new Map(lsprRows.map((r) => [r.model, r]));
+
+  const existing = await InfraMachine.find({ client: client._id }).select('serial model lsprModel').lean();
+  const bySerial = new Map(existing.map((m) => [String(m.serial || '').trim().toUpperCase(), m]));
+
+  let created = 0;
+  let updated = 0;
+  let linked = 0;
+  for (const sm of scrtMachines) {
+    const lspr = sm.typeModel ? lsprByModel.get(sm.typeModel) : null;
+    if (lspr) linked++;
+    const cur = bySerial.get(sm.serial);
+    if (cur) {
+      const set = {};
+      if (lspr && cur.lsprModel !== lspr.model) set.lsprModel = lspr.model;
+      if (!cur.model && (lspr ? lspr.family : sm.typeModel)) set.model = lspr ? lspr.family : sm.typeModel;
+      if (Object.keys(set).length) { await InfraMachine.updateOne({ _id: cur._id }, { $set: set }); updated++; }
+    } else {
+      await InfraMachine.create({
+        client: client._id,
+        serial: sm.serial,
+        model: lspr ? lspr.family : (sm.typeModel || ''),
+        lsprModel: lspr ? lspr.model : '',
+        notes: sm.periodLabel ? `Importado do SCRT (${sm.periodLabel})` : 'Importado do SCRT',
+      });
+      created++;
+    }
+  }
+  res.json({ created, updated, linked, scanned: scrtMachines.length, periodLabel: scrtMachines[0].periodLabel });
+}));
+
 router.get('/clients/:id/infra/machines/:machineId', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id) || !isValidId(req.params.machineId)) return res.status(400).json({ error: 'Id inválido.' });
   const machine = await InfraMachine.findOne({ _id: req.params.machineId, client: req.params.id })
     .populate('site', 'name location role').lean();
   if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
+  await attachLspr([machine]);
   res.json(machine);
 }));
 

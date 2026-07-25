@@ -220,3 +220,18 @@ persistência que grava no MongoDB via API (em vez de localStorage).
 
 Historicamente essa página era gerada por um build a partir de um painel externo; isso foi
 removido — hoje ela é fonte de primeira classe, mantida no repositório.
+
+### Infraestrutura: LSPR e importação do SCRT
+
+O módulo de **Infraestrutura** (`/infra`) traz duas facilidades ligadas ao SCRT:
+
+- **Importar do SCRT** (aba Máquinas): cria uma máquina de infraestrutura para cada serial do
+  último SCRT do cliente e atualiza as já cadastradas (casadas pelo serial). Cada máquina é
+  ligada automaticamente à sua linha **LSPR** pelo *type-model* (ex.: `3931-705`).
+- **Referência LSPR** (capacidade por modelo IBM Z): MIPS, MSU, #CPs e #IFLs máximos por modelo,
+  vindos do zPCR *Configuration Summary*. São dados públicos da IBM, versionados em
+  [src/data/lspr.json](src/data/lspr.json) (~3.000 modelos) e carregados no banco no primeiro
+  start (idempotente). No cadastro da máquina há um seletor para conferir/ajustar o vínculo à mão.
+
+Consulta via API: `GET /api/lspr?q=<texto>&type=<9175>&generation=<z16>`, `GET /api/lspr/:model`,
+`GET /api/lspr/meta`. Para reimportar após uma versão nova do arquivo: `npm run import:lspr`.
