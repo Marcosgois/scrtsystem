@@ -1038,6 +1038,37 @@ router.put('/clients/:id/inventory', asyncHandler(async (req, res) => {
 }));
 
 /**
+ * Marcações manuais por registro (hoje "Demo/PoC"). Como os ajustes de par, fica
+ * fora do PUT do inventário — assim sobrevive à recarga do relatório e não obriga
+ * a reenviar milhares de produtos a cada clique.
+ */
+router.put('/clients/:id/inventory/flags', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const recebidos = req.body.productFlags;
+  if (!Array.isArray(recebidos)) {
+    return res.status(400).json({ error: 'Envie "productFlags" como lista.' });
+  }
+  const porChave = new Map(); // um registro por PID+serial; o último vale
+  for (const f of recebidos) {
+    const productId = String((f && f.productId) || '').trim();
+    const swSerial = String((f && f.swSerial) || '').trim();
+    if (!productId || !swSerial) {
+      return res.status(400).json({ error: 'Cada marcação precisa de PID e serial.' });
+    }
+    const flag = (f && f.flag) === 'demo' ? 'demo' : 'demo';
+    porChave.set(swKey(productId, swSerial), {
+      productId, swSerial, flag, note: String((f && f.note) || '').trim(), at: new Date(),
+    });
+  }
+  const productFlags = [...porChave.values()];
+  const inv = await Inventory.findOneAndUpdate(
+    { client: req.params.id }, { $set: { productFlags } }, { new: true }
+  ).select('productFlags').lean();
+  if (!inv) return res.status(404).json({ error: 'Este cliente ainda não tem inventário carregado.' });
+  res.json({ productFlags: inv.productFlags });
+}));
+
+/**
  * Ajustes manuais do par Licença ↔ S&S. O par é registro a registro, e o
  * registro é identificado por PID + SW Serial (o serial se repete entre PIDs).
  * Um ajuste por registro de S&S: licença preenchida força o par; nula desfaz

@@ -173,6 +173,24 @@ async function main() {
     r = await admin.req(`${C}/contracts/software-map`);
     check('software-map devolve as chaves PID|SERIAL', r.body.map['5655DT2|S1'] && r.body.map['5655DT2|S1'].number === 'CT-001', r.body.map);
 
+    // ── Demo/PoC: marcação por registro, também imune ao re-upload ──
+    r = await admin.req(`${C}/inventory/flags`, { method: 'PUT', json: { productFlags: [{ productId: '5655DT2', swSerial: 'S1', flag: 'demo' }] } });
+    check('marca um PID como Demo/PoC', r.status === 200 && r.body.productFlags.length === 1, r.body);
+
+    r = await admin.req(`${C}/inventory/flags`, { method: 'PUT', json: { productFlags: [{ productId: 'X' }] } });
+    check('marcação sem serial -> 400', r.status === 400, r.status);
+
+    r = await admin.req(`${C}/inventory/flags`, { method: 'PUT', json: { productFlags: 'nao-e-lista' } });
+    check('productFlags fora de lista -> 400', r.status === 400, r.status);
+
+    await inv([{ productId: 'OUTRO', swSerial: 'Z1', description: 'Outro', category: 'LICENCE', features: [] }]);
+    r = await admin.req(`${C}/inventory`);
+    check('Demo/PoC sobrevive ao re-upload do inventário',
+      (r.body.productFlags || []).length === 1 && r.body.productFlags[0].productId === '5655DT2', r.body.productFlags);
+
+    r = await admin.req(`${C}/inventory/flags`, { method: 'PUT', json: { productFlags: [] } });
+    check('lista vazia desmarca tudo', r.status === 200 && r.body.productFlags.length === 0, r.body);
+
     r = await admin.req(`${C}/contracts/${ct1}/software/unlink`, { method: 'POST', json: { items: [{ productId: '5655E90', swSerial: 'S2' }] } });
     check('unlink remove só o pedido', r.body.software.length === 1 && r.body.software[0].productId === '5655DT2', r.body.software);
 

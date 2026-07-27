@@ -192,6 +192,21 @@ const pairOverrideSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/*
+ * Marcação manual de um registro de software (identidade PID + SW Serial).
+ * Hoje só existe "demo" (Demo/PoC) — o enum deixa espaço para outras sem migração.
+ */
+const productFlagSchema = new mongoose.Schema(
+  {
+    productId: { type: String, required: true },
+    swSerial: { type: String, required: true },
+    flag: { type: String, enum: ['demo'], default: 'demo' },
+    note: { type: String, default: '' },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const inventorySchema = new mongoose.Schema(
   {
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, unique: true },
@@ -203,6 +218,9 @@ const inventorySchema = new mongoose.Schema(
     reportUpdatedAt: String, // data/hora exibida pelo app (string já formatada)
     warnings: [String],
     pairOverrides: { type: [pairOverrideSchema], default: [] },
+    // Marcações manuais por registro (hoje só "demo"). Como o pairOverrides, fica
+    // fora do $set do PUT do inventário para sobreviver à recarga do relatório.
+    productFlags: { type: [productFlagSchema], default: [] },
   },
   { timestamps: true }
 );

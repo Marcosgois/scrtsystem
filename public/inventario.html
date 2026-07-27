@@ -820,6 +820,47 @@
       color: #fff; background: transparent; border: 1px solid rgba(255, 255, 255, 0.35);
     }
     .home-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.6); }
+    /* Modal e botões usados pelos diálogos injetados por script (vincular ao
+       contrato, Demo/PoC). Esta página tem CSS próprio e não carrega o
+       styles.css, então precisa da própria cópia — sem ela o modal renderizava
+       como um bloco solto no fim da página, invisível. */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(22, 22, 22, 0.5); z-index: 2000;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-backdrop.hidden { display: none; }
+    .modal {
+      background: #fff; border-radius: 4px; padding: 24px 26px; width: 100%;
+      max-width: 460px; border: 1px solid #e0e0e0; box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+      max-height: 86vh; overflow-y: auto;
+    }
+    .modal h2 { font-size: 17px; font-weight: 600; margin: 0 0 4px; color: #161616; }
+    .modal-wide { max-width: 660px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .modal .btn {
+      display: inline-flex; align-items: center; gap: 7px; border: 1px solid transparent;
+      border-radius: 4px; padding: 8px 14px; font-family: var(--font); font-size: 13px;
+      font-weight: 500; cursor: pointer; white-space: nowrap; background: transparent;
+    }
+    .modal .btn-primary { background: #0f62fe; color: #fff; }
+    .modal .btn-primary:hover { background: #0353e9; }
+    .modal .btn-ghost { color: #0f62fe; border-color: #c6c6c6; }
+    .modal .btn-ghost:hover { background: #edf5ff; border-color: #0f62fe; }
+    .modal .btn-danger-ghost { color: #da1e28; border-color: #c6c6c6; }
+    .modal .btn-danger-ghost:hover { background: #fff1f1; border-color: #da1e28; }
+    .modal .form-error {
+      color: #da1e28; font-size: 12.5px; margin: 8px 0 0;
+      padding: 8px 10px; background: #fff1f1; border-radius: 4px;
+    }
+    .modal .form-error.hidden { display: none; }
+    .modal .muted { color: #525252; }
+    .modal .small { font-size: 12px; }
+    .tfp-demo-tag {
+      display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 600;
+      padding: 1px 7px; border-radius: 999px;
+      background: #fcf4d6; color: #8e6a00; border: 1px solid #f1c21b;
+    }
+    .tfp-pair-btn.tfp-demo-on { background: #fcf4d6; color: #8e6a00; border-color: #f1c21b; }
     .tfp-suggest {
       margin: 10px 0; padding: 10px 12px; border-radius: 4px; font-size: 12.5px;
       background: #edf5ff; border-left: 3px solid #0f62fe; color: #161616;
@@ -2662,6 +2703,7 @@
   let pairOverrides = []; // [{ ssPid, licPid|null }]
   let contractMap = {};   // "PID|SERIAL" -> { contract, number, name, status }
   let contractList = [];  // contratos do cliente, com signedAt (base da sugestão)
+  let productFlags = [];  // marcações manuais por registro (hoje só Demo/PoC)
 
   /* Selo do contrato que cobre este registro (vazio quando não há vínculo). */
   function contractTag(prod) {
@@ -2792,6 +2834,7 @@
           updatedAt: inv.reportUpdatedAt || new Date(inv.updatedAt).toLocaleString('pt-BR'),
           products: normalizeProducts(inv.products || []),
           pairOverrides: inv.pairOverrides || [],
+          productFlags: inv.productFlags || [],
         };
         invStore[clientId] = item;
         if (inv.warnings && inv.warnings.length) showBanner(inv.warnings);
@@ -2812,6 +2855,9 @@
     contractList = item.contractList || [];
     activeClientId = clientId;
     pairOverrides = item.pairOverrides || [];
+    productFlags = item.productFlags || [];
+    // O contador do filtro só sabe quantos são depois que o cliente carrega.
+    if (typeof updateDemoBtn === 'function') updateDemoBtn();
     globalInventoryData = item.products;
     clientInfo = { name: item.clientName, number: item.customerNumber };
     displayInventory(clientInfo, globalInventoryData, item.updatedAt);
@@ -3634,6 +3680,49 @@
     });
   };
 
+
+  /* ── Demo/PoC ───────────────────────────────────────────────────────────
+     Marcação manual por registro (PID + serial). Fica fora do PUT do inventário,
+     igual aos ajustes de par, então sobrevive à recarga do relatório. */
+  const isDemo = (prod) => productFlags.some(
+    (f) => f.flag === 'demo' && f.productId === prod.productId && f.swSerial === prod.swSerial
+  );
+
+  function demoTag(prod) {
+    return isDemo(prod) ? ' <span class="tfp-demo-tag" title="Marcado como Demo/PoC">Demo/PoC</span>' : '';
+  }
+
+  function demoBtn(prod) {
+    const marcado = isDemo(prod);
+    const args = `'${escHtml(prod.productId)}', '${escHtml(prod.swSerial)}'`;
+    return `<button type="button" class="tfp-pair-btn${marcado ? ' tfp-demo-on' : ''}"`
+      + ` onclick="tfpToggleDemo(event, ${args})"`
+      + ` title="${marcado ? 'Desmarcar Demo/PoC' : 'Marcar este registro como Demo/PoC'}">`
+      + `${marcado ? '✓ Demo/PoC' : 'Demo/PoC'}</button>`;
+  }
+
+  window.tfpToggleDemo = async function (ev, productId, swSerial) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    if (!activeClientId) return;
+    const chave = (f) => f.productId === productId && f.swSerial === swSerial;
+    const jaTem = productFlags.some((f) => f.flag === 'demo' && chave(f));
+    const novos = jaTem
+      ? productFlags.filter((f) => !chave(f))
+      : productFlags.concat([{ productId, swSerial, flag: 'demo' }]);
+    try {
+      const r = await invApi(`/clients/${activeClientId}/inventory/flags`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productFlags: novos }),
+      });
+      productFlags = r.productFlags || [];
+      if (invStore[activeClientId]) invStore[activeClientId].productFlags = productFlags;
+      if (typeof updateDemoBtn === 'function') updateDemoBtn();
+      if (typeof window.renderAllTables === 'function') window.renderAllTables();
+    } catch (e) {
+      alert(`Não foi possível salvar a marcação: ${e.message}`);
+    }
+  };
+
   function pairControls(prod, paired) {
     if (prod.category !== 'SS') return '';
     const ajustado = pairOverrides.some(
@@ -3681,7 +3770,9 @@
     }
     categoria += pairControls(prod, Boolean(paired));
     categoria += contractTag(prod);
+    categoria += demoTag(prod);
     categoria += contractLinkBtn(prod);
+    categoria += demoBtn(prod);
 
     row.innerHTML =
       `<td><strong>${escHtml(prod.productId)}</strong></td>` +
@@ -3751,11 +3842,16 @@
 
   // O painel usa getFilteredData nas tabelas e nas exportações — filtrar aqui
   // faz o "ocultar" valer para os dois, como os demais filtros.
+  const DEMO_KEY = 'tfp.inv.hideDemo';
+  let hideDemo = localStorage.getItem(DEMO_KEY) === '1';
+
   if (typeof window.getFilteredData === 'function') {
     const origGetFiltered = window.getFilteredData;
     window.getFilteredData = function () {
-      const data = origGetFiltered.apply(this, arguments);
-      return hideMsuReg ? data.filter((p) => !isMsuRegistration(p)) : data;
+      let data = origGetFiltered.apply(this, arguments);
+      if (hideMsuReg) data = data.filter((p) => !isMsuRegistration(p));
+      if (hideDemo) data = data.filter((p) => !isDemo(p));
+      return data;
     };
   }
 
@@ -3765,6 +3861,16 @@
     btn.classList.toggle('tfp-toggle-on', hideMsuReg);
     btn.setAttribute('aria-pressed', hideMsuReg ? 'true' : 'false');
     btn.textContent = hideMsuReg ? 'Mostrar MSU registration' : 'Ocultar MSU registration';
+  }
+
+  function updateDemoBtn() {
+    const btn = document.getElementById('tfp-hide-demo');
+    if (!btn) return;
+    const n = productFlags.filter((f) => f.flag === 'demo').length;
+    btn.classList.toggle('tfp-toggle-on', hideDemo);
+    btn.setAttribute('aria-pressed', hideDemo ? 'true' : 'false');
+    btn.textContent = hideDemo ? `Mostrar Demo/PoC (${n})` : `Ocultar Demo/PoC (${n})`;
+    btn.style.display = n ? '' : 'none'; // só aparece quando existe algo marcado
   }
 
   function injectMsuRegButton() {
@@ -3793,8 +3899,24 @@
       if (typeof window.renderAllTables === 'function') window.renderAllTables();
     });
     group.appendChild(btn);
+
+    const btnDemo = document.createElement('button');
+    btnDemo.type = 'button';
+    btnDemo.id = 'tfp-hide-demo';
+    btnDemo.className = 'btn-filter tfp-toggle';
+    btnDemo.style.marginBottom = '6px';
+    btnDemo.title = 'Esconder/mostrar os registros marcados como Demo/PoC';
+    btnDemo.addEventListener('click', () => {
+      hideDemo = !hideDemo;
+      localStorage.setItem(DEMO_KEY, hideDemo ? '1' : '0');
+      updateDemoBtn();
+      if (typeof window.renderAllTables === 'function') window.renderAllTables();
+    });
+    group.appendChild(btnDemo);
+
     group.appendChild(exportWrap); // move o "Exportar" pra dentro do grupo
     updateMsuRegBtn();
+    updateDemoBtn();
   }
 
   /**

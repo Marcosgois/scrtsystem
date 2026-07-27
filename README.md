@@ -238,6 +238,15 @@ Na infraestrutura, cada máquina tem o mesmo botão, e clicar na máquina abre o
 contrato, total de MIPS pelo capacity marker (LSPR), configuração e as **LPARs que o SCRT
 reporta** para ela — sem precisar cadastrá-las à mão.
 
+**Demo/PoC.** Cada registro de software pode ser marcado como **Demo/PoC** (botão na linha).
+A marcação é por PID + serial e, como os ajustes de par e os vínculos de contrato, fica fora do
+PUT do inventário — ou seja, **sobrevive à recarga do relatório**. Um botão ao lado de
+"Ocultar MSU registration" esconde/mostra os marcados, e o filtro vale também nas exportações.
+
+**Atalho por cliente.** Quem está logado vê, na página inicial, uma caixinha por cliente a que
+tem acesso (a API já devolve só os permitidos). Clicar abre o **Consumo zOTC** com aquele
+cliente selecionado.
+
 ### Infraestrutura: LSPR e importação do SCRT
 
 O módulo de **Infraestrutura** (`/infra`) traz duas facilidades ligadas ao SCRT:

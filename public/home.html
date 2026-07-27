@@ -68,6 +68,26 @@
     .btn-hero.ghost { color: #fff; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.22); }
     .btn-hero.ghost:hover { background: rgba(255,255,255,0.12); }
 
+    /* Caixinhas de cliente (só para quem está logado) */
+    .clients { max-width: 1180px; margin: 0 auto; padding: 10px 28px 20px; }
+    .clients.hidden { display: none; }
+    .client-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+    .client-card {
+      display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-radius: 12px;
+      text-decoration: none; color: inherit; cursor: pointer; text-align: left; width: 100%;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+      font-family: var(--font); transition: transform .16s ease, border-color .16s ease, background .16s ease;
+    }
+    .client-card:hover { transform: translateY(-3px); border-color: rgba(120,169,255,0.55); background: rgba(255,255,255,0.07); }
+    .client-mark {
+      width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center;
+      font-weight: 700; font-size: 13px; letter-spacing: 0.4px; color: #fff;
+      background: linear-gradient(135deg, #0f62fe, #6929c4);
+    }
+    .client-info { min-width: 0; }
+    .client-info strong { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .client-info span { font-size: 11.5px; color: rgba(244,244,244,0.55); }
+
     /* Módulos */
     .modules { max-width: 1180px; margin: 0 auto; padding: 30px 28px 90px; }
     .modules-head { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(244,244,244,0.42); margin-bottom: 18px; }
@@ -124,6 +144,11 @@
       </div>
     </header>
 
+
+    <section class="clients hidden" id="clients-section">
+      <div class="modules-head" id="clients-head">Seus clientes</div>
+      <div class="client-grid" id="client-grid"></div>
+    </section>
     <section class="modules" id="modulos">
       <div class="modules-head reveal" id="r-mhead">Cinco módulos, um só sistema</div>
       <div class="module-grid">
@@ -177,9 +202,51 @@
           cta.firstChild.textContent = 'Abrir painel ';
           nav.setAttribute('href', '/consumo');
           nav.textContent = 'Abrir painel';
+          await renderClients();
         }
       } catch (_) { /* ignora — CTA continua em /login */ }
     })();
+
+    /* Caixinhas dos clientes a que o usuário tem acesso. A API já devolve só os
+       permitidos, então nada extra vaza aqui. Clicar leva ao Consumo zOTC com o
+       cliente já selecionado (mesma chave que os módulos usam). */
+    async function renderClients() {
+      let clients = [];
+      try { clients = await fetch('/api/clients').then((r) => (r.ok ? r.json() : [])); } catch (_) { return; }
+      if (!clients.length) return;
+
+      const esc = (t) => String(t == null ? '' : t)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const iniciais = (nome) => {
+        const p = String(nome || '?').trim().split(/\s+/).filter(Boolean);
+        return (p.length >= 2 ? p[0][0] + p[1][0] : String(nome || '?').slice(0, 2)).toUpperCase();
+      };
+      const legenda = (c) => {
+        if (c.accessLevel === 'view') return 'somente leitura';
+        return c.reportCount ? `${c.reportCount} SCRT${c.reportCount > 1 ? 's' : ''}` : 'sem SCRT ainda';
+      };
+
+      const grid = document.getElementById('client-grid');
+      grid.innerHTML = clients.map((c) => `
+        <button type="button" class="client-card" data-client="${esc(c._id)}">
+          <span class="client-mark">${esc(iniciais(c.name))}</span>
+          <span class="client-info"><strong>${esc(c.name)}</strong><span>${esc(legenda(c))}</span></span>
+        </button>`).join('');
+      document.getElementById('clients-head').textContent =
+        clients.length === 1 ? 'Seu cliente' : `Seus clientes (${clients.length})`;
+      document.getElementById('clients-section').classList.remove('hidden');
+
+      if (window.gsap && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        gsap.fromTo(grid.children, { y: 14, opacity: 0 },
+          { y: 0, opacity: 1, stagger: 0.05, duration: 0.5, ease: 'power3.out' });
+      }
+
+      grid.querySelectorAll('[data-client]').forEach((b) => b.addEventListener('click', () => {
+        // Mesma chave que os módulos leem para saber o cliente ativo.
+        localStorage.setItem('tfp.clientId', b.dataset.client);
+        location.href = '/consumo';
+      }));
+    }
   </script>
   <script src="home.js"></script>
 </body>
