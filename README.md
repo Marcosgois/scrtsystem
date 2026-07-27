@@ -247,6 +247,24 @@ PUT do inventário — ou seja, **sobrevive à recarga do relatório**. Um botã
 tem acesso (a API já devolve só os permitidos). Clicar abre o **Consumo zOTC** com aquele
 cliente selecionado.
 
+### Celular e tablet
+
+Todas as telas funcionam no celular. As regras vivem em `public/styles.css` (e, espelhadas,
+no `<style>` do `public/inventario.html`, que tem CSS próprio):
+
+- **≤900px** — a barra do topo empilha: marca e navegação numa linha (a navegação rola na
+  horizontal), ações na linha de baixo, podendo quebrar entre si. Ela também deixa de ser
+  *sticky*: empilhada ficaria alta demais e comeria meia tela ao rolar.
+- **≤720px** — KPIs em duas colunas, formulários e barras de filtro em coluna única, abas
+  roláveis, modais quase em tela cheia com rolagem interna, e o cabeçalho dos modais grandes
+  com o título em cima e as ações embaixo.
+- **≤420px** — KPIs em uma coluna (os valores de MSU são longos) e botões da barra em dupla.
+
+Tabela larga **rola dentro do próprio card**, nunca a página. Para isso valem duas regras que
+é fácil errar: contêineres de flex/grid precisam de `min-width: 0`, e o grid de duas colunas
+usa `minmax(0, 1fr)` — com `1fr` puro o piso implícito de `min-content` faz a tabela esticar a
+coluna e a página inteira passa a rolar na horizontal.
+
 ### Infraestrutura: LSPR e importação do SCRT
 
 O módulo de **Infraestrutura** (`/infra`) traz duas facilidades ligadas ao SCRT:

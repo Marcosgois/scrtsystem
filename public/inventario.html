@@ -891,6 +891,55 @@
     body.view-only [data-requires-edit] { display: none !important; }
     body:not(.is-admin) [data-requires-admin] { display: none !important; }
 
+
+    /* ── Celular e tablet (esta página tem CSS próprio) ─────────────────────
+       Mesma inversão do styles.css: no desktop quem cede é a navegação; no
+       celular as ações ganham a própria linha e podem quebrar, senão travariam
+       a largura e a página inteira rolaria na horizontal. */
+    @media (max-width: 900px) {
+      /* Empilhada ela fica alta demais para ficar grudada no topo. */
+      .tfp-topbar { position: static; }
+      .tfp-topbar-inner { flex-wrap: wrap; padding: 0 14px; gap: 0 12px; }
+      .tfp-brand { flex: 1 1 100%; gap: 12px; min-width: 0; }
+      .tfp-topbar-actions { flex: 1 1 100%; flex-wrap: wrap; gap: 8px; padding: 0 0 10px; }
+      .tfp-client-select-wrap { flex: 1 1 auto; min-width: 0; }
+      .tfp-client-select { max-width: 100%; width: 100%; }
+      .container { padding: 14px 12px; }
+    }
+    @media (max-width: 720px) {
+      html { font-size: 14.5px; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-card { padding: 12px 13px; }
+      .kpi-card .value { font-size: 19px; }
+
+      /* Cartão de seleção de cliente e barras de botões empilham. */
+      .client-select-card { flex-direction: column; align-items: stretch !important; gap: 10px; }
+      .client-select-card > div { flex-direction: column; align-items: stretch !important; gap: 8px; }
+      .client-select-card select { min-width: 0 !important; width: 100%; }
+      .nav-tabs { overflow-x: auto; scrollbar-width: none; gap: 6px; }
+      .nav-tabs::-webkit-scrollbar { display: none; }
+      .nav-tabs > * { white-space: nowrap; }
+
+      /* As tabelas do painel não têm wrapper próprio: quem rola é o contêiner
+         da aba (e o corpo do modal). Sem isso a PÁGINA é que rolaria. */
+      .tab-content, .modal-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .tab-content > table, .modal-body table { min-width: 620px; }
+
+      .modal { padding: 16px 16px 18px; max-height: 92vh; overflow-y: auto; width: 100%; }
+      .modal-backdrop { padding: 10px; align-items: flex-start; }
+      .modal-actions { flex-wrap: wrap; }
+      .modal-actions .btn { flex: 1 1 auto; justify-content: center; }
+      .tfp-ct-list { max-height: 50vh; }
+      /* As barras de filtro do painel usam flex com estilo INLINE (nowrap), então
+         só um !important vence — sem isso o 2º campo de data fica fora da tela. */
+      .filter-bar, .filter-bar div { flex-wrap: wrap !important; }
+      .filter-bar input[type="date"] { flex: 1 1 130px; min-width: 0; }
+      .filter-bar select, .filter-bar input[type="search"] { max-width: 100%; }
+    }
+    @media (max-width: 420px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+    }
+
     /* Cede em etapas, igual ao styles.css das outras páginas. */
     @media (max-width: 1500px) {
       .tfp-brand > div:not(.tfp-brand-mark) { display: none; }
