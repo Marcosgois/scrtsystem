@@ -176,6 +176,42 @@ async function main() {
     r = await admin.req(`${C}/contracts/${ct1}/software/unlink`, { method: 'POST', json: { items: [{ productId: '5655E90', swSerial: 'S2' }] } });
     check('unlink remove só o pedido', r.body.software.length === 1 && r.body.software[0].productId === '5655DT2', r.body.software);
 
+    /* ══════════ BLOCO 3b — termos aditivos ══════════ */
+    console.log('\n— termos aditivos —');
+    await admin.req(`${C}/contracts/${ct1}`, { method: 'PUT', json: { totalValue: 1000 } });
+    r = await admin.req(`${C}/contracts`, { method: 'POST', json: { number: 'CT-001-A1', name: '1º aditivo', totalValue: 250, parentContract: ct1 } });
+    check('cria termo aditivo -> 201', r.status === 201 && String(r.body.parentContract) === String(ct1), r.body);
+    const ad1 = r.body._id;
+
+    r = await admin.req(`${C}/contracts`, { method: 'POST', json: { number: 'CT-001-A2', totalValue: 150, parentContract: ct1 } });
+    check('cria 2º aditivo', r.status === 201, r.status);
+
+    r = await admin.req(`${C}/contracts`, { method: 'POST', json: { number: 'CT-001-A1-X', totalValue: 10, parentContract: ad1 } });
+    check('aditivo de aditivo -> 422', r.status === 422, r.status);
+
+    r = await admin.req(`${C}/contracts`, { method: 'POST', json: { number: 'X', parentContract: '64b7f9c2d1e4a5b6c7d8e9f0' } });
+    check('pai inexistente -> 422', r.status === 422, r.status);
+
+    r = await admin.req(`${C}/contracts`);
+    const pai = r.body.find((c) => c._id === ct1);
+    check('lista soma os aditivos ao contrato (1000 + 250 + 150)',
+      pai.amendmentCount === 2 && pai.amendmentValue === 400 && pai.totalWithAmendments === 1400, {
+        n: pai.amendmentCount, ad: pai.amendmentValue, total: pai.totalWithAmendments });
+
+    r = await admin.req(`${C}/contracts/${ct1}`);
+    check('detalhe traz os aditivos e o total consolidado',
+      r.body.amendments.length === 2 && r.body.totalWithAmendments === 1400, r.body.totalWithAmendments);
+
+    r = await admin.req(`${C}/contracts/${ad1}`);
+    check('detalhe do aditivo aponta o contrato de origem', r.body.parent && r.body.parent.number === 'CT-001', r.body.parent);
+
+    r = await admin.req(`${C}/contracts/${ct1}`, { method: 'DELETE' });
+    check('excluir contrato com aditivos -> 422', r.status === 422 && /aditivo/.test(r.body.error), r.body);
+
+    r = await admin.req(`${C}/contracts/software-map`);
+    check('software-map traz signedAt/parentContract para a sugestão',
+      r.body.contracts.every((c) => 'signedAt' in c && 'parentContract' in c), r.body.contracts[0]);
+
     /* ══════════ BLOCO 4 — MO / MES ══════════ */
     console.log('\n— MO / MES —');
     await runMigrationTests(admin, C, m1, site, mkMachine, ct1);
@@ -195,9 +231,12 @@ async function main() {
     r = await view.req(`/clients/${bb._id}/contracts`);
     check('cliente sem acesso -> 403', r.status === 403, r.status);
 
-    // Exclusão do contrato limpa vínculos sem apagar máquinas
+    // Exclusão do contrato limpa vínculos sem apagar máquinas.
+    // Os aditivos têm de sair antes (o contrato-pai se recusa a levá-los junto).
+    const doPai = (await admin.req(`${C}/contracts/${ct1}`)).body.amendments || [];
+    for (const a of doPai) await admin.req(`${C}/contracts/${a._id}`, { method: 'DELETE' });
     r = await admin.req(`${C}/contracts/${ct1}`, { method: 'DELETE' });
-    check('DELETE do contrato -> ok', r.status === 200, r.status);
+    check('DELETE do contrato (após remover os aditivos) -> ok', r.status === 200, { status: r.status, err: r.body && r.body.error });
     check('PDF removido do disco', !fs.existsSync(path.join(FILES_DIR, String(fid))));
     r = await admin.req(`${C}/infra/machines`);
     check('máquinas continuam existindo, sem contrato', r.body.length > 0 && r.body.every((m) => !m.contract), r.body.map((m) => m.contract));
@@ -309,6 +348,15 @@ async function runMigrationTests(admin, C, m1, site, mkMachine, ct1) {
   await admin.req(`${C}/infra/lpars`, { method: 'POST', json: { machine: nova, name: 'NOVA-LPAR', os: 'linux' } });
   r = await admin.req(`${C}/migrations/${mo}/desfazer`, { method: 'POST' });
   check('desfazer MO com LPAR própria na nova -> 422', r.status === 422, { status: r.status, err: r.body && r.body.error });
+
+  // ── Detalhes da máquina ──
+  r = await admin.req(`${C}/infra/machines/${m1._id}/detalhes`);
+  check('detalhes trazem a máquina com LSPR e contrato',
+    r.status === 200 && r.body.machine && r.body.machine.lspr && 'contractRef' in r.body.machine, {
+      status: r.status, temLspr: !!(r.body.machine && r.body.machine.lspr) });
+  check('detalhes trazem o total de MIPS do capacity marker', r.body.machine.lspr.mips > 0, r.body.machine.lspr);
+  check('detalhes trazem as LPARs cadastradas', Array.isArray(r.body.lpars), typeof r.body.lpars);
+  check('detalhes trazem os eventos de MO/MES', (r.body.events || []).length >= 1, (r.body.events || []).length);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

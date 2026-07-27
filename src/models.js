@@ -361,6 +361,10 @@ const contractSchema = new mongoose.Schema(
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     number: { type: String, required: true, trim: true }, // identificação do contrato
     name: { type: String, default: '' },                  // apelido: "MO z16 → z17 SCN 2026"
+    // Termo aditivo: um contrato filho, com número, vigência, valores e arquivos
+    // próprios. O valor dele SOMA ao do contrato original na visão consolidada.
+    // Um nível só — aditivo de aditivo não existe.
+    parentContract: { type: mongoose.Schema.Types.ObjectId, ref: 'Contract', default: null, index: true },
     type: { type: String, enum: ['hardware', 'software', 'servicos', 'misto'], default: 'misto' },
     vendor: { type: String, default: 'IBM' },
     status: { type: String, enum: ['rascunho', 'vigente', 'encerrado', 'cancelado'], default: 'vigente' },

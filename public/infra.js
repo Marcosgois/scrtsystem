@@ -174,7 +174,7 @@ function lparChip(l) {
 function machineCardCompact(m) {
   const lps = lparsOfMachine(m._id);
   const grad = /linuxone/i.test(m.model) ? 'grad-linuxone' : 'grad-z';
-  return `<button type="button" class="infra-machine-card${m.status !== 'ativa' ? ' dormant' : ''}" data-open-lpars="${m._id}" title="Ver LPARs">
+  return `<button type="button" class="infra-machine-card${m.status !== 'ativa' ? ' dormant' : ''}" data-open-lpars="${m._id}" title="Ver detalhes da máquina">
     <div class="imc-head">
       <span class="imc-mark ${grad}"></span>
       <span class="imc-id"><strong>${esc(m.model || 'Máquina')}</strong>${m.featureModel ? ` <span class="muted small">${esc(m.featureModel)}</span>` : ''}
@@ -224,7 +224,7 @@ function renderOverview() {
 }
 
 function wireOverview(el) {
-  el.querySelectorAll('[data-open-lpars]').forEach((b) => b.addEventListener('click', () => openLparsModal(b.dataset.openLpars)));
+  el.querySelectorAll('[data-open-lpars]').forEach((b) => b.addEventListener('click', () => abrirDetalhes(b.dataset.openLpars)));
   el.querySelectorAll('[data-edit-site]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); openSiteModal(b.dataset.editSite); }));
 }
 
@@ -297,7 +297,7 @@ function renderMachineRows() {
     }
     const lpc = lparsOfMachine(m._id).length;
     return `<tr class="${m.status === 'substituida' ? 'machine-replaced' : (m.status !== 'ativa' ? 'machine-dormant' : '')}">
-      <td><span class="imc-mark ${grad} inline"></span><strong>${esc(m.model || '—')}</strong>${m.variant ? ` <span class="muted small">${esc(m.variant)}</span>` : ''}${m.featureModel ? `<div class="muted small">${esc(m.featureModel)}</div>` : ''}${statusBadge(m)}</td>
+      <td><span class="imc-mark ${grad} inline"></span><button type="button" class="btn-link" data-detail="${m._id}" title="Ver detalhes"><strong>${esc(m.model || '—')}</strong></button>${m.variant ? ` <span class="muted small">${esc(m.variant)}</span>` : ''}${m.featureModel ? `<div class="muted small">${esc(m.featureModel)}</div>` : ''}${statusBadge(m)}</td>
       <td>${siteCell}</td>
       <td class="mono">${esc(m.serial || '—')}</td>
       <td>${engineTotal(m) ? `<strong>${fmt(engineTotal(m))}</strong><div class="muted small">${engineBreakdown(m)}</div>` : '<span class="muted small">—</span>'}</td>
@@ -309,6 +309,8 @@ function renderMachineRows() {
       <td class="infra-actions">
         <button class="row-action" data-lpars="${m._id}" title="LPARs (${lpc})">${iconCpu()}</button>
         <button class="row-action" data-config="${m._id}" title="Arquivos de configuração">${iconFile()}</button>
+        <button class="row-action" data-detail="${m._id}" title="Detalhes da máquina">${iconInfo()}</button>
+        <button class="row-action" data-requires-edit data-ct="${m._id}" title="Vincular ao contrato">${iconDoc()}</button>
         <button class="row-action" data-requires-edit data-migrate="${m._id}" title="Migrar (MO/MES)">${iconMigrate()}</button>
         <button class="row-action" data-hist="${m._id}" title="Histórico">${iconClock()}</button>
         <button class="row-action" data-edit="${m._id}" title="Editar">${iconEdit()}</button>
@@ -320,6 +322,12 @@ function renderMachineRows() {
   tbody.querySelectorAll('[data-config]').forEach((b) => b.addEventListener('click', () => openConfigModal(b.dataset.config)));
   tbody.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openMachineModal(b.dataset.edit)));
   tbody.querySelectorAll('[data-migrate]').forEach((b) => b.addEventListener('click', () => openMigrar(b.dataset.migrate)));
+  tbody.querySelectorAll('[data-detail]').forEach((b) => b.addEventListener('click', () =>
+    abrirDetalhes(b.dataset.detail)));
+  tbody.querySelectorAll('[data-ct]').forEach((b) => b.addEventListener('click', () => {
+    const m = state.machines.find((x) => x._id === b.dataset.ct);
+    if (m) window.openMachineContractModal({ clientId: state.clientId, machine: m, onChanged: loadInfra });
+  }));
   tbody.querySelectorAll('[data-hist]').forEach((b) => b.addEventListener('click', () =>
     window.openMachineHistoryModal({ clientId: state.clientId, machineId: b.dataset.hist })));
   tbody.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => deleteMachine(b.dataset.del)));
@@ -511,6 +519,17 @@ async function importFromScrt() {
 
 /* Abre a proposta de MO/MES. Na visão geral o card da máquina já é um <button>,
    então os botões de migrar/histórico vivem no cabeçalho do modal de LPARs. */
+/** Detalhes da máquina, com atalho para LPARs e para a migração. */
+function abrirDetalhes(machineId) {
+  window.openMachineDetailModal({
+    clientId: state.clientId,
+    machineId,
+    onChanged: loadInfra,
+    onOpenLpars: (id) => openLparsModal(id),
+    onMigrate: (id) => openMigrar(id),
+  });
+}
+
 function openMigrar(machineId) {
   const m = state.machines.find((x) => x._id === machineId);
   if (!m) return;
@@ -755,6 +774,8 @@ const iconCpu = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="non
 const iconFile = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M9 1.5H4.5A1 1 0 0 0 3.5 2.5v11a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5L9 1.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9 1.5V5h3.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconEdit = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M11 2.5l2.5 2.5L6 12.5l-3 .5.5-3L11 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconTrash = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const iconInfo = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 7.2v3.4M8 5.3v.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+const iconDoc = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M9.5 1.8H4.5a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V4.8L9.5 1.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.5 1.8v3h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconMigrate = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 5.5h9M8.5 3 11 5.5 8.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 10.5H5M7.5 8 5 10.5 7.5 13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const iconClock = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3.2l2 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 const iconDownload = () => '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v7M5 6.5 8 9.5l3-3M3 12.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';

@@ -811,6 +811,28 @@
     .user-pop-item.danger { color: var(--danger); }
     .user-pop-item.danger:hover { background: #fff1f1; }
 
+    /* Botão Home injetado pelo auth-client (esta página tem CSS próprio). */
+    .home-btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 10px; border-radius: 4px; font-size: 12.5px; font-weight: 500;
+      font-family: var(--font); text-decoration: none; white-space: nowrap;
+      color: #fff; background: transparent; border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+    .home-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.6); }
+    .tfp-suggest {
+      margin: 10px 0; padding: 10px 12px; border-radius: 4px; font-size: 12.5px;
+      background: #edf5ff; border-left: 3px solid #0f62fe; color: #161616;
+    }
+    .tfp-ct-list { max-height: 46vh; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; }
+    .tfp-ct-opt {
+      display: block; width: 100%; text-align: left; background: #fff; border: none;
+      border-bottom: 1px solid #e0e0e0; padding: 10px 12px; cursor: pointer;
+      font-family: var(--font); font-size: 13px; color: #161616;
+    }
+    .tfp-ct-opt:last-child { border-bottom: none; }
+    .tfp-ct-opt:hover { background: #f2f4f8; }
+    .tfp-ct-opt.sugerido { border-left: 3px solid #0f62fe; background: #f7fbff; }
+    .tfp-ct-opt.atual { border-left: 3px solid #198038; }
     .tfp-contract-tag {
       display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 600;
       padding: 1px 7px; border-radius: 999px; text-decoration: none;
@@ -2632,6 +2654,7 @@
   let activeClientId = null;
   let pairOverrides = []; // [{ ssPid, licPid|null }]
   let contractMap = {};   // "PID|SERIAL" -> { contract, number, name, status }
+  let contractList = [];  // contratos do cliente, com signedAt (base da sugestão)
 
   /* Selo do contrato que cobre este registro (vazio quando não há vínculo). */
   function contractTag(prod) {
@@ -2775,9 +2798,11 @@
       try {
         const r = await invApi(`/clients/${clientId}/contracts/software-map`);
         item.contractMap = r.map || {};
-      } catch (e) { item.contractMap = {}; }
+        item.contractList = r.contracts || [];
+      } catch (e) { item.contractMap = {}; item.contractList = []; }
     }
     contractMap = item.contractMap;
+    contractList = item.contractList || [];
     activeClientId = clientId;
     pairOverrides = item.pairOverrides || [];
     globalInventoryData = item.products;
@@ -3472,6 +3497,136 @@
   }
 
   /** Botões de ajuste manual, só nas linhas de S&S da visão "Todos". */
+
+  /* ── Vincular software ao contrato ──────────────────────────────────────
+     A sugestão compara a Eff. Date do software com a data de assinatura do
+     contrato: vale o contrato assinado MAIS RECENTE que seja anterior (ou igual)
+     à Eff. Date — é o que estava vigente quando o software entrou. Sem nenhum
+     anterior, cai no assinado mais próximo. */
+  function parseEffDate(v) {
+    const t = String(v || '').trim();
+    if (!t || t === '-') return null;
+    let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);            // 2026-01-31
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    m = t.match(/^(\d{2})[./-](\d{2})[./-](\d{4})/);        // 31.01.2026 / 31/01/2026
+    if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    const d = new Date(t);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function suggestContract(prod) {
+    const eff = parseEffDate(prod && prod.effDate);
+    const comData = contractList.filter((c) => c.signedAt || c.startDate);
+    if (!comData.length) return null;
+    const dataDe = (c) => contractDay(c.signedAt || c.startDate);
+    if (!eff) return null;
+    const anteriores = comData.filter((c) => dataDe(c) <= eff).sort((a, b) => dataDe(b) - dataDe(a));
+    if (anteriores.length) {
+      return { contract: anteriores[0], motivo: `assinado em ${fmtDia(dataDe(anteriores[0]))}, antes da Eff. Date ${escHtml(prod.effDate)}` };
+    }
+    const maisProximo = comData.slice().sort((a, b) => Math.abs(dataDe(a) - eff) - Math.abs(dataDe(b) - eff))[0];
+    return { contract: maisProximo, motivo: `assinatura mais próxima da Eff. Date (${fmtDia(dataDe(maisProximo))})` };
+  }
+
+  /* Datas de contrato são "dia", não instante: usa os componentes da string ISO
+     para não cair um dia por causa do fuso. */
+  function contractDay(v) {
+    const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const fmtDia = (d) => (d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}` : '—');
+
+  function contractLinkBtn(prod) {
+    const ligado = contractMap[recKey(prod).toUpperCase()];
+    const args = `'${escHtml(prod.productId)}', '${escHtml(prod.swSerial)}'`;
+    return `<button type="button" class="tfp-pair-btn" onclick="tfpLinkContract(event, ${args})"`
+      + ` title="${ligado ? 'Trocar ou remover o contrato' : 'Vincular este registro a um contrato'}">`
+      + `${ligado ? 'contrato' : '+ contrato'}</button>`;
+  }
+
+  window.tfpLinkContract = function (ev, productId, swSerial) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    const prod = (globalInventoryData || []).find((p) => p.productId === productId && p.swSerial === swSerial);
+    if (!prod) return;
+    if (!contractList.length) { alert('Nenhum contrato cadastrado para este cliente. Cadastre em Contratos.'); return; }
+
+    const atual = contractMap[recKey(prod).toUpperCase()];
+    const sug = suggestContract(prod);
+    // Aditivo também entra: ele pode ser justamente o que cobriu este software.
+    const ordenados = sug
+      ? [sug.contract].concat(contractList.filter((c) => c._id !== sug.contract._id))
+      : contractList.slice();
+
+    const bk = document.createElement('div');
+    bk.className = 'modal-backdrop';
+    bk.innerHTML = `
+      <div class="modal modal-wide" role="dialog" aria-modal="true">
+        <h2>Vincular ao contrato</h2>
+        <p class="muted small"><strong>${escHtml(productId)}</strong> · serial ${escHtml(swSerial)}
+          · Eff. Date ${escHtml(prod.effDate || '-')}</p>
+        ${sug ? `<div class="tfp-suggest">Sugestão: <strong>${escHtml(sug.contract.number)}</strong>
+          ${sug.contract.name ? '· ' + escHtml(sug.contract.name) : ''}<div class="muted small">${sug.motivo}</div></div>` : ''}
+        <div class="tfp-ct-list">
+          ${ordenados.map((c) => `<button type="button" class="tfp-ct-opt${sug && c._id === sug.contract._id ? ' sugerido' : ''}${atual && atual.contract === c._id ? ' atual' : ''}" data-ct="${c._id}">
+            <strong>${escHtml(c.number)}</strong>${c.name ? ` <span class="muted">${escHtml(c.name)}</span>` : ''}
+            <div class="muted small">${c.parentContract ? 'termo aditivo · ' : ''}assinado ${fmtDia(contractDay(c.signedAt || c.startDate))}
+              ${sug && c._id === sug.contract._id ? ' · sugerido' : ''}${atual && atual.contract === c._id ? ' · vinculado hoje' : ''}</div>
+          </button>`).join('')}
+        </div>
+        <p class="form-error hidden" id="tfp-ct-err"></p>
+        <div class="modal-actions">
+          ${atual ? '<button class="btn btn-danger-ghost" id="tfp-ct-unlink" style="margin-right:auto">Desvincular</button>' : ''}
+          <button class="btn btn-ghost" id="tfp-ct-cancel">Fechar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(bk);
+    const fechar = () => bk.remove();
+    bk.addEventListener('click', (e) => { if (e.target === bk) fechar(); });
+    bk.querySelector('#tfp-ct-cancel').addEventListener('click', fechar);
+
+    const erro = (msg) => { const el = bk.querySelector('#tfp-ct-err'); el.textContent = msg; el.classList.remove('hidden'); };
+    const recarregar = async () => {
+      const r = await invApi(`/clients/${activeClientId}/contracts/software-map`);
+      contractMap = r.map || {};
+      contractList = r.contracts || [];
+      if (invStore[activeClientId]) { invStore[activeClientId].contractMap = contractMap; invStore[activeClientId].contractList = contractList; }
+      if (typeof window.renderAllTables === 'function') window.renderAllTables();
+    };
+
+    bk.querySelectorAll('[data-ct]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await invApi(`/clients/${activeClientId}/contracts/${b.dataset.ct}/software`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: [{ productId, swSerial }] }),
+        });
+        fechar(); await recarregar();
+      } catch (e) {
+        if (/já está no contrato/.test(e.message) && confirm(`${e.message}\n\nMover para este contrato?`)) {
+          try {
+            await invApi(`/clients/${activeClientId}/contracts/${b.dataset.ct}/software`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: [{ productId, swSerial }], move: true }),
+            });
+            fechar(); await recarregar(); return;
+          } catch (e2) { erro(e2.message); return; }
+        }
+        erro(e.message);
+      }
+    }));
+    const un = bk.querySelector('#tfp-ct-unlink');
+    if (un) un.addEventListener('click', async () => {
+      try {
+        await invApi(`/clients/${activeClientId}/contracts/${atual.contract}/software/unlink`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: [{ productId, swSerial }] }),
+        });
+        fechar(); await recarregar();
+      } catch (e) { erro(e.message); }
+    });
+  };
+
   function pairControls(prod, paired) {
     if (prod.category !== 'SS') return '';
     const ajustado = pairOverrides.some(
@@ -3519,6 +3674,7 @@
     }
     categoria += pairControls(prod, Boolean(paired));
     categoria += contractTag(prod);
+    categoria += contractLinkBtn(prod);
 
     row.innerHTML =
       `<td><strong>${escHtml(prod.productId)}</strong></td>` +

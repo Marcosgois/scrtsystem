@@ -1411,6 +1411,16 @@ router.get('/clients/:id/contracts', asyncHandler(async (req, res) => {
   }
   const contracts = await Contract.find(filter).sort({ createdAt: -1 }).lean();
   const ids = contracts.map((c) => c._id);
+  // Termos aditivos de qualquer contrato do cliente (para somar valores mesmo que o
+  // aditivo não caia no filtro atual).
+  const aditivos = await Contract.find({ client: req.params.id, parentContract: { $ne: null } })
+    .select('parentContract number name totalValue monthlyValue currency status signedAt startDate endDate').lean();
+  const porPai = new Map();
+  for (const a of aditivos) {
+    const k = String(a.parentContract);
+    if (!porPai.has(k)) porPai.set(k, []);
+    porPai.get(k).push(a);
+  }
   // Contagens em lote (contratos por cliente são dezenas — sem agregação).
   const [machines, events] = await Promise.all([
     InfraMachine.find({ client: req.params.id, contract: { $in: ids } }).select('contract').lean(),
@@ -1423,6 +1433,8 @@ router.get('/clients/:id/contracts', asyncHandler(async (req, res) => {
   const eCount = countBy(events);
   res.json(contracts.map((c) => {
     const { software, files, ...rest } = c;
+    const meus = porPai.get(String(c._id)) || [];
+    const somaAditivos = meus.reduce((a, x) => a + (x.totalValue || 0), 0);
     return {
       ...rest,
       softwareCount: (software || []).length,
@@ -1430,6 +1442,11 @@ router.get('/clients/:id/contracts', asyncHandler(async (req, res) => {
       machineCount: mCount[String(c._id)] || 0,
       eventCount: eCount[String(c._id)] || 0,
       files: (files || []).map((f) => ({ _id: f._id, name: f.name, kind: f.kind, size: f.size, contentType: f.contentType })),
+      amendments: meus,
+      amendmentCount: meus.length,
+      amendmentValue: somaAditivos,
+      // Valor consolidado = o do contrato + o dos termos aditivos.
+      totalWithAmendments: (c.totalValue || 0) + somaAditivos,
     };
   }));
 }));
@@ -1440,6 +1457,17 @@ router.post('/clients/:id/contracts', asyncHandler(async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
   const set = contractUpdate(req.body || {});
   if (!set.number) return res.status(400).json({ error: 'Informe o número do contrato.' });
+
+  // Termo aditivo: precisa de um contrato-pai válido, e só um nível.
+  const paiId = (req.body || {}).parentContract;
+  if (paiId) {
+    if (!isValidId(paiId)) return res.status(400).json({ error: 'Contrato de origem inválido.' });
+    const pai = await Contract.findOne({ _id: paiId, client: client._id }).select('parentContract').lean();
+    if (!pai) return res.status(422).json({ error: 'Contrato de origem não encontrado para este cliente.' });
+    if (pai.parentContract) return res.status(422).json({ error: 'Um termo aditivo não pode ter outro termo aditivo.' });
+    set.parentContract = pai._id;
+  }
+
   try {
     const contract = await Contract.create({ client: client._id, ...set });
     res.status(201).json(contract);
@@ -1457,14 +1485,23 @@ router.post('/clients/:id/contracts', asyncHandler(async (req, res) => {
 router.get('/clients/:id/contracts/software-map', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const rows = await Contract.find({ client: req.params.id })
-    .select('number name status software.productId software.swSerial').lean();
+    .select('number name status signedAt startDate endDate parentContract type software.productId software.swSerial').lean();
   const map = {};
   for (const c of rows) {
     for (const s of c.software || []) {
       map[swKey(s.productId, s.swSerial)] = { contract: String(c._id), number: c.number, name: c.name, status: c.status };
     }
   }
-  res.json({ map, contracts: rows.map((c) => ({ _id: c._id, number: c.number, name: c.name, status: c.status })) });
+  // signedAt/startDate vão junto: o inventário sugere o contrato comparando a
+  // Eff. Date do software com a data de assinatura.
+  res.json({
+    map,
+    contracts: rows.map((c) => ({
+      _id: c._id, number: c.number, name: c.name, status: c.status, type: c.type,
+      signedAt: c.signedAt, startDate: c.startDate, endDate: c.endDate,
+      parentContract: c.parentContract || null,
+    })),
+  });
 }));
 
 // Detalhe: máquinas e eventos resolvidos, e o software re-conferido contra o
@@ -1473,7 +1510,7 @@ router.get('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const contract = await findContract(req.params.id, req.params.cid);
   if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
-  const [machines, events, inventory] = await Promise.all([
+  const [machines, events, inventory, amendments, parent] = await Promise.all([
     InfraMachine.find({ client: req.params.id, contract: contract._id })
       .select('model serial status lsprModel cps ziips iflsActive icfs memoryTB memoryAddTB site')
       .populate('site', 'name role').sort({ model: 1, serial: 1 }).lean(),
@@ -1482,12 +1519,28 @@ router.get('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
       .populate('fromMachine', 'model serial').populate('toMachine', 'model serial')
       .sort({ createdAt: -1 }).lean(),
     Inventory.findOne({ client: req.params.id }).select('products').lean(),
+    Contract.find({ client: req.params.id, parentContract: contract._id }).sort({ signedAt: 1, createdAt: 1 }).lean(),
+    contract.parentContract
+      ? Contract.findById(contract.parentContract).select('number name totalValue currency').lean()
+      : null,
   ]);
   const vivos = new Set((inventory && inventory.products ? inventory.products : [])
     .map((p) => swKey(p.productId, p.swSerial)));
   const doc = contract.toObject();
   doc.software = (doc.software || []).map((s) => ({ ...s, stale: !vivos.has(swKey(s.productId, s.swSerial)) }));
-  res.json({ ...doc, machines, events });
+  const amendmentValue = amendments.reduce((a, x) => a + (x.totalValue || 0), 0);
+  res.json({
+    ...doc,
+    machines,
+    events,
+    amendments: amendments.map((a) => {
+      const { software, files, ...rest } = a;
+      return { ...rest, softwareCount: (software || []).length, fileCount: (files || []).length };
+    }),
+    amendmentValue,
+    totalWithAmendments: (doc.totalValue || 0) + amendmentValue,
+    parent,
+  });
 }));
 
 router.put('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
@@ -1511,6 +1564,11 @@ router.delete('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const contract = await findContract(req.params.id, req.params.cid);
   if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  // Termo aditivo é registro legal próprio: não some junto sem o usuário mandar.
+  const aditivos = await Contract.countDocuments({ client: req.params.id, parentContract: contract._id });
+  if (aditivos) {
+    return res.status(422).json({ error: `Este contrato tem ${aditivos} termo(s) aditivo(s). Exclua-os antes.` });
+  }
   removeContractFiles((contract.files || []).map((f) => f._id));
   await Promise.all([
     InfraMachine.updateMany({ client: req.params.id, contract: contract._id }, { $set: { contract: null } }),
@@ -2011,6 +2069,63 @@ async function scrtSeriesForSerial(client, serial) {
   }
   return out;
 }
+
+/*
+ * Detalhes da máquina: contrato, capacidade (LSPR) e as LPARs que o SCRT reporta
+ * para ela. Atenção ao pulo serial → identificador: a máquina de infra casa com o
+ * SCRT pelo SERIAL, mas as LPARs do SCRT referenciam o IDENTIFICADOR (ex.: "M1C1").
+ */
+router.get('/clients/:id/infra/machines/:machineId/detalhes', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.machineId)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const machine = await InfraMachine.findOne({ _id: req.params.machineId, client: client._id })
+    .select('-configTxtContent -configCfrContent').populate('site', 'name location role').lean();
+  if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
+
+  await attachLspr([machine]);
+  await attachContracts([machine]);
+
+  const alvo = String(machine.serial || '').trim().toUpperCase();
+  let scrtMachine = null;
+  let scrtLpars = [];
+  let periodLabel = null;
+  if (alvo) {
+    const raw = await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean();
+    if (raw.length) {
+      const merged = mergeByMonth(raw, tagContextOf(client));
+      const ultimo = merged[merged.length - 1];
+      const m = (ultimo.machines || []).find((x) => serialOf(x) === alvo);
+      if (m) {
+        periodLabel = ultimo.periodLabel;
+        scrtMachine = {
+          identifier: m.identifier || '', serialNumber: m.serialNumber || '', typeModel: m.typeModel || '',
+          ratedCapacityMsus: m.ratedCapacityMsus || null, peakUtilizationMsus: m.peakUtilizationMsus || null,
+          msuConsumed: m.msuConsumed || null, tag: m.tag || null, ignored: !!m.ignored, periodLabel: ultimo.periodLabel,
+        };
+        // As LPARs do SCRT apontam para o identificador da máquina, não para o serial.
+        const chave = m.identifier || m.serialNumber;
+        scrtLpars = (ultimo.lpars || [])
+          .filter((l) => l.machine === chave)
+          .map((l) => ({
+            name: l.name, os: l.os || '', msuConsumed: l.msuConsumed || null,
+            peakHourMsu: l.peakHourMsu || null, peakHourAt: l.peakHourAt || '',
+            peak4hraMsu: l.peak4hraMsu || null, peak4hraAt: l.peak4hraAt || '',
+          }))
+          .sort((a, b) => (b.msuConsumed || 0) - (a.msuConsumed || 0));
+      }
+    }
+  }
+
+  const [lpars, events] = await Promise.all([
+    InfraLpar.find({ machine: machine._id }).sort({ name: 1 }).lean(),
+    MigrationEvent.find({ client: client._id, $or: [{ fromMachine: machine._id }, { toMachine: machine._id }] })
+      .select('kind status title executedAt plannedDate value currency contract')
+      .populate('contract', 'number name').sort({ createdAt: -1 }).lean(),
+  ]);
+
+  res.json({ machine, scrtMachine, scrtLpars, scrtPeriodLabel: periodLabel, lpars, events });
+}));
 
 router.get('/clients/:id/infra/machines/:machineId/historico', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id) || !isValidId(req.params.machineId)) return res.status(400).json({ error: 'Id inválido.' });

@@ -28,6 +28,7 @@ const state = {
   events: [],
   tab: 'contratos',
   editId: null,
+  parentId: null,   // quando preenchido, o modal está criando um TERMO ADITIVO
   detailId: null,
   swSelection: new Map(),
 };
@@ -102,13 +103,15 @@ async function loadAll() {
 
 function renderKpis() {
   const vigentes = state.contracts.filter((c) => c.status === 'vigente');
+  // Soma tudo uma vez só: aditivo já entra pelo próprio totalValue.
   const valor = state.contracts.reduce((a, c) => a + (c.totalValue || 0), 0);
   const maquinas = state.contracts.reduce((a, c) => a + (c.machineCount || 0), 0);
   const pids = state.contracts.reduce((a, c) => a + (c.softwareCount || 0), 0);
   const abertos = state.events.filter((e) => e.status === 'proposta' || e.status === 'contratado').length;
   $('contracts-kpis').innerHTML = [
-    ['Contratos vigentes', fmt(vigentes.length), `${state.contracts.length} no total`],
-    ['Valor contratado', money(valor, 'BRL'), 'soma dos valores totais'],
+    ['Contratos vigentes', fmt(vigentes.filter((c) => !c.parentContract).length),
+      `${state.contracts.filter((c) => !c.parentContract).length} no total${state.contracts.some((c) => c.parentContract) ? ` · ${state.contracts.filter((c) => c.parentContract).length} aditivo(s)` : ''}`],
+    ['Valor contratado', money(valor, 'BRL'), 'contratos + termos aditivos'],
     ['Máquinas cobertas', fmt(maquinas), 'com contrato vinculado'],
     ['PIDs vinculados', fmt(pids), 'licenças e S&S'],
     ['MO/MES em aberto', fmt(abertos), 'proposta ou contratado'],
@@ -123,7 +126,9 @@ function renderTab() {
 
 function renderContracts() {
   const el = $('tab-contratos');
-  if (!state.contracts.length) {
+  // A lista mostra os contratos originais; os termos aditivos aparecem dentro deles.
+  const principais = state.contracts.filter((c) => !c.parentContract);
+  if (!principais.length) {
     el.innerHTML = '<div class="empty-inline">Nenhum contrato cadastrado. Use <strong>+ Contrato</strong> para começar.</div>';
     return;
   }
@@ -135,14 +140,16 @@ function renderContracts() {
           <th class="num">Valor</th><th class="num">Máquinas</th><th class="num">PIDs</th>
           <th class="num">MO/MES</th><th>Arquivos</th><th class="infra-actions-col">Ações</th>
         </tr></thead>
-        <tbody>${state.contracts.map((c) => `
+        <tbody>${principais.map((c) => `
           <tr>
             <td><button type="button" class="btn-link" data-open="${c._id}"><strong>${esc(c.number)}</strong></button>
+              ${c.amendmentCount ? ` <span class="badge badge-neutral">+${c.amendmentCount} aditivo(s)</span>` : ''}
               ${c.name ? `<div class="muted small">${esc(c.name)}</div>` : ''}</td>
             <td>${tint(CT_TYPES, c.type)}</td>
             <td>${tint(CT_STATUS, c.status)}</td>
             <td class="small">${dt(c.startDate)} → ${dt(c.endDate)}</td>
-            <td class="num">${money(c.totalValue, c.currency)}</td>
+            <td class="num">${money(c.amendmentCount ? c.totalWithAmendments : c.totalValue, c.currency)}
+              ${c.amendmentCount ? `<div class="muted small">${money(c.totalValue, c.currency)} + ${money(c.amendmentValue, c.currency)}</div>` : ''}</td>
             <td class="num">${fmt(c.machineCount)}</td>
             <td class="num">${fmt(c.softwareCount)}</td>
             <td class="num">${fmt(c.eventCount)}</td>
@@ -261,10 +268,14 @@ function renderPickers() {
   $('ct-status').querySelectorAll('[data-s]').forEach((b) => b.addEventListener('click', () => { ctStatus = b.dataset.s; renderPickers(); }));
 }
 
-function openContractModal(id) {
+function openContractModal(id, opts = {}) {
   state.editId = id || null;
-  const c = id ? state.contracts.find((x) => x._id === id) : null;
-  $('modal-contract-title').textContent = c ? 'Editar contrato' : 'Novo contrato';
+  state.parentId = opts.parent || null;
+  const c = id ? (state.contracts.find((x) => x._id === id) || (state.detailData && (state.detailData.amendments || []).find((x) => x._id === id))) : null;
+  const pai = state.parentId ? state.contracts.find((x) => x._id === state.parentId) : null;
+  $('modal-contract-title').textContent = c
+    ? ((c.parentContract ? 'Editar termo aditivo' : 'Editar contrato'))
+    : (pai ? `Termo aditivo de ${pai.number}` : 'Novo contrato');
   const set = (k, v) => { $(k).value = v == null ? '' : v; };
   set('ct-number', c ? c.number : '');
   set('ct-name', c ? c.name : '');
@@ -303,12 +314,16 @@ async function saveContract() {
     totalValue: $('ct-total').value === '' ? null : Number($('ct-total').value),
     monthlyValue: $('ct-monthly').value === '' ? null : Number($('ct-monthly').value),
   };
+  if (state.parentId) body.parentContract = state.parentId;
   try {
     if (state.editId) await jsonPut(`/clients/${state.clientId}/contracts/${state.editId}`, body);
     else await jsonPost(`/clients/${state.clientId}/contracts`, body);
+    const voltarPara = state.parentId || (state.detailId && state.editId ? state.detailId : null);
     closeModals();
-    toast('Contrato salvo.');
+    toast(state.parentId ? 'Termo aditivo salvo.' : 'Contrato salvo.');
+    state.parentId = null;
     await loadAll();
+    if (voltarPara) openDetail(voltarPara);
   } catch (e) { err.textContent = e.message; err.classList.remove('hidden'); }
 }
 
@@ -329,8 +344,14 @@ async function openDetail(id) {
   try { d = await api(`/clients/${state.clientId}/contracts/${id}`); }
   catch (e) { toast(e.message, 'error'); return; }
 
-  $('cd-title').textContent = d.number + (d.name ? ` · ${d.name}` : '');
-  $('cd-sub').innerHTML = `${tint(CT_TYPES, d.type)} ${tint(CT_STATUS, d.status)} · ${esc(d.vendor || '')} · ${dt(d.startDate)} → ${dt(d.endDate)} · ${money(d.totalValue, d.currency)}`;
+  state.detailData = d;
+  const ehAditivo = Boolean(d.parentContract);
+  $('cd-title').textContent = (ehAditivo ? 'Termo aditivo ' : '') + d.number + (d.name ? ` · ${d.name}` : '');
+  const valorTxt = d.amendmentValue
+    ? `${money(d.totalWithAmendments, d.currency)} <span class="muted small">(${money(d.totalValue, d.currency)} + ${money(d.amendmentValue, d.currency)} em aditivos)</span>`
+    : money(d.totalValue, d.currency);
+  $('cd-sub').innerHTML = `${tint(CT_TYPES, d.type)} ${tint(CT_STATUS, d.status)} · ${esc(d.vendor || '')} · ${dt(d.startDate)} → ${dt(d.endDate)} · ${valorTxt}`
+    + (d.parent ? ` · <button type="button" class="btn-link" data-goparent="${d.parent._id}">aditivo de ${esc(d.parent.number)}</button>` : '');
   $('cd-edit').onclick = () => { closeModals(); openContractModal(id); };
 
   const pdf = (d.files || []).find((f) => f.contentType === 'application/pdf');
@@ -353,6 +374,25 @@ async function openDetail(id) {
       </label>
       ${pdf ? `<iframe class="contract-pdf-frame" src="/api/clients/${state.clientId}/contracts/${id}/files/${pdf._id}" title="Prévia do contrato"></iframe>` : ''}
     </div>
+
+    ${ehAditivo ? '' : `<div class="card" style="margin-top:14px"><div class="card-header"><h2>Termos aditivos (${d.amendments.length})</h2>
+      <p class="muted small">cada um com número, vigência e valor próprios — o valor soma ao contrato</p></div>
+      ${d.amendments.length ? `<div class="table-responsive"><table class="infra-table">
+        <thead><tr><th>Número</th><th>Situação</th><th>Assinatura</th><th>Vigência</th><th class="num">Valor</th><th class="infra-actions-col"></th></tr></thead>
+        <tbody>${d.amendments.map((a) => `<tr>
+          <td><button type="button" class="btn-link" data-openad="${a._id}"><strong>${esc(a.number)}</strong></button>
+            ${a.name ? `<div class="muted small">${esc(a.name)}</div>` : ''}</td>
+          <td>${tint(CT_STATUS, a.status)}</td>
+          <td class="small">${dt(a.signedAt)}</td>
+          <td class="small">${dt(a.startDate)} → ${dt(a.endDate)}</td>
+          <td class="num">${money(a.totalValue, a.currency)}</td>
+          <td class="infra-actions"><button class="row-action" data-requires-edit data-editad="${a._id}" title="Editar">${iconEdit()}</button></td>
+        </tr>`).join('')}
+        <tr><td colspan="4"><strong>Total com aditivos</strong></td>
+          <td class="num"><strong>${money(d.totalWithAmendments, d.currency)}</strong></td><td></td></tr>
+        </tbody></table></div>` : '<div class="empty-inline small">Nenhum termo aditivo.</div>'}
+      <button class="btn btn-ghost btn-sm" data-requires-edit id="cd-add-amendment" style="margin-top:10px">+ Termo aditivo</button>
+    </div>`}
 
     <div class="card" style="margin-top:14px"><div class="card-header"><h2>Máquinas (${d.machines.length})</h2>
       <p class="muted small">hardware coberto por este contrato</p></div>
@@ -421,6 +461,12 @@ async function openDetail(id) {
     try { await jsonPost(`/clients/${state.clientId}/contracts/${id}/software/unlink`, { items: [{ productId, swSerial }] }); toast('PID desvinculado.'); await loadAll(); openDetail(id); }
     catch (err) { toast(err.message, 'error'); }
   }));
+  const addAd = $('cd-add-amendment');
+  if (addAd) addAd.addEventListener('click', () => { closeModals(); openContractModal(null, { parent: id }); });
+  $('cd-body').querySelectorAll('[data-openad]').forEach((b) => b.addEventListener('click', () => openDetail(b.dataset.openad)));
+  $('cd-body').querySelectorAll('[data-editad]').forEach((b) => b.addEventListener('click', () => { closeModals(); openContractModal(b.dataset.editad); }));
+  const goParent = document.querySelector('#cd-sub [data-goparent]');
+  if (goParent) goParent.addEventListener('click', () => openDetail(goParent.dataset.goparent));
   $('cd-link-machines').addEventListener('click', () => openLinkMachines(id, d.machines));
   $('cd-link-software').addEventListener('click', () => openLinkSoftware(id));
 

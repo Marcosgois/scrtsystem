@@ -1347,3 +1347,18 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
   padding: 11px 14px; border-radius: var(--radius); font-size: 12.5px; line-height: 1.5;
   background: var(--warning-light); border-left: 3px solid #f1c21b; color: var(--ink);
 }
+
+/* Seletor de contrato (máquina) e botão Home no topbar */
+.tl-ctlist { max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 10px; }
+.ct-opt {
+  display: block; width: 100%; text-align: left; background: var(--surface); border: none;
+  border-bottom: 1px solid var(--border); padding: 10px 12px; cursor: pointer;
+  font-family: var(--font); font-size: 13px; color: var(--ink);
+}
+.ct-opt:last-child { border-bottom: none; }
+.ct-opt:hover { background: var(--surface-hover); }
+.ct-opt.atual { border-left: 3px solid var(--success); }
+.topbar .home-btn { color: #fff; border-color: rgba(255, 255, 255, 0.35); text-decoration: none; }
+.topbar .home-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.6); }
+.tfp-topbar-actions .home-btn { color: #fff; border-color: rgba(255, 255, 255, 0.35); text-decoration: none; }
+@media (max-width: 900px) { .home-btn-text { display: none; } }

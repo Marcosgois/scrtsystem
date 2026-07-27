@@ -41,6 +41,7 @@
     chevron: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     admin: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5l5 2v3.2c0 3.1-2.1 5.3-5 6.3-2.9-1-5-3.2-5-6.3V3.5l5-2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 8l1.4 1.4L10.5 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     logout: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 2.5H3.5A1.5 1.5 0 0 0 2 4v8a1.5 1.5 0 0 0 1.5 1.5H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10.5 11 14 8l-3.5-3M14 8H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    home: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V7Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.5 14V9.5h3V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
     eye: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8Z" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="1.8" stroke="currentColor" stroke-width="1.2"/></svg>',
   };
 
@@ -87,6 +88,16 @@
       || document.querySelector('.topbar-inner')
       || document.querySelector('.tfp-topbar-inner');
     if (!host || !me) return;
+
+    // Botão Home: volta para a página inicial a partir de qualquer módulo.
+    if (!document.querySelector('.home-btn')) {
+      const home = document.createElement('a');
+      home.className = 'btn btn-ghost btn-sm home-btn';
+      home.href = '/';
+      home.title = 'Ir para a página inicial';
+      home.innerHTML = ICON.home + '<span class="home-btn-text">Home</span>';
+      host.appendChild(home);
+    }
 
     // Selo "somente leitura" (aparece só quando body.view-only).
     if (!document.querySelector('.readonly-badge')) {

@@ -402,6 +402,145 @@
       </div>`);
   }
 
+
+  /* ── Detalhes da máquina ────────────────────────────────
+     Contrato, capacidade (MIPS/MSU do capacity marker LSPR) e as LPARs que o
+     SCRT reporta para ela, além das cadastradas na infra. */
+  async function openMachineDetailModal({ clientId, machineId, onChanged, onOpenLpars, onMigrate }) {
+    let d;
+    try { d = await api(`/clients/${clientId}/infra/machines/${machineId}/detalhes`); }
+    catch (e) { toast(e.message, 'error'); return; }
+    const m = d.machine;
+    const lspr = m.lspr || null;
+    const procTotal = (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0) + (m.icfs || 0);
+    const memTotal = (m.memoryTB || 0) + (m.memoryAddTB || 0);
+
+    const kpi = (h, v, s) => `<div class="kpi-card"><h3>${esc(h)}</h3><div class="value">${v}</div>${s ? `<div class="subtitle">${esc(s)}</div>` : ''}</div>`;
+
+    const lparRows = (d.scrtLpars || []).map((l) => `<tr>
+      <td><strong>${esc(l.name)}</strong></td>
+      <td class="small">${esc(l.os || '—')}</td>
+      <td class="num mono">${fmt(l.msuConsumed)}</td>
+      <td class="num mono">${fmt(l.peakHourMsu)}</td>
+      <td class="num mono">${fmt(l.peak4hraMsu)}</td>
+    </tr>`).join('');
+
+    const wrap = mount(`
+      <div class="modal modal-compare" role="dialog" aria-modal="true">
+        <div class="modal-forecast-top">
+          <div>
+            <h2>${esc(m.model || 'Máquina')}</h2>
+            <p class="muted small"><span class="mono">${esc(m.serial || 's/ serial')}</span>
+              ${m.site ? ' · ' + esc(m.site.name) : ''}${m.status !== 'ativa' ? ` · <span class="badge badge-neutral">${esc(m.status)}</span>` : ''}</p>
+          </div>
+          <div class="modal-compare-head">
+            <button class="btn btn-ghost btn-sm" type="button" id="md-contract" data-requires-edit>Vincular ao contrato</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="md-lpars">LPARs</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="md-migrate" data-requires-edit>Migrar</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="md-hist">Histórico</button>
+            <button class="row-action" type="button" data-mig-close aria-label="Fechar">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="modal-forecast-scroll">
+          <div class="kpi-grid">
+            ${kpi('Contrato', m.contractRef ? esc(m.contractRef.number) : '—', m.contractRef ? esc(m.contractRef.name || '') : 'sem contrato vinculado')}
+            ${kpi('Total de MIPS', lspr ? fmt(lspr.mips) : '—', lspr ? `capacity marker ${esc(lspr.model)}` : 'sem LSPR definido')}
+            ${kpi('Capacidade', lspr ? `${fmt(lspr.msu)} MSU` : '—', lspr ? esc(lspr.family) : '')}
+            ${kpi('Processadores', fmt(procTotal), `${fmt(m.cps)} CP · ${fmt(m.ziips)} zIIP · ${fmt(m.iflsActive)} IFL · ${fmt(m.icfs)} CF`)}
+            ${kpi('Memória', `${num1(memTotal)} TB`, '')}
+          </div>
+
+          ${d.scrtMachine ? `<div class="card"><div class="card-header"><h2>No SCRT · ${esc(d.scrtPeriodLabel || '')}</h2>
+            <p class="muted small">identificador ${esc(d.scrtMachine.identifier)} · type-model ${esc(d.scrtMachine.typeModel || '—')}</p></div>
+            <div class="cap-delta">
+              <span>Consumido: <b>${fmt(d.scrtMachine.msuConsumed)} MSU</b></span>
+              <span>Capacidade nominal: <b>${fmt(d.scrtMachine.ratedCapacityMsus)} MSU</b></span>
+              <span>Pico: <b>${fmt(d.scrtMachine.peakUtilizationMsus)} MSU</b></span>
+              ${d.scrtMachine.tag ? `<span>Tag: <b>${esc(d.scrtMachine.tag)}</b></span>` : ''}
+            </div></div>` : '<div class="empty-inline small">Esta máquina não aparece no último SCRT.</div>'}
+
+          <div class="card" style="margin-top:14px"><div class="card-header"><h2>LPARs do SCRT (${(d.scrtLpars || []).length})</h2>
+            <p class="muted small">vindas do relatório, sem precisar cadastrar à mão</p></div>
+            ${lparRows ? `<div class="table-responsive"><table class="infra-table">
+              <thead><tr><th>LPAR</th><th>SO</th><th class="num">MSU consumido</th><th class="num">Pico horário</th><th class="num">4HRA</th></tr></thead>
+              <tbody>${lparRows}</tbody></table></div>`
+              : '<div class="empty-inline small">O SCRT não trouxe LPARs para esta máquina (seção N7 ausente).</div>'}
+          </div>
+
+          ${(d.lpars || []).length ? `<div class="card" style="margin-top:14px"><div class="card-header"><h2>LPARs cadastradas (${d.lpars.length})</h2>
+            <p class="muted small">registradas na infraestrutura</p></div>
+            <div class="lpar-strip">${d.lpars.map((l) => `<span class="lpar-chip">${esc(l.name)}${l.ifls ? ` <span class="muted">${l.ifls} IFL</span>` : ''}</span>`).join('')}</div>
+          </div>` : ''}
+
+          ${(d.events || []).length ? `<div class="card" style="margin-top:14px"><div class="card-header"><h2>MO / MES (${d.events.length})</h2></div>
+            <div class="table-responsive"><table class="infra-table"><tbody>${d.events.map((e) => `<tr>
+              <td>${kindBadge(e.kind)}</td><td>${esc(e.title || '—')}</td>
+              <td>${statusBadge(e.status)}</td>
+              <td class="small">${dt(e.executedAt || e.plannedDate)}</td>
+              <td class="small">${e.contract ? esc(e.contract.number) : '—'}</td>
+            </tr>`).join('')}</tbody></table></div></div>` : ''}
+        </div>
+      </div>`);
+
+    wrap.querySelector('#md-hist').addEventListener('click', () =>
+      openMachineHistoryModal({ clientId, machineId }));
+    const bl = wrap.querySelector('#md-lpars');
+    if (onOpenLpars) bl.addEventListener('click', () => { wrap.remove(); onOpenLpars(machineId); });
+    else bl.style.display = 'none';
+    const bm = wrap.querySelector('#md-migrate');
+    if (onMigrate) bm.addEventListener('click', () => { wrap.remove(); onMigrate(machineId); });
+    else bm.style.display = 'none';
+    wrap.querySelector('#md-contract').addEventListener('click', () =>
+      openMachineContractModal({ clientId, machine: m, onChanged: async () => { wrap.remove(); if (onChanged) await onChanged(); } }));
+    if (window.__authApplyViewOnly) window.__authApplyViewOnly();
+  }
+
+  /* Seletor de contrato para uma máquina. */
+  async function openMachineContractModal({ clientId, machine, onChanged }) {
+    let contratos;
+    try { contratos = await api(`/clients/${clientId}/contracts`); }
+    catch (e) { toast(e.message, 'error'); return; }
+    const principais = contratos.filter((c) => !c.parentContract);
+    if (!principais.length) { toast('Nenhum contrato cadastrado. Cadastre em Contratos.', 'error'); return; }
+    const atual = machine.contract ? String(machine.contract) : '';
+
+    const wrap = mount(`
+      <div class="modal modal-wide" role="dialog" aria-modal="true">
+        <h2>Vincular ao contrato</h2>
+        <p class="muted small">${esc(machine.model || 'Máquina')} · <span class="mono">${esc(machine.serial || '')}</span></p>
+        <div class="tl-ctlist">
+          ${principais.map((c) => `<button type="button" class="ct-opt ${String(c._id) === atual ? 'atual' : ''}" data-ct="${c._id}">
+            <strong>${esc(c.number)}</strong>${c.name ? ` <span class="muted">${esc(c.name)}</span>` : ''}
+            <div class="muted small">${esc(c.vendor || '')} · ${dt(c.startDate)} → ${dt(c.endDate)}${String(c._id) === atual ? ' · vinculado hoje' : ''}</div>
+          </button>`).join('')}
+        </div>
+        <p class="form-error hidden" id="mc-err"></p>
+        <div class="modal-actions">
+          ${atual ? '<button class="btn btn-danger-ghost" id="mc-unlink" style="margin-right:auto">Desvincular</button>' : ''}
+          <button class="btn btn-ghost" type="button" data-mig-close>Fechar</button>
+        </div>
+      </div>`);
+
+    const erro = (msg) => { const el = wrap.querySelector('#mc-err'); el.textContent = msg; el.classList.remove('hidden'); };
+    wrap.querySelectorAll('[data-ct]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await jsonPost(`/clients/${clientId}/contracts/${b.dataset.ct}/machines`, { machineIds: [String(machine._id)] });
+        wrap.remove(); toast('Máquina vinculada ao contrato.');
+        if (onChanged) await onChanged();
+      } catch (e) { erro(e.message); }
+    }));
+    const un = wrap.querySelector('#mc-unlink');
+    if (un) un.addEventListener('click', async () => {
+      try {
+        await api(`/clients/${clientId}/contracts/${atual}/machines/${machine._id}`, { method: 'DELETE' });
+        wrap.remove(); toast('Máquina desvinculada.');
+        if (onChanged) await onChanged();
+      } catch (e) { erro(e.message); }
+    });
+  }
+
   function specDiff(ev) {
     const cells = SPECS.map((s) => {
       const a = ev.before[s.k]; const b = ev.after[s.k];
@@ -415,6 +554,8 @@
   window.openMigrationModal = openMigrationModal;
   window.openMigrationExecModal = openMigrationExecModal;
   window.openMachineHistoryModal = openMachineHistoryModal;
+  window.openMachineDetailModal = openMachineDetailModal;
+  window.openMachineContractModal = openMachineContractModal;
   window.migrationBadges = { statusBadge, kindBadge, STATUS };
   window.closeMigrationModals = closeAll;
 })();

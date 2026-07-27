@@ -225,6 +225,19 @@ persistência que grava no MongoDB via API (em vez de localStorage).
 Historicamente essa página era gerada por um build a partir de um painel externo; isso foi
 removido — hoje ela é fonte de primeira classe, mantida no repositório.
 
+**Termos aditivos.** Um contrato pode ter termos aditivos: cada um é um registro próprio
+(número, assinatura, vigência, valor e arquivos), vinculado ao contrato de origem. O valor do
+aditivo **soma** ao do contrato na visão consolidada — a lista mostra
+`R$ total (R$ contrato + R$ aditivos)`. Um aditivo não tem aditivo, e excluir o contrato de
+origem exige remover os aditivos antes.
+
+**Vincular ao contrato, com sugestão.** No inventário, cada PID tem um botão *+ contrato* que
+sugere qual contrato cobre aquele software: vale o contrato (ou aditivo) **assinado mais
+recente que seja anterior à Eff. Date** do registro — o que estava vigente quando ele entrou.
+Na infraestrutura, cada máquina tem o mesmo botão, e clicar na máquina abre os **detalhes**:
+contrato, total de MIPS pelo capacity marker (LSPR), configuração e as **LPARs que o SCRT
+reporta** para ela — sem precisar cadastrá-las à mão.
+
 ### Infraestrutura: LSPR e importação do SCRT
 
 O módulo de **Infraestrutura** (`/infra`) traz duas facilidades ligadas ao SCRT:
