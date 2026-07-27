@@ -46,10 +46,11 @@ app.get('/consumo', pageGuard, sendPage('index.html'));
 app.get('/mlc', pageGuard, sendPage('mlc.html'));
 app.get('/inventario', pageGuard, sendPage('inventario.html'));
 app.get('/infra', pageGuard, sendPage('infra.html'));
+app.get('/contratos', pageGuard, sendPage('contratos.html'));
 app.get('/admin', adminPageGuard, sendPage('admin.html'));
 
 // Bloqueia acesso direto aos HTMLs protegidos pelo estático.
-const PROTECTED_HTML = new Set(['/index.html', '/mlc.html', '/inventario.html', '/infra.html', '/admin.html']);
+const PROTECTED_HTML = new Set(['/index.html', '/mlc.html', '/inventario.html', '/infra.html', '/contratos.html', '/admin.html']);
 app.use((req, res, next) => {
   if (PROTECTED_HTML.has(req.path) && !sessionUserId(req)) return res.redirect('/login');
   next();

@@ -25,16 +25,20 @@ usa essa ordem e valida a associação pelo total CPC.
 
 ## Módulos
 
-O sistema tem dois módulos, acessíveis pelo menu no topo:
+O sistema tem cinco módulos, acessíveis pelo menu no topo (mais a homepage em `/` e a
+administração de usuários em `/admin`):
 
 | Módulo | Rota | O que faz |
 |---|---|---|
-| **Consumo (SCRT)** | `/` | Upload do SCRT mensal, dashboard de MSUs, LPARs, grupos e comparativo mês a mês |
-| **Inventário** | `/inventario` | Upload do relatório IBM SW Material, análise de produtos/PIDs, licenças e S&S |
+| **Consumo zOTC (SCRT)** | `/consumo` | Upload do SCRT mensal, dashboard de MSUs, LPARs, grupos e comparativo mês a mês |
+| **Consumo MLC** | `/mlc` | Contrato de MLC por cliente, com o consumo sincronizado do SCRT |
+| **Inventário** | `/inventario` | Relatório IBM SW Material: produtos/PIDs, licenças e o casamento com S&S |
+| **Infraestrutura** | `/infra` | Parque físico (sites, máquinas, LPARs), referência LSPR e MO/MES |
+| **Contratos** | `/contratos` | Contratos ligando máquinas e PIDs, com os PDFs assinados e o ciclo de MO/MES |
 
-Os dois compartilham a **mesma lista de clientes**: cadastre o cliente uma vez (no módulo de
-Consumo) e ele aparece nos dois. O inventário fica salvo no MongoDB (um inventário atual por
-cliente; recarregar substitui o anterior).
+Todos compartilham a **mesma lista de clientes**: cadastre o cliente uma vez (no módulo de
+Consumo zOTC) e ele aparece em todos. O inventário fica salvo no MongoDB (um inventário atual
+por cliente; recarregar substitui o anterior).
 
 ## Como rodar
 
@@ -235,3 +239,34 @@ O módulo de **Infraestrutura** (`/infra`) traz duas facilidades ligadas ao SCRT
 
 Consulta via API: `GET /api/lspr?q=<texto>&type=<9175>&generation=<z16>`, `GET /api/lspr/:model`,
 `GET /api/lspr/meta`. Para reimportar após uma versão nova do arquivo: `npm run import:lspr`.
+
+### Contratos, MO/MES e histórico da máquina
+
+O módulo **Contratos** (`/contratos`) é o elo entre o parque físico e o software licenciado:
+um contrato reúne as **máquinas** que ele cobre, os **PIDs** (licença e S&S), os **PDFs**
+assinados (contrato, aditivos) e os eventos de atualização tecnológica.
+
+**MO e MES.** Uma atualização nasce como **proposta** na plataforma, com a comparação
+*antes → depois* (CP, zIIP, IFL, CF, memória e MSU/MIPS do LSPR) e o delta de capacidade:
+
+- **MO** (*Migration Offering*) — troca de máquina: sai a velha, entra uma nova.
+- **MES** — mantém a máquina e faz upgrade lógico (mais memória, mais capacidade).
+
+O ciclo é `proposta → contratado → executado` (e `cancelada`). Marcar como *contratado* exige
+o contrato vinculado. **Executar é o único passo que altera o parque**: o MES aplica a
+configuração na própria máquina; o MO cria a nova (serial em maiúsculas, para o
+`import-scrt` continuar casando) e marca a antiga como **substituída** — ela **não é
+apagada**, para preservar o consumo SCRT histórico e as LPARs. Dá para **desfazer**: o
+sistema guarda a configuração real do momento da execução (que pode ter mudado desde a
+proposta) e recusa desfazer se a máquina nova já ganhou LPARs próprias.
+
+Cada máquina tem uma **linha do tempo** (botão *Histórico* na Infraestrutura) com o
+cadastro, os MO/MES com contrato e valores, a cadeia de gerações e o consumo SCRT mês a mês
+— inclusive depois de ela sair do parque.
+
+**Vínculo de software.** Fica guardado no contrato, com um snapshot da descrição do produto.
+Isso é proposital: `Inventory.products` é substituído por inteiro a cada recarga do
+inventário, então guardar o vínculo do outro lado o faria desaparecer. Um mesmo registro
+(PID + serial) só pode estar em um contrato por cliente — ao tentar repetir, a API responde
+`409` e a tela oferece *mover*. No inventário, cada PID vinculado mostra um selo com o
+número do contrato, que leva direto para ele.

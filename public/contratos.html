@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBM Z Control Desk — Contratos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <h1>IBM Z Control Desk</h1>
+        <p>Contratos · Máquinas, software e MO/MES</p>
+      </div>
+      <nav class="module-nav" aria-label="Módulos">
+        <a href="/consumo">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo zOTC
+        </a>
+        <a href="/mlc">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo MLC
+        </a>
+        <a href="/inventario">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          Inventário
+        </a>
+        <a href="/infra">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Infraestrutura
+        </a>
+        <a href="/contratos" class="active" aria-current="page">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9.5 1.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.5 1.5V5H13" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Contratos
+        </a>
+      </nav>
+    </div>
+    <div class="topbar-actions">
+      <label class="client-select-wrap" for="client-select">
+        <span class="client-select-label">Cliente</span>
+        <select id="client-select" aria-label="Selecionar cliente"></select>
+      </label>
+      <button class="btn btn-ghost" data-requires-edit id="btn-new-migration">+ MO/MES</button>
+      <button class="btn btn-primary" data-requires-edit id="btn-new-contract">+ Contrato</button>
+    </div>
+  </div>
+</header>
+
+<main class="container" id="main">
+
+  <section class="empty-state hidden" id="empty-clients">
+    <div class="empty-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5L14 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 3v4.5h4.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    </div>
+    <h2>Nenhum cliente cadastrado</h2>
+    <p>Cadastre um cliente no módulo de consumo zOTC para começar.</p>
+    <a class="btn btn-primary" href="/consumo">Ir para Consumo zOTC</a>
+  </section>
+
+  <section id="contracts-view" class="hidden">
+    <div class="client-header">
+      <div>
+        <h2 id="contracts-client-name">—</h2>
+        <p class="muted" id="contracts-subtitle">Contratos, vínculos e atualizações tecnológicas</p>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="contracts-kpis"></div>
+
+    <div class="segmented infra-tabs" role="group" aria-label="Visões de contratos">
+      <button type="button" class="seg-btn active" data-tab="contratos">Contratos</button>
+      <button type="button" class="seg-btn" data-tab="migracoes">MO / MES</button>
+    </div>
+
+    <div id="tab-contratos" class="infra-tab"></div>
+    <div id="tab-migracoes" class="infra-tab hidden"></div>
+  </section>
+</main>
+
+<!-- Modal: contrato (cadastro/edição) -->
+<div class="modal-backdrop hidden" id="modal-contract">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-contract-title">
+    <h2 id="modal-contract-title">Contrato</h2>
+    <div class="machine-grid">
+      <label class="field"><span>Número *</span><input type="text" id="ct-number" maxlength="80" placeholder="Ex.: CT-2026-001"></label>
+      <label class="field"><span>Apelido</span><input type="text" id="ct-name" maxlength="120" placeholder="Ex.: MO z16 → z17"></label>
+      <label class="field"><span>Fornecedor</span><input type="text" id="ct-vendor" maxlength="80" placeholder="IBM"></label>
+      <label class="field"><span>PO / pedido</span><input type="text" id="ct-po" maxlength="60"></label>
+      <label class="field"><span>Assinatura</span><input type="date" id="ct-signed"></label>
+      <label class="field"><span>Início</span><input type="date" id="ct-start"></label>
+      <label class="field"><span>Fim</span><input type="date" id="ct-end"></label>
+      <label class="field"><span>Responsável</span><input type="text" id="ct-owner" maxlength="80"></label>
+      <label class="field"><span>Valor total</span><input type="number" id="ct-total" min="0" step="any"></label>
+      <label class="field"><span>Valor mensal</span><input type="number" id="ct-monthly" min="0" step="any"></label>
+      <label class="field"><span>Moeda</span><select id="ct-currency"><option>BRL</option><option>USD</option><option>EUR</option></select></label>
+    </div>
+    <div class="field"><span>Tipo</span><div id="ct-type" class="role-grid"></div></div>
+    <div class="field"><span>Situação</span><div id="ct-status" class="role-grid"></div></div>
+    <label class="field"><span>Observações</span><input type="text" id="ct-notes" maxlength="240"></label>
+    <p class="form-error hidden" id="ct-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="btn-delete-contract" style="margin-right:auto; display:none">Excluir contrato</button>
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-contract">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: detalhe do contrato -->
+<div class="modal-backdrop hidden" id="modal-contract-detail">
+  <div class="modal modal-compare" role="dialog" aria-modal="true" aria-labelledby="cd-title">
+    <div class="modal-forecast-top">
+      <div>
+        <h2 id="cd-title">Contrato</h2>
+        <p class="muted small" id="cd-sub"></p>
+      </div>
+      <div class="modal-compare-head">
+        <button class="btn btn-ghost btn-sm" data-requires-edit id="cd-edit">Editar</button>
+        <button class="row-action" data-close-modal aria-label="Fechar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-forecast-scroll" id="cd-body"></div>
+  </div>
+</div>
+
+<!-- Modal: vincular máquinas -->
+<div class="modal-backdrop hidden" id="modal-link-machines">
+  <div class="modal modal-wide" role="dialog" aria-modal="true">
+    <h2>Vincular máquinas</h2>
+    <p class="muted small">As máquinas marcadas passam a apontar para este contrato.</p>
+    <div id="link-machines-list" class="lpar-checks"></div>
+    <p class="form-error hidden" id="link-machines-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-link-machines">Vincular</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: vincular software (PIDs) -->
+<div class="modal-backdrop hidden" id="modal-link-software">
+  <div class="modal modal-compare" role="dialog" aria-modal="true">
+    <div class="modal-forecast-top">
+      <div>
+        <h2>Vincular software</h2>
+        <p class="muted small">Busque pelo PID, serial ou descrição no inventário do cliente.</p>
+      </div>
+      <button class="row-action" data-close-modal aria-label="Fechar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-forecast-scroll">
+      <input type="search" id="sw-search" class="infra-search" placeholder="Buscar por PID, serial ou descrição" style="width:100%">
+      <div id="sw-results" style="margin-top:10px"></div>
+      <p class="form-error hidden" id="link-sw-error"></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Fechar</button>
+      <button class="btn btn-primary" id="btn-save-link-software">Vincular selecionados</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script src="auth-client.js"></script>
+<script src="migration-modal.js"></script>
+<script src="contratos.js"></script>
+</body>
+</html>

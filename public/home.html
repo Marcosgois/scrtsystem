@@ -71,7 +71,7 @@
     /* Módulos */
     .modules { max-width: 1180px; margin: 0 auto; padding: 30px 28px 90px; }
     .modules-head { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(244,244,244,0.42); margin-bottom: 18px; }
-    .module-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
     @media (max-width: 900px) { .module-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 520px) { .module-grid { grid-template-columns: 1fr; } }
     .module-card {
@@ -125,7 +125,7 @@
     </header>
 
     <section class="modules" id="modulos">
-      <div class="modules-head reveal" id="r-mhead">Quatro módulos, um só sistema</div>
+      <div class="modules-head reveal" id="r-mhead">Cinco módulos, um só sistema</div>
       <div class="module-grid">
         <a class="module-card reveal" href="/consumo" data-mc>
           <div class="mc-ic"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
@@ -149,6 +149,12 @@
           <div class="mc-ic"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
           <h3>Infraestrutura</h3>
           <p>Sites, máquinas IBM Z / LinuxONE e LPARs cruzados com o SCRT.</p>
+          <span class="mc-arrow"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+        <a class="module-card reveal" href="/contratos" data-mc>
+          <div class="mc-ic"><svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9.5 1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9.5 1.5V5H13" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+          <h3>Contratos</h3>
+          <p>Contratos ligando máquinas e PIDs, com MO/MES e histórico.</p>
           <span class="mc-arrow"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </a>
       </div>

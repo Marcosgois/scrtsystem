@@ -28,6 +28,7 @@ const state = {
   clientId: localStorage.getItem('tfp.clientId') || null,
   sites: [],
   machines: [],
+  contracts: [],
   lpars: [], // todas as LPARs do cliente (para a aba plana)
   tab: 'overview',
   // contexto dos modais
@@ -61,6 +62,11 @@ let lsprTimer = null;
 const engineTotal = (m) => (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0) + (m.icfs || 0);
 const memoryOf = (m) => (m.memoryTB || 0) + (m.memoryAddTB || 0);
 // Detalhe "6 CP · 2 zIIP · 4 IFL · 1 CF" (sempre os quatro tipos).
+const MACHINE_STATUS = { ativa: '', dormente: 'dormente', substituida: 'substituída', desativada: 'desativada' };
+function statusBadge(m) {
+  const label = MACHINE_STATUS[m.status] || '';
+  return label ? ` <span class="badge badge-neutral">${label}</span>` : '';
+}
 function engineBreakdown(m) {
   const ifl = `${fmt(m.iflsActive || 0)} IFL${m.iflsSpare ? ` (+${m.iflsSpare})` : ''}`;
   return `${fmt(m.cps || 0)} CP · ${fmt(m.ziips || 0)} zIIP · ${ifl} · ${fmt(m.icfs || 0)} CF`;
@@ -89,14 +95,16 @@ async function loadClients() {
 
 async function loadInfra() {
   const client = state.clients.find((c) => c._id === state.clientId);
-  const [sites, machines, lpars] = await Promise.all([
+  const [sites, machines, lpars, contracts] = await Promise.all([
     api(`/clients/${state.clientId}/infra/sites`),
     api(`/clients/${state.clientId}/infra/machines`),
     api(`/clients/${state.clientId}/infra/lpars`),
+    api(`/clients/${state.clientId}/contracts`).catch(() => []),
   ]);
   state.sites = sites;
   state.machines = machines;
   state.lpars = lpars;
+  state.contracts = contracts;
   showView('infra-view');
   $('infra-client-name').textContent = client ? client.name : '—';
   $('infra-subtitle').textContent = `Parque físico IBM Z / LinuxONE · ${machines.length} máquina(s), ${sites.length} site(s)`;
@@ -121,15 +129,21 @@ function drStatus() {
 }
 
 function renderStats() {
-  const ativas = state.machines.filter((m) => !m.dormant);
-  const sum = (k) => state.machines.reduce((a, m) => a + (m[k] || 0), 0);
+  // Máquina substituída (saiu num MO) não entra em nenhum somatório — senão o
+  // parque apareceria dobrado depois de cada troca.
+  const noParque = state.machines.filter((m) => m.status !== 'substituida');
+  const ativas = noParque.filter((m) => m.status === 'ativa');
+  const substituidas = state.machines.length - noParque.length;
+  const sum = (k) => noParque.reduce((a, m) => a + (m[k] || 0), 0);
   const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive'); const icfs = sum('icfs');
   const engines = cps + ziips + ifls + icfs;
-  const mem = state.machines.reduce((a, m) => a + memoryOf(m), 0);
+  const mem = noParque.reduce((a, m) => a + memoryOf(m), 0);
   const dr = drStatus();
+  const dormentes = noParque.length - ativas.length;
+  const legenda = [dormentes ? `${dormentes} dormente(s)` : 'nenhuma dormente', substituidas ? `${substituidas} substituída(s)` : ''].filter(Boolean).join(' · ');
   const cards = [
     { h: 'Sites', v: fmt(state.sites.length) },
-    { h: 'Máquinas ativas', v: fmt(ativas.length), s: state.machines.length > ativas.length ? `${state.machines.length - ativas.length} dormente(s)` : 'nenhuma dormente' },
+    { h: 'Máquinas ativas', v: fmt(ativas.length), s: legenda },
     { h: 'Processadores', v: fmt(engines), s: `${fmt(cps)} CP · ${fmt(ziips)} zIIP · ${fmt(ifls)} IFL · ${fmt(icfs)} CF` },
     { h: 'Memória total', v: `${num1(mem)} TB` },
     { h: 'Disponibilidade', v: `<span style="color:${dr.color};font-weight:600">${esc(dr.label)}</span>`, raw: true },
@@ -160,7 +174,7 @@ function lparChip(l) {
 function machineCardCompact(m) {
   const lps = lparsOfMachine(m._id);
   const grad = /linuxone/i.test(m.model) ? 'grad-linuxone' : 'grad-z';
-  return `<button type="button" class="infra-machine-card${m.dormant ? ' dormant' : ''}" data-open-lpars="${m._id}" title="Ver LPARs">
+  return `<button type="button" class="infra-machine-card${m.status !== 'ativa' ? ' dormant' : ''}" data-open-lpars="${m._id}" title="Ver LPARs">
     <div class="imc-head">
       <span class="imc-mark ${grad}"></span>
       <span class="imc-id"><strong>${esc(m.model || 'Máquina')}</strong>${m.featureModel ? ` <span class="muted small">${esc(m.featureModel)}</span>` : ''}
@@ -241,7 +255,7 @@ function renderMachines() {
           <thead><tr>
             <th>Modelo</th><th>Site</th><th>Serial</th>
             <th>Processadores</th><th class="num">Memória</th><th class="num">Ano</th>
-            <th>Capacidade (LSPR)</th><th>Consumo (SCRT)</th><th class="infra-actions-col">Ações</th>
+            <th>Capacidade (LSPR)</th><th>Consumo (SCRT)</th><th>Contrato</th><th class="infra-actions-col">Ações</th>
           </tr></thead>
           <tbody id="machine-rows"></tbody>
         </table>
@@ -263,7 +277,7 @@ function renderMachineRows() {
     return true;
   });
   const tbody = $('machine-rows');
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" class="muted small" style="padding:14px">Nenhuma máquina.</td></tr>'; return; }
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="10" class="muted small" style="padding:14px">Nenhuma máquina.</td></tr>'; return; }
   tbody.innerHTML = rows.map((m) => {
     const grad = /linuxone/i.test(m.model) ? 'grad-linuxone' : 'grad-z';
     const r = m.site && ROLES[m.site.role];
@@ -282,8 +296,8 @@ function renderMachineRows() {
       scrtCell = `${fmt(m.scrt.msuConsumed)} MSU${tag}<div class="muted small">${esc(m.scrt.periodLabel)}${m.scrt.ignored ? ' · ignorada' : ''}</div>`;
     }
     const lpc = lparsOfMachine(m._id).length;
-    return `<tr class="${m.dormant ? 'machine-dormant' : ''}">
-      <td><span class="imc-mark ${grad} inline"></span><strong>${esc(m.model || '—')}</strong>${m.variant ? ` <span class="muted small">${esc(m.variant)}</span>` : ''}${m.featureModel ? `<div class="muted small">${esc(m.featureModel)}</div>` : ''}${m.dormant ? ' <span class="badge badge-neutral">dormente</span>' : ''}</td>
+    return `<tr class="${m.status === 'substituida' ? 'machine-replaced' : (m.status !== 'ativa' ? 'machine-dormant' : '')}">
+      <td><span class="imc-mark ${grad} inline"></span><strong>${esc(m.model || '—')}</strong>${m.variant ? ` <span class="muted small">${esc(m.variant)}</span>` : ''}${m.featureModel ? `<div class="muted small">${esc(m.featureModel)}</div>` : ''}${statusBadge(m)}</td>
       <td>${siteCell}</td>
       <td class="mono">${esc(m.serial || '—')}</td>
       <td>${engineTotal(m) ? `<strong>${fmt(engineTotal(m))}</strong><div class="muted small">${engineBreakdown(m)}</div>` : '<span class="muted small">—</span>'}</td>
@@ -291,9 +305,12 @@ function renderMachineRows() {
       <td class="num">${m.year || '—'}</td>
       <td>${lsprCell}</td>
       <td>${scrtCell}</td>
+      <td class="small">${m.contractRef ? `<span class="badge badge-neutral">${esc(m.contractRef.number)}</span>` : '<span class="muted">—</span>'}${m.migrations && m.migrations.pendentes ? ` <span class="badge" style="background:#0f62fe1a;color:#0f62fe">${m.migrations.pendentes} em aberto</span>` : ''}</td>
       <td class="infra-actions">
         <button class="row-action" data-lpars="${m._id}" title="LPARs (${lpc})">${iconCpu()}</button>
         <button class="row-action" data-config="${m._id}" title="Arquivos de configuração">${iconFile()}</button>
+        <button class="row-action" data-requires-edit data-migrate="${m._id}" title="Migrar (MO/MES)">${iconMigrate()}</button>
+        <button class="row-action" data-hist="${m._id}" title="Histórico">${iconClock()}</button>
         <button class="row-action" data-edit="${m._id}" title="Editar">${iconEdit()}</button>
         <button class="row-action danger" data-del="${m._id}" title="Excluir">${iconTrash()}</button>
       </td>
@@ -302,6 +319,9 @@ function renderMachineRows() {
   tbody.querySelectorAll('[data-lpars]').forEach((b) => b.addEventListener('click', () => openLparsModal(b.dataset.lpars)));
   tbody.querySelectorAll('[data-config]').forEach((b) => b.addEventListener('click', () => openConfigModal(b.dataset.config)));
   tbody.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openMachineModal(b.dataset.edit)));
+  tbody.querySelectorAll('[data-migrate]').forEach((b) => b.addEventListener('click', () => openMigrar(b.dataset.migrate)));
+  tbody.querySelectorAll('[data-hist]').forEach((b) => b.addEventListener('click', () =>
+    window.openMachineHistoryModal({ clientId: state.clientId, machineId: b.dataset.hist })));
   tbody.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => deleteMachine(b.dataset.del)));
 }
 
@@ -392,7 +412,9 @@ function openMachineModal(machineId) {
   set('machine-memory', m ? m.memoryTB : '');
   set('machine-memory-add', m ? m.memoryAddTB : '');
   set('machine-notes', m ? m.notes : '');
-  $('machine-dormant').checked = m ? !!m.dormant : false;
+  $('machine-status').value = (m && m.status) || 'ativa';
+  $('machine-contract').innerHTML = ['<option value="">(sem contrato)</option>']
+    .concat(state.contracts.map((c) => `<option value="${c._id}" ${m && String(m.contract || '') === String(c._id) ? 'selected' : ''}>${esc(c.number)}${c.name ? ' · ' + esc(c.name) : ''}</option>`)).join('');
   const cur = m && m.site && (m.site._id || m.site);
   $('machine-site').innerHTML = ['<option value="">(sem site)</option>']
     .concat(state.sites.map((s) => `<option value="${s._id}"${cur === s._id ? ' selected' : ''}>${esc(s.name)} · ${esc((ROLES[s.role] || {}).label || s.role)}</option>`)).join('');
@@ -418,7 +440,8 @@ async function saveMachine() {
     icfs: numv('machine-icfs'),
     memoryTB: numv('machine-memory'),
     memoryAddTB: numv('machine-memory-add'),
-    dormant: $('machine-dormant').checked,
+    status: $('machine-status').value,
+    contract: $('machine-contract').value || null,
     notes: $('machine-notes').value.trim(),
   };
   if (!body.model && !body.serial) return showErr('machine-error', 'Informe ao menos o modelo ou o serial.');
@@ -484,6 +507,21 @@ async function importFromScrt() {
     toast(err.message, 'error');
     const b = $('btn-import-scrt'); if (b) b.disabled = false;
   }
+}
+
+/* Abre a proposta de MO/MES. Na visão geral o card da máquina já é um <button>,
+   então os botões de migrar/histórico vivem no cabeçalho do modal de LPARs. */
+function openMigrar(machineId) {
+  const m = state.machines.find((x) => x._id === machineId);
+  if (!m) return;
+  if (m.status === 'substituida') { toast('Esta máquina já foi substituída.', 'error'); return; }
+  window.openMigrationModal({
+    clientId: state.clientId,
+    machines: state.machines,
+    machine: m,
+    contracts: state.contracts,
+    onSaved: async () => { await loadInfra(); toast('Proposta criada. Acompanhe em Contratos › MO/MES.'); },
+  });
 }
 
 async function deleteMachine(id) {
@@ -576,6 +614,17 @@ function renderLparsList() {
   const lps = lparsOfMachine(m._id);
   const totalIfls = lps.reduce((a, l) => a + (l.ifls || 0), 0);
   const over = totalIfls > (m.iflsActive || 0);
+  const head = document.querySelector('#modal-lpars .modal-compare-head');
+  if (head && !head.querySelector('[data-mig-from-modal]')) {
+    const b1 = document.createElement('button');
+    b1.className = 'btn btn-ghost btn-sm'; b1.type = 'button'; b1.textContent = 'Migrar';
+    b1.setAttribute('data-mig-from-modal', ''); b1.setAttribute('data-requires-edit', '');
+    b1.addEventListener('click', () => { const id = state.lparsMachine && state.lparsMachine._id; closeModals(); openMigrar(id); });
+    const b2 = document.createElement('button');
+    b2.className = 'btn btn-ghost btn-sm'; b2.type = 'button'; b2.textContent = 'Histórico';
+    b2.addEventListener('click', () => window.openMachineHistoryModal({ clientId: state.clientId, machineId: state.lparsMachine && state.lparsMachine._id }));
+    head.prepend(b2); head.prepend(b1);
+  }
   $('lpars-machine-sub').innerHTML = `${lps.length} LPAR(s) · ${totalIfls} IFLs alocados de ${fmt(m.iflsActive)} ativos`
     + (over ? ' <span class="badge badge-danger">acima do configurado</span>' : '');
   const list = $('lpars-list');
@@ -706,6 +755,8 @@ const iconCpu = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="non
 const iconFile = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M9 1.5H4.5A1 1 0 0 0 3.5 2.5v11a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5L9 1.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9 1.5V5h3.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconEdit = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M11 2.5l2.5 2.5L6 12.5l-3 .5.5-3L11 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconTrash = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const iconMigrate = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 5.5h9M8.5 3 11 5.5 8.5 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 10.5H5M7.5 8 5 10.5 7.5 13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const iconClock = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3.2l2 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 const iconDownload = () => '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v7M5 6.5 8 9.5l3-3M3 12.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /* ------------------------------------------------------------------ *

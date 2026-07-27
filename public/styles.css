@@ -1308,3 +1308,42 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
   border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
 }
 .lspr-metrics b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ── Contratos e MO/MES ─────────────────────────────────────────────────── */
+/* Delta de capacidade: subir capacidade é BOM, então NÃO reusa .delta.up (vermelha). */
+.cap-delta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.cap-delta span { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.cap-up { color: var(--success); font-weight: 600; }
+.cap-down { color: var(--danger); font-weight: 600; }
+
+/* Linha do tempo da máquina */
+.tl { position: relative; padding-left: 22px; }
+.tl::before { content: ""; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 1px; background: var(--border-strong); }
+.tl-item { position: relative; padding: 0 0 18px 4px; }
+.tl-item:last-child { padding-bottom: 0; }
+.tl-dot {
+  position: absolute; left: -21px; top: 4px; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--border-strong);
+}
+.tl-dot.done { border-color: var(--success); background: var(--success); }
+.tl-dot.plan { border-color: var(--primary); }
+.tl-head { font-size: 13px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.tl-meta { font-size: 11.5px; color: var(--ink-muted); margin-top: 3px; }
+
+/* Arquivos do contrato e prévia do PDF */
+.contract-file-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.contract-file-row:last-child { border-bottom: none; }
+.contract-file-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.contract-pdf-frame { width: 100%; height: 60vh; margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-subtle); }
+
+/* Máquina substituída num MO: continua na lista, mas apagada */
+.machine-replaced td, tr.machine-replaced td { opacity: 0.55; }
+
+/* Aviso antes de uma ação que altera o parque */
+.banner-warning {
+  padding: 11px 14px; border-radius: var(--radius); font-size: 12.5px; line-height: 1.5;
+  background: var(--warning-light); border-left: 3px solid #f1c21b; color: var(--ink);
+}
