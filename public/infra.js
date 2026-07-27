@@ -138,12 +138,22 @@ function renderStats() {
   const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive'); const icfs = sum('icfs');
   const engines = cps + ziips + ifls + icfs;
   const mem = noParque.reduce((a, m) => a + memoryOf(m), 0);
+  // MIPS/MSU vêm do capacity marker (LSPR) da máquina. Máquina sem LSPR não soma
+  // nada, então a legenda avisa — senão o total pareceria completo sem ser.
+  const comLspr = noParque.filter((m) => m.lspr && m.lspr.mips);
+  const mips = comLspr.reduce((a, m) => a + (m.lspr.mips || 0), 0);
+  const msu = comLspr.reduce((a, m) => a + (m.lspr.msu || 0), 0);
+  const semLspr = noParque.length - comLspr.length;
+  const legendaMips = !noParque.length ? 'sem máquinas'
+    : semLspr ? `${fmt(msu)} MSU · ${semLspr} sem LSPR definido`
+      : `${fmt(msu)} MSU · ${comLspr.length} máquina(s)`;
   const dr = drStatus();
   const dormentes = noParque.length - ativas.length;
   const legenda = [dormentes ? `${dormentes} dormente(s)` : 'nenhuma dormente', substituidas ? `${substituidas} substituída(s)` : ''].filter(Boolean).join(' · ');
   const cards = [
     { h: 'Sites', v: fmt(state.sites.length) },
     { h: 'Máquinas ativas', v: fmt(ativas.length), s: legenda },
+    { h: 'Total de MIPS', v: fmt(mips), s: legendaMips },
     { h: 'Processadores', v: fmt(engines), s: `${fmt(cps)} CP · ${fmt(ziips)} zIIP · ${fmt(ifls)} IFL · ${fmt(icfs)} CF` },
     { h: 'Memória total', v: `${num1(mem)} TB` },
     { h: 'Disponibilidade', v: `<span style="color:${dr.color};font-weight:600">${esc(dr.label)}</span>`, raw: true },
