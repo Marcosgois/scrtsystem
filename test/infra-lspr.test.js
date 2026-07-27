@@ -37,6 +37,9 @@ async function main() {
   process.env.PORT = String(PORT);
   process.env.SCRT_FILES_DIR = path.join(require('os').tmpdir(), `scrt-lspr-${process.pid}`);
 
+  process.env.LOG_REQUESTS = 'off';   // teste não precisa do log de acesso
+  process.env.LOG_FILE = '0';
+  process.env.LOG_AUTH = '0';
   const { connectDb } = require('../src/db');
   const { app } = require('../server');
   const { seedLspr } = require('../src/lsprSeed');

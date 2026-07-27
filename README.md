@@ -247,6 +247,32 @@ PUT do inventário — ou seja, **sobrevive à recarga do relatório**. Um botã
 tem acesso (a API já devolve só os permitidos). Clicar abre o **Consumo zOTC** com aquele
 cliente selecionado.
 
+### Log de acesso
+
+O servidor mostra, no terminal e num arquivo por dia em `data/logs/app-AAAA-MM-DD.log`,
+**quem acessou o quê**:
+
+```
+[27/07 16:59:48] AUTH  1º admin    hulk@ibm.com  local
+[27/07 16:59:48] AUTH  login FALHA  hulk@ibm.com  local  (senha incorreta)
+[27/07 16:59:48] AUTH  login OK     vera@x.com  local
+[27/07 16:59:48]   200 GET    /infra                    1ms  vera@x.com  local
+[27/07 16:59:48] AUTH  negado      vera@x.com  POST /api/clients  (criar cliente exige administrador)
+[27/07 16:59:48]  !403 POST   /api/clients              2ms  vera@x.com  local
+[27/07 16:59:48] AUTH  logout      vera@x.com  local
+```
+
+Uma linha por requisição (status, método, rota, tempo, **usuário** e IP; `!` marca 4xx e `!!`
+marca 5xx), mais os eventos de autenticação: login OK/falha **com o motivo**, logout, criação do
+1º admin e cada tentativa barrada por falta de permissão.
+
+Arquivos estáticos (css/js/imagens) ficam de fora por padrão, senão cada página vira dez linhas.
+No arquivo o carimbo é ISO, o que facilita `grep`. **Nada de corpo de requisição, senha, token ou
+cookie entra no log.** Como fica em `data/`, não vai para o repositório.
+
+Ajustes no `.env`: `LOG_REQUESTS=all|api|off`, `LOG_AUTH=0` (silencia os eventos de auth),
+`LOG_STATIC=1` (inclui estáticos), `LOG_FILE=0` (só terminal) e `LOG_DIR`.
+
 ### Celular e tablet
 
 Todas as telas funcionam no celular. As regras vivem em `public/styles.css` (e, espelhadas,

@@ -46,6 +46,9 @@ async function main() {
   const scrtFilesDir = path.join(require('os').tmpdir(), `scrt-files-e2e-${process.pid}`);
   process.env.SCRT_FILES_DIR = scrtFilesDir;
 
+  process.env.LOG_REQUESTS = 'off';   // teste não precisa do log de acesso
+  process.env.LOG_FILE = '0';
+  process.env.LOG_AUTH = '0';
   const { connectDb } = require('../src/db');
   const { app } = require('../server');
   await connectDb(process.env.MONGODB_URI);

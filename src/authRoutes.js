@@ -9,6 +9,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { User, ScrtReport } = require('./models');
 const auth = require('./auth');
+const log = require('./logger');
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -40,10 +41,16 @@ function requireAuth(req, res, next) {
 }
 function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Faça login para continuar.' });
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas administradores.' });
+  if (req.user.role !== 'admin') {
+    log.auth.negado(req, 'exige administrador');
+    return res.status(403).json({ error: 'Apenas administradores.' });
+  }
   next();
 }
-const deny = (res) => res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+const deny = (res, req, motivo) => {
+  if (req) log.auth.negado(req, motivo || 'sem acesso ao cliente');
+  return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+};
 
 /**
  * Controle de acesso por cliente nas rotas /api existentes.
@@ -57,22 +64,22 @@ async function clientAccessGuard(req, res, next) {
   let m;
 
   // Criar cliente
-  if (p === '/clients' && req.method === 'POST') return user.role === 'admin' ? next() : deny(res);
+  if (p === '/clients' && req.method === 'POST') return user.role === 'admin' ? next() : deny(res, req, 'criar cliente exige administrador');
 
   // /clients/:id exato -> DELETE (admin) / PATCH (edit)
   if ((m = p.match(/^\/clients\/([a-f0-9]{24})$/i))) {
-    if (req.method === 'DELETE') return user.role === 'admin' ? next() : deny(res);
-    return auth.canEdit(user, m[1]) ? next() : deny(res);
+    if (req.method === 'DELETE') return user.role === 'admin' ? next() : deny(res, req, 'excluir cliente exige administrador');
+    return auth.canEdit(user, m[1]) ? next() : deny(res, req, 'sem permissão de edição neste cliente');
   }
   // /clients/:id/... -> write=edit, read=view
   if ((m = p.match(/^\/clients\/([a-f0-9]{24})\//i))) {
-    return (write ? auth.canEdit(user, m[1]) : auth.canView(user, m[1])) ? next() : deny(res);
+    return (write ? auth.canEdit(user, m[1]) : auth.canView(user, m[1])) ? next() : deny(res, req, write ? 'sem permissão de edição neste cliente' : 'sem acesso a este cliente');
   }
   // /reports/:id e /reports/:id/file -> resolve o cliente do relatório
   if ((m = p.match(/^\/reports\/([a-f0-9]{24})(\/file)?$/i))) {
     const rep = await ScrtReport.findById(m[1]).select('client').lean();
     if (!rep) return next(); // 404 vem do handler
-    return (write ? auth.canEdit(user, rep.client) : auth.canView(user, rep.client)) ? next() : deny(res);
+    return (write ? auth.canEdit(user, rep.client) : auth.canView(user, rep.client)) ? next() : deny(res, req, 'sem acesso ao cliente do relatório');
   }
   next(); // /clients (lista) e /inventories são filtrados no próprio handler
 }
@@ -99,6 +106,8 @@ authRouter.post('/setup', asyncHandler(async (req, res) => {
   const { salt, hash } = auth.hashPassword(password);
   const user = await User.create({ name: String(name).trim(), email: String(email).toLowerCase().trim(), passwordHash: hash, passwordSalt: salt, role: 'admin', access: [] });
   auth.setSessionCookie(res, user._id);
+  log.lembrarUsuario(user);
+  log.auth.setup(req, user);
   res.status(201).json(publicUser(user));
 }));
 
@@ -107,13 +116,21 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   const password = String((req.body && req.body.password) || '');
   const user = await User.findOne({ email });
   if (!user || !auth.verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    // O motivo vai só para o log; a resposta continua genérica de propósito.
+    log.auth.login(req, email, false, user ? 'senha incorreta' : 'e-mail não cadastrado');
     return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
   }
   auth.setSessionCookie(res, user._id);
+  log.lembrarUsuario(user);
+  log.auth.login(req, user.email, true);
   res.json(publicUser(user));
 }));
 
-authRouter.post('/logout', (req, res) => { auth.clearSessionCookie(res); res.json({ ok: true }); });
+authRouter.post('/logout', (req, res) => {
+  log.auth.logout(req, req.user);
+  auth.clearSessionCookie(res);
+  res.json({ ok: true });
+});
 
 // ── Rotas de administração de usuários ──
 const adminRouter = express.Router();

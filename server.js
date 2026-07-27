@@ -21,6 +21,11 @@ const app = express();
 // Inventários de software chegam como JSON grande (centenas de produtos) — 25 MB cobre com folga.
 app.use(express.json({ limit: '25mb' }));
 
+// Log de acesso: uma linha por requisição (quem, o quê, status, tempo).
+// Vem antes de tudo para registrar também o que é recusado por falta de acesso.
+const log = require('./src/logger');
+app.use(log.requestLogger(sessionUserId));
+
 // ── API com autenticação e autorização ──
 app.use('/api', attachUser);                        // req.user (ou null) a partir do cookie
 app.use('/api/auth', authRouter);                   // público: status/setup/login/logout/me
@@ -111,6 +116,7 @@ async function main() {
 
   const server = app.listen(PORT, () => {
     console.log(`IBM Z Control Desk rodando em http://localhost:${PORT}`);
+    console.log(`[log] ${log.resumo()}`);
   });
 
   // Encerramento limpo: fecha o HTTP, desconecta e para o mongod SEM apagar os dados.
