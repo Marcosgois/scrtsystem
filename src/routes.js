@@ -5,7 +5,10 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, LsprModel } = require('./models');
+const {
+  Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, LsprModel,
+  Contract, MigrationEvent,
+} = require('./models');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
@@ -31,6 +34,17 @@ function isValidId(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
+/**
+ * Id de uma referência que pode chegar como string OU como o objeto populado que
+ * a própria API devolveu (o formulário reenvia o que recebeu). Sem isso, mandar
+ * de volta um `site`/`contract` populado apagaria silenciosamente a referência.
+ */
+function refId(v) {
+  if (!v) return null;
+  const id = typeof v === 'object' ? (v._id || v.id) : v;
+  return id && isValidId(String(id)) ? String(id) : null;
+}
+
 // Arquivos SCRT originais ficam no disco (podem passar do limite de 16 MB do
 // documento Mongo — a planilha do Itaú tem 30 MB). Um por relatório, pelo _id.
 // Diretório configurável (os testes apontam para um temp).
@@ -53,6 +67,45 @@ function removeScrtFiles(ids) {
   for (const id of ids || []) {
     try { fs.rmSync(scrtFilePath(id), { force: true }); } catch (e) { /* ignora */ }
   }
+}
+
+// Arquivos dos contratos (PDF assinado, aditivos) — mesmo esquema do SCRT: bytes no
+// disco nomeados pelo _id do subdocumento, só a metadata no Mongo.
+const CONTRACT_FILES_DIR = process.env.CONTRACT_FILES_DIR || path.join(__dirname, '..', 'data', 'contract-files');
+const contractFilePath = (id) => path.join(CONTRACT_FILES_DIR, String(id));
+
+function saveContractFile(id, buffer) {
+  fs.mkdirSync(CONTRACT_FILES_DIR, { recursive: true });
+  fs.writeFileSync(contractFilePath(id), buffer);
+}
+
+function removeContractFiles(ids) {
+  for (const id of ids || []) {
+    try { fs.rmSync(contractFilePath(id), { force: true }); } catch (e) { /* ignora */ }
+  }
+}
+
+/** Content-type a partir da extensão — PDF é o caso comum dos contratos. */
+function contractContentType(name) {
+  const ext = String(name || '').toLowerCase().split('.').pop();
+  if (ext === 'pdf') return 'application/pdf';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'txt') return 'text/plain; charset=utf-8';
+  if (ext === 'doc' || ext === 'docx') return 'application/msword';
+  if (ext === 'xls' || ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  return 'application/octet-stream';
+}
+
+/** Cabeçalhos de download/inline com nome de arquivo seguro (mesmo padrão do SCRT). */
+function sendStoredFile(res, filePath, { name, contentType, download }) {
+  const asciiName = String(name || 'arquivo').replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '');
+  res.setHeader('Content-Type', contentType || 'application/octet-stream');
+  res.setHeader(
+    'Content-Disposition',
+    `${download ? 'attachment' : 'inline'}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(name || 'arquivo')}`
+  );
+  res.send(fs.readFileSync(filePath));
 }
 
 /** Normaliza o baseline: null/''/0 -> null (sem baseline); inválido ou negativo -> NaN (sinal de erro). */
@@ -1155,6 +1208,7 @@ router.delete('/clients/:id/mlc', asyncHandler(async (req, res) => {
 const INFRA_ROLES = ['prod', 'dr', 'ha', 'dev', 'test', 'colo'];
 const INFRA_OS = ['linux', 'zos', 'zvm', 'kvm', 'other'];
 const INFRA_NIC = ['OSA', 'RoCE', 'NetworkExpress', 'HiperSockets', 'Other'];
+const MACHINE_STATUS = ['ativa', 'dormente', 'substituida', 'desativada'];
 const numOf = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
 /** Mapa serial(maiúsculo) -> consumo/tag da máquina no ÚLTIMO mês de SCRT. */
@@ -1206,6 +1260,45 @@ async function attachLspr(machines) {
   return machines;
 }
 
+/**
+ * Anexa o contrato de cada máquina em `m.contractRef`.
+ * Repare que NÃO usamos .populate('contract'): o formulário de máquina devolve no
+ * PUT o objeto que recebeu, e um `contract` populado viraria lixo no banco. O id
+ * cru fica em `m.contract`, o objeto em `m.contractRef`.
+ */
+async function attachContracts(machines) {
+  const ids = [...new Set(machines.map((m) => m.contract && String(m.contract)).filter(Boolean))];
+  const rows = ids.length
+    ? await Contract.find({ _id: { $in: ids } }).select('number name type status startDate endDate').lean()
+    : [];
+  const byId = new Map(rows.map((r) => [String(r._id), r]));
+  for (const m of machines) m.contractRef = byId.get(String(m.contract || '')) || null;
+  return machines;
+}
+
+/** Anexa um resumo dos eventos de MO/MES de cada máquina (m.migrations). */
+async function attachMigrations(machines) {
+  const ids = machines.map((m) => m._id);
+  const evs = ids.length
+    ? await MigrationEvent.find({ $or: [{ fromMachine: { $in: ids } }, { toMachine: { $in: ids } }] })
+      .select('fromMachine toMachine kind status').lean()
+    : [];
+  const acc = new Map();
+  for (const e of evs) {
+    for (const ref of [e.fromMachine, e.toMachine]) {
+      if (!ref) continue;
+      const k = String(ref);
+      if (!acc.has(k)) acc.set(k, { total: 0, pendentes: 0, ultimoKind: null });
+      const a = acc.get(k);
+      a.total++;
+      if (e.status === 'proposta' || e.status === 'contratado') a.pendentes++;
+      a.ultimoKind = e.kind;
+    }
+  }
+  for (const m of machines) m.migrations = acc.get(String(m._id)) || { total: 0, pendentes: 0, ultimoKind: null };
+  return machines;
+}
+
 // Atualização parcial: só grava os campos presentes no corpo.
 function siteUpdate(body) {
   const set = {};
@@ -1218,7 +1311,7 @@ function siteUpdate(body) {
 
 function machineUpdate(body) {
   const set = {};
-  if (body.site !== undefined) set.site = body.site && isValidId(body.site) ? body.site : null;
+  if (body.site !== undefined) set.site = refId(body.site);
   if (body.model !== undefined) set.model = String(body.model || '').trim();
   if (body.variant !== undefined) set.variant = String(body.variant || '').trim();
   if (body.featureModel !== undefined) set.featureModel = String(body.featureModel || '').trim();
@@ -1226,7 +1319,10 @@ function machineUpdate(body) {
   if (body.serial !== undefined) set.serial = String(body.serial || '').trim().toUpperCase();
   if (body.year !== undefined) set.year = body.year === '' || body.year === null ? null : numOf(body.year);
   ['cps', 'ziips', 'iflsActive', 'iflsSpare', 'icfs', 'memoryTB', 'memoryAddTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
-  if (body.dormant !== undefined) set.dormant = Boolean(body.dormant);
+  if (body.status !== undefined && MACHINE_STATUS.includes(body.status)) set.status = body.status;
+  // Compatibilidade: clientes antigos ainda mandam o booleano `dormant`.
+  else if (body.dormant !== undefined) set.status = body.dormant ? 'dormente' : 'ativa';
+  if (body.contract !== undefined) set.contract = refId(body.contract);
   if (body.notes !== undefined) set.notes = String(body.notes || '');
   ['configTxtName', 'configTxtContent', 'configCfrName', 'configCfrContent'].forEach((k) => {
     if (body[k] !== undefined) set[k] = String(body[k] || '');
@@ -1253,6 +1349,707 @@ function lparUpdate(body) {
   if (body.notes !== undefined) set.notes = String(body.notes || '');
   return set;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CONTRATOS
+   Tudo aninhado em /clients/:id/... para herdar o controle de acesso por
+   cliente (canView em GET, canEdit em escrita) sem nenhum branch manual.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const CONTRACT_TYPES = ['hardware', 'software', 'servicos', 'misto'];
+const CONTRACT_STATUS = ['rascunho', 'vigente', 'encerrado', 'cancelado'];
+const CONTRACT_FILE_KINDS = ['contrato', 'aditivo', 'proposta', 'anexo'];
+const CURRENCIES = ['BRL', 'USD', 'EUR'];
+
+const dateOrNull = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+const moneyOrNull = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+/** Chave de identidade de um registro de software: PID + serial. */
+const swKey = (productId, swSerial) =>
+  `${String(productId || '').trim().toUpperCase()}|${String(swSerial || '').trim().toUpperCase()}`;
+
+/** Atualização parcial do contrato: só grava os campos presentes no corpo. */
+function contractUpdate(body) {
+  const set = {};
+  if (body.number !== undefined) set.number = String(body.number || '').trim();
+  if (body.name !== undefined) set.name = String(body.name || '').trim();
+  if (body.type !== undefined) set.type = CONTRACT_TYPES.includes(body.type) ? body.type : 'misto';
+  if (body.status !== undefined) set.status = CONTRACT_STATUS.includes(body.status) ? body.status : 'vigente';
+  if (body.vendor !== undefined) set.vendor = String(body.vendor || '').trim();
+  if (body.poNumber !== undefined) set.poNumber = String(body.poNumber || '').trim();
+  if (body.owner !== undefined) set.owner = String(body.owner || '').trim();
+  if (body.notes !== undefined) set.notes = String(body.notes || '');
+  if (body.currency !== undefined) set.currency = CURRENCIES.includes(body.currency) ? body.currency : 'BRL';
+  ['signedAt', 'startDate', 'endDate'].forEach((k) => { if (body[k] !== undefined) set[k] = dateOrNull(body[k]); });
+  ['totalValue', 'monthlyValue'].forEach((k) => { if (body[k] !== undefined) set[k] = moneyOrNull(body[k]); });
+  return set;
+}
+
+/** Carrega o contrato garantindo que ele é do cliente da rota. */
+async function findContract(clientId, contractId) {
+  if (!isValidId(contractId)) return null;
+  return Contract.findOne({ _id: contractId, client: clientId });
+}
+
+// Lista: sem o array de software (pode ser grande), com os contadores que a tela usa.
+router.get('/clients/:id/contracts', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const filter = { client: req.params.id };
+  if (req.query.status && CONTRACT_STATUS.includes(req.query.status)) filter.status = req.query.status;
+  if (req.query.type && CONTRACT_TYPES.includes(req.query.type)) filter.type = req.query.type;
+  const q = String(req.query.q || '').trim();
+  if (q) {
+    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$or = [{ number: rx }, { name: rx }, { vendor: rx }, { poNumber: rx }];
+  }
+  const contracts = await Contract.find(filter).sort({ createdAt: -1 }).lean();
+  const ids = contracts.map((c) => c._id);
+  // Contagens em lote (contratos por cliente são dezenas — sem agregação).
+  const [machines, events] = await Promise.all([
+    InfraMachine.find({ client: req.params.id, contract: { $in: ids } }).select('contract').lean(),
+    MigrationEvent.find({ client: req.params.id, contract: { $in: ids } }).select('contract').lean(),
+  ]);
+  const countBy = (rows) => rows.reduce((acc, r) => {
+    const k = String(r.contract); acc[k] = (acc[k] || 0) + 1; return acc;
+  }, {});
+  const mCount = countBy(machines);
+  const eCount = countBy(events);
+  res.json(contracts.map((c) => {
+    const { software, files, ...rest } = c;
+    return {
+      ...rest,
+      softwareCount: (software || []).length,
+      fileCount: (files || []).length,
+      machineCount: mCount[String(c._id)] || 0,
+      eventCount: eCount[String(c._id)] || 0,
+      files: (files || []).map((f) => ({ _id: f._id, name: f.name, kind: f.kind, size: f.size, contentType: f.contentType })),
+    };
+  }));
+}));
+
+router.post('/clients/:id/contracts', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const set = contractUpdate(req.body || {});
+  if (!set.number) return res.status(400).json({ error: 'Informe o número do contrato.' });
+  try {
+    const contract = await Contract.create({ client: client._id, ...set });
+    res.status(201).json(contract);
+  } catch (err) {
+    if (err && err.code === 11000) return res.status(409).json({ error: 'Já existe um contrato com esse número para este cliente.' });
+    throw err;
+  }
+}));
+
+/*
+ * Mapa PID|SERIAL -> contrato, para o inventário desenhar o selo sem custo por linha.
+ * Precisa vir ANTES de /contracts/:cid: o Express casa na ordem, e "software-map"
+ * cairia no :cid como se fosse um id.
+ */
+router.get('/clients/:id/contracts/software-map', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const rows = await Contract.find({ client: req.params.id })
+    .select('number name status software.productId software.swSerial').lean();
+  const map = {};
+  for (const c of rows) {
+    for (const s of c.software || []) {
+      map[swKey(s.productId, s.swSerial)] = { contract: String(c._id), number: c.number, name: c.name, status: c.status };
+    }
+  }
+  res.json({ map, contracts: rows.map((c) => ({ _id: c._id, number: c.number, name: c.name, status: c.status })) });
+}));
+
+// Detalhe: máquinas e eventos resolvidos, e o software re-conferido contra o
+// inventário vivo (o que não existe mais volta com stale:true).
+router.get('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  const [machines, events, inventory] = await Promise.all([
+    InfraMachine.find({ client: req.params.id, contract: contract._id })
+      .select('model serial status lsprModel cps ziips iflsActive icfs memoryTB memoryAddTB site')
+      .populate('site', 'name role').sort({ model: 1, serial: 1 }).lean(),
+    MigrationEvent.find({ client: req.params.id, contract: contract._id })
+      .select('kind status title fromMachine toMachine plannedDate executedAt value currency')
+      .populate('fromMachine', 'model serial').populate('toMachine', 'model serial')
+      .sort({ createdAt: -1 }).lean(),
+    Inventory.findOne({ client: req.params.id }).select('products').lean(),
+  ]);
+  const vivos = new Set((inventory && inventory.products ? inventory.products : [])
+    .map((p) => swKey(p.productId, p.swSerial)));
+  const doc = contract.toObject();
+  doc.software = (doc.software || []).map((s) => ({ ...s, stale: !vivos.has(swKey(s.productId, s.swSerial)) }));
+  res.json({ ...doc, machines, events });
+}));
+
+router.put('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const set = contractUpdate(req.body || {});
+  if (set.number !== undefined && !set.number) return res.status(400).json({ error: 'Informe o número do contrato.' });
+  try {
+    const contract = await Contract.findOneAndUpdate(
+      { _id: req.params.cid, client: req.params.id }, { $set: set }, { new: true }
+    ).lean();
+    if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+    res.json(contract);
+  } catch (err) {
+    if (err && err.code === 11000) return res.status(409).json({ error: 'Já existe um contrato com esse número para este cliente.' });
+    throw err;
+  }
+}));
+
+// Excluir: solta as máquinas e os eventos (nada é apagado em cascata) e limpa os PDFs.
+router.delete('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  removeContractFiles((contract.files || []).map((f) => f._id));
+  await Promise.all([
+    InfraMachine.updateMany({ client: req.params.id, contract: contract._id }, { $set: { contract: null } }),
+    MigrationEvent.updateMany({ client: req.params.id, contract: contract._id }, { $set: { contract: null } }),
+  ]);
+  await Contract.deleteOne({ _id: contract._id });
+  res.json({ ok: true });
+}));
+
+// ── Arquivos do contrato ──
+router.post('/clients/:id/contracts/:cid/files', upload.single('file'), asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  if (!req.file) return res.status(400).json({ error: 'Envie um arquivo.' });
+  // multer 1.x entrega o nome em latin1.
+  const name = Buffer.from(req.file.originalname || 'arquivo', 'latin1').toString('utf8');
+  const kind = CONTRACT_FILE_KINDS.includes(req.body && req.body.kind) ? req.body.kind : 'contrato';
+  contract.files.push({
+    name, size: req.file.size, contentType: contractContentType(name), kind,
+    uploadedAt: new Date(), uploadedBy: (req.user && req.user._id) || null,
+  });
+  const added = contract.files[contract.files.length - 1];
+  saveContractFile(added._id, req.file.buffer);
+  await contract.save();
+  res.status(201).json({ file: added });
+}));
+
+router.get('/clients/:id/contracts/:cid/files/:fid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  const file = contract.files.id(req.params.fid);
+  if (!file || !fs.existsSync(contractFilePath(file._id))) {
+    return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  }
+  sendStoredFile(res, contractFilePath(file._id), {
+    name: file.name, contentType: file.contentType, download: Boolean(req.query.download),
+  });
+}));
+
+router.delete('/clients/:id/contracts/:cid/files/:fid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  const file = contract.files.id(req.params.fid);
+  if (!file) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  removeContractFiles([file._id]);
+  file.deleteOne();
+  await contract.save();
+  res.json({ ok: true });
+}));
+
+// ── Vínculo com máquinas (a relação mora em InfraMachine.contract) ──
+router.post('/clients/:id/contracts/:cid/machines', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  const ids = (Array.isArray(req.body && req.body.machineIds) ? req.body.machineIds : []).filter(isValidId);
+  if (!ids.length) return res.status(400).json({ error: 'Informe ao menos uma máquina.' });
+  const found = await InfraMachine.countDocuments({ _id: { $in: ids }, client: req.params.id });
+  if (found !== ids.length) return res.status(422).json({ error: 'Alguma máquina não pertence a este cliente.' });
+  const r = await InfraMachine.updateMany({ _id: { $in: ids }, client: req.params.id }, { $set: { contract: contract._id } });
+  res.json({ ok: true, linked: r.modifiedCount });
+}));
+
+router.delete('/clients/:id/contracts/:cid/machines/:mid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.mid)) return res.status(400).json({ error: 'Id inválido.' });
+  const r = await InfraMachine.updateOne(
+    { _id: req.params.mid, client: req.params.id, contract: req.params.cid }, { $set: { contract: null } }
+  );
+  if (!r.matchedCount) return res.status(404).json({ error: 'Máquina não vinculada a este contrato.' });
+  res.json({ ok: true });
+}));
+
+/* ── Vínculo com software (PID) ──
+   Mora no contrato porque um registro de software não é documento: é item de
+   Inventory.products, que é apagado inteiro a cada re-upload. A descrição é
+   copiada como snapshot para o contrato continuar legível depois da recarga. */
+router.post('/clients/:id/contracts/:cid/software', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  const items = Array.isArray(req.body && req.body.items) ? req.body.items : [];
+  if (!items.length) return res.status(400).json({ error: 'Informe ao menos um registro de software.' });
+  const move = Boolean(req.body && req.body.move);
+
+  const pedidos = [];
+  for (const it of items) {
+    const productId = String((it && it.productId) || '').trim();
+    const swSerial = String((it && it.swSerial) || '').trim();
+    if (!productId || !swSerial) return res.status(400).json({ error: 'Cada registro precisa de PID e serial.' });
+    pedidos.push({ productId, swSerial });
+  }
+
+  // Um registro só pode estar em um contrato por cliente.
+  const chaves = new Set(pedidos.map((p) => swKey(p.productId, p.swSerial)));
+  const outros = await Contract.find({ client: req.params.id, _id: { $ne: contract._id } })
+    .select('number name software').lean();
+  const conflitos = [];
+  for (const o of outros) {
+    for (const s of o.software || []) {
+      if (chaves.has(swKey(s.productId, s.swSerial))) conflitos.push({ contrato: o, sw: s });
+    }
+  }
+  if (conflitos.length && !move) {
+    const c = conflitos[0];
+    return res.status(409).json({
+      error: `${c.sw.productId} (serial ${c.sw.swSerial}) já está no contrato ${c.contrato.number}. Use "mover" para transferir.`,
+      conflicts: conflitos.map((x) => ({ productId: x.sw.productId, swSerial: x.sw.swSerial, contract: x.contrato._id, number: x.contrato.number })),
+    });
+  }
+  if (conflitos.length && move) {
+    for (const o of outros) {
+      const restante = (o.software || []).filter((s) => !chaves.has(swKey(s.productId, s.swSerial)));
+      if (restante.length !== (o.software || []).length) {
+        await Contract.updateOne({ _id: o._id }, { $set: { software: restante } });
+      }
+    }
+  }
+
+  // Snapshot do inventário vivo (o que não achar entra só com PID+serial).
+  const inv = await Inventory.findOne({ client: req.params.id }).select('products').lean();
+  const byKey = new Map((inv && inv.products ? inv.products : []).map((p) => [swKey(p.productId, p.swSerial), p]));
+  const atuais = new Map((contract.software || []).map((s) => [swKey(s.productId, s.swSerial), s]));
+  for (const p of pedidos) {
+    const k = swKey(p.productId, p.swSerial);
+    const src = byKey.get(k);
+    atuais.set(k, {
+      productId: p.productId,
+      swSerial: p.swSerial,
+      category: (src && src.category) || '',
+      description: (src && src.description) || '',
+      effDate: (src && src.effDate) || '',
+      poNumber: (src && src.poNumber) || '',
+      notes: (atuais.get(k) && atuais.get(k).notes) || '',
+      linkedAt: (atuais.get(k) && atuais.get(k).linkedAt) || new Date(),
+    });
+  }
+  contract.software = [...atuais.values()];
+  await contract.save();
+  res.json({ ok: true, software: contract.software, moved: move ? conflitos.length : 0 });
+}));
+
+// POST (não DELETE) porque o codebase nunca manda corpo em DELETE.
+router.post('/clients/:id/contracts/:cid/software/unlink', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const contract = await findContract(req.params.id, req.params.cid);
+  if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
+  const items = Array.isArray(req.body && req.body.items) ? req.body.items : [];
+  const alvo = new Set(items.map((i) => swKey(i && i.productId, i && i.swSerial)));
+  contract.software = (contract.software || []).filter((s) => !alvo.has(swKey(s.productId, s.swSerial)));
+  await contract.save();
+  res.json({ ok: true, software: contract.software });
+}));
+
+/** Busca enxuta no inventário para o autocomplete de vínculo (sem baixar tudo). */
+router.get('/clients/:id/inventory/records', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const inv = await Inventory.findOne({ client: req.params.id }).select('products').lean();
+  if (!inv) return res.json([]);
+  const limit = Math.min(Number(req.query.limit) || 200, 1000);
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const cat = String(req.query.category || '').trim().toUpperCase();
+  const out = [];
+  for (const p of inv.products || []) {
+    if (cat && String(p.category || '').toUpperCase() !== cat) continue;
+    if (q && !`${p.productId} ${p.swSerial} ${p.description}`.toLowerCase().includes(q)) continue;
+    out.push({
+      productId: p.productId, swSerial: p.swSerial, description: p.description,
+      category: p.category, effDate: p.effDate, poNumber: p.poNumber,
+    });
+    if (out.length >= limit) break;
+  }
+  res.json(out);
+}));
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MO / MES — atualização tecnológica do parque
+   proposta → contratado → executado (+ cancelada). A execução é o ÚNICO ponto
+   que altera documentos de máquina.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const CONFIG_FIELDS = ['model', 'variant', 'featureModel', 'lsprModel', 'cps', 'ziips', 'iflsActive', 'iflsSpare', 'icfs', 'memoryTB', 'memoryAddTB'];
+const upperSerial = (s) => String(s || '').trim().toUpperCase();
+
+/** Foto da configuração de uma máquina, com o LSPR congelado. */
+async function configOf(machine) {
+  const cfg = { serial: machine.serial || '' };
+  for (const f of CONFIG_FIELDS) cfg[f] = machine[f] === undefined ? (typeof machine[f] === 'string' ? '' : 0) : machine[f];
+  const lspr = machine.lsprModel ? await LsprModel.findOne({ model: machine.lsprModel }).select('msu mips').lean() : null;
+  cfg.msu = lspr ? lspr.msu : null;
+  cfg.mips = lspr ? lspr.mips : null;
+  return cfg;
+}
+
+/** Normaliza o alvo vindo do corpo, congelando o LSPR informado. */
+async function configFromBody(body) {
+  const cfg = { serial: upperSerial(body && body.serial) };
+  for (const f of CONFIG_FIELDS) {
+    const v = body ? body[f] : undefined;
+    if (['model', 'variant', 'featureModel', 'lsprModel'].includes(f)) cfg[f] = String(v || '').trim();
+    else cfg[f] = numOf(v);
+  }
+  const lspr = cfg.lsprModel ? await LsprModel.findOne({ model: cfg.lsprModel }).select('msu mips').lean() : null;
+  cfg.msu = lspr ? lspr.msu : null;
+  cfg.mips = lspr ? lspr.mips : null;
+  return cfg;
+}
+
+/** Aplica uma configuração numa máquina (sem tocar no serial). */
+function applyConfig(machine, cfg) {
+  for (const f of CONFIG_FIELDS) if (cfg[f] !== undefined && cfg[f] !== null && cfg[f] !== '') machine[f] = cfg[f];
+}
+
+router.get('/clients/:id/migrations', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const filter = { client: req.params.id };
+  if (req.query.machineId && isValidId(req.query.machineId)) {
+    filter.$or = [{ fromMachine: req.query.machineId }, { toMachine: req.query.machineId }];
+  }
+  if (['MO', 'MES'].includes(req.query.kind)) filter.kind = req.query.kind;
+  if (['proposta', 'contratado', 'executado', 'cancelada'].includes(req.query.status)) filter.status = req.query.status;
+  const events = await MigrationEvent.find(filter)
+    .populate('fromMachine', 'model serial status')
+    .populate('toMachine', 'model serial status')
+    .populate('contract', 'number name status')
+    .sort({ createdAt: -1 }).lean();
+  res.json(events);
+}));
+
+router.post('/clients/:id/migrations', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const b = req.body || {};
+  if (!['MO', 'MES'].includes(b.kind)) return res.status(400).json({ error: 'Informe se é MO ou MES.' });
+  if (!isValidId(b.fromMachine)) return res.status(400).json({ error: 'Informe a máquina de origem.' });
+  const machine = await InfraMachine.findOne({ _id: b.fromMachine, client: client._id });
+  if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
+
+  // `before` é SEMPRE do servidor — o que vier do cliente é ignorado.
+  const before = await configOf(machine);
+  const after = await configFromBody(b.after || {});
+
+  if (b.kind === 'MES') {
+    if (after.serial && after.serial !== upperSerial(machine.serial)) {
+      return res.status(422).json({ error: 'MES mantém a mesma máquina — para trocar de serial use MO.' });
+    }
+    after.serial = upperSerial(machine.serial);
+  } else {
+    if (!after.serial) return res.status(422).json({ error: 'Num MO informe o serial da máquina nova.' });
+    if (after.serial === upperSerial(machine.serial)) {
+      return res.status(422).json({ error: 'O serial da máquina nova precisa ser diferente do atual.' });
+    }
+  }
+
+  let contract = null;
+  if (b.contract && isValidId(b.contract)) {
+    const ok = await Contract.exists({ _id: b.contract, client: client._id });
+    if (!ok) return res.status(422).json({ error: 'Contrato inválido para este cliente.' });
+    contract = b.contract;
+  }
+
+  const event = await MigrationEvent.create({
+    client: client._id, kind: b.kind, status: 'proposta',
+    title: String(b.title || '').trim(), notes: String(b.notes || ''), proposalRef: String(b.proposalRef || '').trim(),
+    fromMachine: machine._id, contract, before, after,
+    plannedDate: dateOrNull(b.plannedDate), value: moneyOrNull(b.value),
+    currency: CURRENCIES.includes(b.currency) ? b.currency : 'BRL',
+    createdBy: (req.user && req.user._id) || null,
+    history: [{ at: new Date(), from: '', to: 'proposta', by: (req.user && req.user._id) || null, note: 'proposta criada' }],
+  });
+  res.status(201).json(event);
+}));
+
+router.get('/clients/:id/migrations/:eid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.eid)) return res.status(400).json({ error: 'Id inválido.' });
+  const event = await MigrationEvent.findOne({ _id: req.params.eid, client: req.params.id })
+    .populate('fromMachine', 'model serial status site')
+    .populate('toMachine', 'model serial status site')
+    .populate('contract', 'number name status').lean();
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  res.json(event);
+}));
+
+router.put('/clients/:id/migrations/:eid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.eid)) return res.status(400).json({ error: 'Id inválido.' });
+  const event = await MigrationEvent.findOne({ _id: req.params.eid, client: req.params.id });
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  const b = req.body || {};
+  const travado = event.status === 'executado';
+  if (travado && (b.after !== undefined || b.kind !== undefined || b.fromMachine !== undefined)) {
+    return res.status(422).json({ error: 'Evento já executado: desfaça antes de mudar a configuração.' });
+  }
+  if (b.title !== undefined) event.title = String(b.title || '').trim();
+  if (b.notes !== undefined) event.notes = String(b.notes || '');
+  if (b.proposalRef !== undefined) event.proposalRef = String(b.proposalRef || '').trim();
+  if (b.plannedDate !== undefined) event.plannedDate = dateOrNull(b.plannedDate);
+  if (b.value !== undefined) event.value = moneyOrNull(b.value);
+  if (b.currency !== undefined && CURRENCIES.includes(b.currency)) event.currency = b.currency;
+  if (b.contract !== undefined) {
+    if (b.contract && isValidId(b.contract)) {
+      const ok = await Contract.exists({ _id: b.contract, client: req.params.id });
+      if (!ok) return res.status(422).json({ error: 'Contrato inválido para este cliente.' });
+      event.contract = b.contract;
+    } else event.contract = null;
+  }
+  if (!travado && b.after !== undefined) {
+    const after = await configFromBody(b.after);
+    if (event.kind === 'MES') after.serial = event.before.serial;
+    else if (!after.serial) return res.status(422).json({ error: 'Num MO informe o serial da máquina nova.' });
+    event.after = after;
+  }
+  await event.save();
+  res.json(event);
+}));
+
+router.delete('/clients/:id/migrations/:eid', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.eid)) return res.status(400).json({ error: 'Id inválido.' });
+  const event = await MigrationEvent.findOne({ _id: req.params.eid, client: req.params.id });
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  if (!['proposta', 'cancelada'].includes(event.status)) {
+    return res.status(422).json({ error: 'Só dá para excluir uma proposta ou um evento cancelado.' });
+  }
+  await MigrationEvent.deleteOne({ _id: event._id });
+  res.json({ ok: true });
+}));
+
+// Transições simples (proposta / contratado / cancelada). Executar e desfazer têm rota própria.
+router.post('/clients/:id/migrations/:eid/status', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.eid)) return res.status(400).json({ error: 'Id inválido.' });
+  const event = await MigrationEvent.findOne({ _id: req.params.eid, client: req.params.id });
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  const alvo = (req.body || {}).status;
+  if (!['proposta', 'contratado', 'cancelada'].includes(alvo)) {
+    return res.status(400).json({ error: 'Status inválido. Use executar/desfazer para a execução.' });
+  }
+  if (event.status === 'executado') {
+    return res.status(422).json({ error: 'Evento já executado: desfaça a execução antes.' });
+  }
+  if (alvo === 'contratado') {
+    const b = req.body || {};
+    if (b.contract && isValidId(b.contract)) {
+      const ok = await Contract.exists({ _id: b.contract, client: req.params.id });
+      if (!ok) return res.status(422).json({ error: 'Contrato inválido para este cliente.' });
+      event.contract = b.contract;
+    }
+    if (!event.contract) return res.status(422).json({ error: 'Vincule o contrato assinado antes de marcar como contratado.' });
+  }
+  const de = event.status;
+  event.status = alvo;
+  event.history.push({ at: new Date(), from: de, to: alvo, by: (req.user && req.user._id) || null, note: String((req.body || {}).note || '') });
+  await event.save();
+  res.json(event);
+}));
+
+/* Executar: o único ponto que altera máquinas.
+   MES aplica na própria; MO cria (ou atualiza) a nova e aposenta a antiga —
+   sem apagar nada, para o consumo SCRT e as LPARs históricas continuarem lá. */
+router.post('/clients/:id/migrations/:eid/executar', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.eid)) return res.status(400).json({ error: 'Id inválido.' });
+  const event = await MigrationEvent.findOne({ _id: req.params.eid, client: req.params.id });
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  if (event.status === 'executado') return res.status(422).json({ error: 'Este evento já foi executado.' });
+  if (event.status !== 'contratado') return res.status(422).json({ error: 'Só dá para executar um evento contratado.' });
+
+  const from = await InfraMachine.findOne({ _id: event.fromMachine, client: req.params.id });
+  if (!from) return res.status(404).json({ error: 'Máquina de origem não encontrada.' });
+
+  const b = req.body || {};
+  const executedAt = dateOrNull(b.executedAt) || new Date();
+  // Ponto de restauração: a config REAL agora, que pode ter mudado desde a proposta.
+  const applied = {
+    at: executedAt,
+    fromMachineBefore: await configOf(from),
+    fromMachineStatusBefore: from.status || 'ativa',
+    toMachineCreated: false,
+    clonedLparIds: [],
+  };
+
+  let to = null;
+  if (event.kind === 'MES') {
+    applyConfig(from, event.after);
+    if (event.contract) from.contract = event.contract;
+    await from.save();
+  } else {
+    if (event.toMachine) {
+      to = await InfraMachine.findOne({ _id: event.toMachine, client: req.params.id });
+    }
+    if (!to) {
+      const site = b.site && isValidId(b.site) ? b.site : from.site;
+      to = new InfraMachine({
+        client: from.client, site, serial: upperSerial(event.after.serial),
+        status: 'ativa', replaces: from._id, installedAt: executedAt,
+        contract: event.contract || from.contract || null,
+      });
+      applyConfig(to, event.after);
+      await to.save();
+      applied.toMachineCreated = true;
+      event.toMachine = to._id;
+    } else {
+      applyConfig(to, event.after);
+      to.serial = upperSerial(event.after.serial);
+      to.replaces = from._id;
+      to.status = 'ativa';
+      if (event.contract) to.contract = event.contract;
+      await to.save();
+    }
+    if (b.migrarLpars) {
+      const lpars = await InfraLpar.find({ machine: from._id }).lean();
+      for (const l of lpars) {
+        const { _id, machine, createdAt, updatedAt, __v, ...rest } = l;
+        const novo = await InfraLpar.create({ ...rest, machine: to._id });
+        applied.clonedLparIds.push(novo._id);
+      }
+    }
+    from.status = 'substituida';
+    from.replacedBy = to._id;
+    from.replacedAt = executedAt;
+    await from.save();
+  }
+
+  event.applied = applied;
+  event.status = 'executado';
+  event.executedAt = executedAt;
+  event.history.push({ at: executedAt, from: 'contratado', to: 'executado', by: (req.user && req.user._id) || null, note: String(b.note || '') });
+  await event.save();
+
+  res.json({ event: event.toObject(), fromMachine: from.toObject(), toMachine: to ? to.toObject() : null });
+}));
+
+/* Desfazer: restaura o ponto capturado na execução. Nunca destrói às cegas —
+   se a máquina criada já ganhou vida própria (LPAR/outro evento), recusa. */
+router.post('/clients/:id/migrations/:eid/desfazer', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.eid)) return res.status(400).json({ error: 'Id inválido.' });
+  const event = await MigrationEvent.findOne({ _id: req.params.eid, client: req.params.id });
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  if (event.status !== 'executado') return res.status(422).json({ error: 'Só dá para desfazer um evento executado.' });
+  if (!event.applied) return res.status(422).json({ error: 'Sem ponto de restauração para este evento.' });
+
+  const from = await InfraMachine.findOne({ _id: event.fromMachine, client: req.params.id });
+  if (!from) return res.status(404).json({ error: 'Máquina de origem não encontrada.' });
+
+  const clonadas = (event.applied.clonedLparIds || []).map(String);
+  if (event.kind === 'MO' && event.toMachine) {
+    const proprias = await InfraLpar.countDocuments({ machine: event.toMachine, _id: { $nin: clonadas } });
+    if (proprias > 0) {
+      return res.status(422).json({ error: 'A máquina nova já tem LPARs próprias — remova-as antes de desfazer.' });
+    }
+    const outros = await MigrationEvent.countDocuments({
+      _id: { $ne: event._id }, $or: [{ fromMachine: event.toMachine }, { toMachine: event.toMachine }],
+    });
+    if (outros > 0) {
+      return res.status(422).json({ error: 'A máquina nova já tem outros eventos de MO/MES — desfaça-os antes.' });
+    }
+  }
+
+  if (clonadas.length) await InfraLpar.deleteMany({ _id: { $in: clonadas } });
+
+  applyConfig(from, event.applied.fromMachineBefore);
+  if (event.kind === 'MES') from.serial = event.applied.fromMachineBefore.serial || from.serial;
+  from.status = event.applied.fromMachineStatusBefore || 'ativa';
+  from.replacedBy = null;
+  from.replacedAt = null;
+  await from.save();
+
+  if (event.kind === 'MO' && event.toMachine) {
+    if (event.applied.toMachineCreated) {
+      await InfraMachine.deleteOne({ _id: event.toMachine });
+      event.toMachine = null;
+    } else {
+      await InfraMachine.updateOne({ _id: event.toMachine }, { $set: { replaces: null } });
+    }
+  }
+
+  event.status = 'contratado';
+  event.executedAt = null;
+  event.applied = null;
+  event.history.push({ at: new Date(), from: 'executado', to: 'contratado', by: (req.user && req.user._id) || null, note: String((req.body || {}).note || 'execução desfeita') });
+  await event.save();
+
+  res.json({ event: event.toObject(), fromMachine: from.toObject() });
+}));
+
+/* Histórico da máquina: eventos, cadeia de substituição e o consumo SCRT de
+   TODOS os meses (a máquina substituída some do último SCRT, mas o histórico dela
+   continua nos relatórios antigos). */
+async function scrtSeriesForSerial(client, serial) {
+  const alvo = upperSerial(serial);
+  if (!alvo) return [];
+  const raw = await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean();
+  if (!raw.length) return [];
+  const out = [];
+  for (const mes of mergeByMonth(raw, tagContextOf(client))) {
+    const m = (mes.machines || []).find((x) => serialOf(x) === alvo);
+    if (m) out.push({ periodKey: mes.periodKey, periodLabel: mes.periodLabel, msuConsumed: m.msuConsumed || 0, ignored: !!m.ignored });
+  }
+  return out;
+}
+
+router.get('/clients/:id/infra/machines/:machineId/historico', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id) || !isValidId(req.params.machineId)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const machine = await InfraMachine.findOne({ _id: req.params.machineId, client: client._id })
+    .select('-configTxtContent -configCfrContent').populate('site', 'name role').lean();
+  if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
+
+  // Cadeia de substituição, com proteção contra dado circular (A→B→A travaria o servidor).
+  const anda = async (startId, campo) => {
+    const out = [];
+    const vistos = new Set([String(req.params.machineId)]);
+    let id = startId;
+    for (let i = 0; i < 20 && id; i++) {
+      if (vistos.has(String(id))) break;
+      vistos.add(String(id));
+      const m = await InfraMachine.findById(id).select('model serial status replaces replacedBy replacedAt installedAt').lean();
+      if (!m) break;
+      out.push(m);
+      id = m[campo];
+    }
+    return out;
+  };
+
+  const [events, chainBack, chainFwd, scrt, lparCount] = await Promise.all([
+    MigrationEvent.find({ client: client._id, $or: [{ fromMachine: machine._id }, { toMachine: machine._id }] })
+      .populate('fromMachine', 'model serial').populate('toMachine', 'model serial')
+      .populate('contract', 'number name status').sort({ createdAt: 1 }).lean(),
+    anda(machine.replaces, 'replaces'),
+    anda(machine.replacedBy, 'replacedBy'),
+    scrtSeriesForSerial(client, machine.serial),
+    InfraLpar.countDocuments({ machine: machine._id }),
+  ]);
+  await attachLspr([machine]);
+  await attachContracts([machine]);
+
+  res.json({ machine, events, chain: { replaces: chainBack, replacedBy: chainFwd }, scrt, lparCount });
+}));
 
 // ── LSPR: referência de capacidade por modelo IBM Z (consulta, dados públicos) ──
 router.get('/lspr/meta', asyncHandler(async (req, res) => {
@@ -1338,7 +2135,9 @@ router.get('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
   // Cruza com o SCRT pelo serial (consumo/tag do último mês).
   const bySerial = await scrtBySerialLatest(client);
   for (const m of machines) m.scrt = bySerial.get(String(m.serial || '').trim().toUpperCase()) || null;
-  await attachLspr(machines); // referência de capacidade LSPR (m.lspr)
+  await attachLspr(machines);       // referência de capacidade LSPR (m.lspr)
+  await attachContracts(machines);  // contrato vigente (m.contractRef)
+  await attachMigrations(machines); // resumo de MO/MES (m.migrations)
   res.json(machines);
 }));
 

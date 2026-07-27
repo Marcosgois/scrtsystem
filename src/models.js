@@ -240,7 +240,16 @@ const infraMachineSchema = new mongoose.Schema(
     icfs: { type: Number, default: 0 },       // ICFs (Coupling Facility / CF)
     memoryTB: { type: Number, default: 0 },       // memória (antigo storageTB)
     memoryAddTB: { type: Number, default: 0 },    // memória adicional (antigo storageAddTB)
-    dormant: { type: Boolean, default: false },
+    // Situação da máquina no parque (substituiu o antigo booleano `dormant`):
+    // ativa · dormente (ligada, fora de produção) · substituida (saiu num MO) · desativada
+    status: { type: String, enum: ['ativa', 'dormente', 'substituida', 'desativada'], default: 'ativa', index: true },
+    // Contrato vigente da máquina. O histórico de contratos anteriores fica nos
+    // eventos de MO/MES, que carregam o contrato de cada mudança.
+    contract: { type: mongoose.Schema.Types.ObjectId, ref: 'Contract', default: null, index: true },
+    replacedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'InfraMachine', default: null }, // MO: para quem foi
+    replaces: { type: mongoose.Schema.Types.ObjectId, ref: 'InfraMachine', default: null },   // MO: quem ela substituiu
+    replacedAt: { type: Date, default: null },
+    installedAt: { type: Date, default: null },
     notes: { type: String, default: '' },
     // Arquivos de configuração (texto), guardados inline (excluídos da listagem).
     configTxtName: { type: String, default: '' },
@@ -304,6 +313,153 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Contratos — o elo entre o parque físico e o software licenciado.
+
+   Direção dos ponteiros: a máquina aponta para o contrato (InfraMachine.contract)
+   e o evento de MO/MES também (MigrationEvent.contract). O contrato só guarda o
+   vínculo de SOFTWARE, porque um registro de software não é documento — é um item
+   de Inventory.products (Mixed), apagado por inteiro a cada re-upload. Guardar o
+   vínculo aqui é a única forma de ele sobreviver à recarga do inventário.
+   ────────────────────────────────────────────────────────────────────────── */
+
+// Arquivos do contrato (PDF assinado, aditivos). COM _id: o _id nomeia o arquivo em disco.
+const contractFileSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: '' },
+    size: { type: Number, default: 0 },
+    contentType: { type: String, default: 'application/octet-stream' },
+    kind: { type: String, enum: ['contrato', 'aditivo', 'proposta', 'anexo'], default: 'contrato' },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: false }
+);
+
+/*
+ * Vínculo de um registro de software ao contrato. A identidade é productId +
+ * swSerial (o swSerial sozinho se repete entre PIDs). Os campos de descrição são
+ * SNAPSHOT do inventário no momento do vínculo: sem eles, um re-upload deixaria o
+ * contrato exibindo PIDs sem nome.
+ */
+const contractSoftwareSchema = new mongoose.Schema(
+  {
+    productId: { type: String, required: true, trim: true },
+    swSerial: { type: String, required: true, trim: true },
+    category: { type: String, default: '' },    // 'SS' | 'LICENCE'
+    description: { type: String, default: '' },
+    effDate: { type: String, default: '' },
+    poNumber: { type: String, default: '' },
+    notes: { type: String, default: '' },
+    linkedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const contractSchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    number: { type: String, required: true, trim: true }, // identificação do contrato
+    name: { type: String, default: '' },                  // apelido: "MO z16 → z17 SCN 2026"
+    type: { type: String, enum: ['hardware', 'software', 'servicos', 'misto'], default: 'misto' },
+    vendor: { type: String, default: 'IBM' },
+    status: { type: String, enum: ['rascunho', 'vigente', 'encerrado', 'cancelado'], default: 'vigente' },
+    signedAt: { type: Date, default: null },
+    startDate: { type: Date, default: null },
+    endDate: { type: Date, default: null },
+    currency: { type: String, enum: ['BRL', 'USD', 'EUR'], default: 'BRL' },
+    totalValue: { type: Number, default: null },
+    monthlyValue: { type: Number, default: null },
+    poNumber: { type: String, default: '' },
+    owner: { type: String, default: '' },
+    notes: { type: String, default: '' },
+    software: { type: [contractSoftwareSchema], default: [] },
+    files: { type: [contractFileSchema], default: [] },
+  },
+  { timestamps: true }
+);
+contractSchema.index({ client: 1, number: 1 }, { unique: true });
+contractSchema.index({ client: 1, status: 1 });
+
+/*
+ * MO/MES — atualização tecnológica do parque.
+ *   MO  (Migration Offering): troca de máquina — sai a velha, entra uma nova.
+ *   MES: mantém a máquina e faz upgrade lógico (memória, capacidade).
+ * Um schema só, discriminado por `kind`: a máquina de estados é idêntica.
+ */
+const machineConfigSchema = new mongoose.Schema(
+  {
+    model: { type: String, default: '' },
+    variant: { type: String, default: '' },
+    featureModel: { type: String, default: '' },
+    lsprModel: { type: String, default: '' },
+    serial: { type: String, default: '' },
+    cps: { type: Number, default: 0 },
+    ziips: { type: Number, default: 0 },
+    iflsActive: { type: Number, default: 0 },
+    iflsSpare: { type: Number, default: 0 },
+    icfs: { type: Number, default: 0 },
+    memoryTB: { type: Number, default: 0 },
+    memoryAddTB: { type: Number, default: 0 },
+    // LSPR congelado: a tabela de referência é reimportável, o delta tem de ficar estável.
+    msu: { type: Number, default: null },
+    mips: { type: Number, default: null },
+  },
+  { _id: false }
+);
+
+const migrationHistorySchema = new mongoose.Schema(
+  {
+    at: { type: Date, default: Date.now },
+    from: { type: String, default: '' },
+    to: { type: String, default: '' },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    note: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
+const migrationEventSchema = new mongoose.Schema(
+  {
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
+    kind: { type: String, enum: ['MO', 'MES'], required: true },
+    status: { type: String, enum: ['proposta', 'contratado', 'executado', 'cancelada'], default: 'proposta', index: true },
+    title: { type: String, default: '' },
+    contract: { type: mongoose.Schema.Types.ObjectId, ref: 'Contract', default: null, index: true },
+    proposalRef: { type: String, default: '' },
+    notes: { type: String, default: '' },
+    fromMachine: { type: mongoose.Schema.Types.ObjectId, ref: 'InfraMachine', required: true, index: true }, // MES: a própria · MO: a que sai
+    toMachine: { type: mongoose.Schema.Types.ObjectId, ref: 'InfraMachine', default: null },                 // MO: a que entra
+    // `before` é a foto no momento da PROPOSTA (o que foi negociado, imutável).
+    // `applied.fromMachineBefore` é a foto real no instante da EXECUÇÃO — é dela que
+    // o "desfazer" restaura, porque a máquina pode ter mudado nesse meio-tempo.
+    before: { type: machineConfigSchema, default: () => ({}) },
+    after: { type: machineConfigSchema, default: () => ({}) },
+    plannedDate: { type: Date, default: null },
+    executedAt: { type: Date, default: null },
+    value: { type: Number, default: null },
+    currency: { type: String, enum: ['BRL', 'USD', 'EUR'], default: 'BRL' },
+    history: { type: [migrationHistorySchema], default: [] },
+    applied: {
+      type: new mongoose.Schema(
+        {
+          at: { type: Date, default: Date.now },
+          fromMachineBefore: { type: machineConfigSchema, default: () => ({}) },
+          fromMachineStatusBefore: { type: String, default: 'ativa' },
+          toMachineCreated: { type: Boolean, default: false },
+          clonedLparIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: true }
+);
+migrationEventSchema.index({ client: 1, fromMachine: 1, createdAt: -1 });
+migrationEventSchema.index({ client: 1, toMachine: 1 });
+
 // ── LSPR: referência de capacidade por modelo IBM Z (zPCR Configuration Summary) ──
 // Dados públicos da IBM (MIPS/MSU/#CPs máximos por modelo), não são de cliente.
 // A chave é o type-model (ex.: "3931-705"), igual ao "Machine Type and Model" do SCRT.
@@ -334,5 +490,10 @@ const InfraMachine = mongoose.model('InfraMachine', infraMachineSchema);
 const InfraLpar = mongoose.model('InfraLpar', infraLparSchema);
 const User = mongoose.model('User', userSchema);
 const LsprModel = mongoose.model('LsprModel', lsprModelSchema);
+const Contract = mongoose.model('Contract', contractSchema);
+const MigrationEvent = mongoose.model('MigrationEvent', migrationEventSchema);
 
-module.exports = { Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel };
+module.exports = {
+  Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel,
+  Contract, MigrationEvent,
+};

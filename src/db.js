@@ -77,6 +77,31 @@ async function renameStorageToMemory(connection) {
   }
 }
 
+/**
+ * Troca o booleano `dormant` das máquinas pelo enum `status`.
+ * A ordem importa: marcar as dormentes primeiro, depois o resto como ativa, e só
+ * então remover o campo antigo — senão o passo 2 apagaria a informação do passo 1.
+ */
+async function backfillMachineStatus(connection) {
+  const coll = connection.db.collection('inframachines');
+  try {
+    const dormentes = await coll.updateMany(
+      { status: { $exists: false }, dormant: true },
+      { $set: { status: 'dormente' } }
+    );
+    const ativas = await coll.updateMany(
+      { status: { $exists: false } },
+      { $set: { status: 'ativa' } }
+    );
+    await coll.updateMany({ dormant: { $exists: true } }, { $unset: { dormant: 1 } });
+    const total = dormentes.modifiedCount + ativas.modifiedCount;
+    if (total) console.log(`[MongoDB] ${total} máquina(s): dormant → status (${dormentes.modifiedCount} dormente).`);
+  } catch (err) {
+    if (err.codeName === 'NamespaceNotFound' || err.code === 26) return;
+    console.warn(`[MongoDB] migração dormant→status: ${err.message}`);
+  }
+}
+
 async function connectDb(uri) {
   mongoose.connection.on('error', (err) => {
     console.error('[MongoDB] erro de conexão:', err.message);
@@ -91,9 +116,10 @@ async function connectDb(uri) {
   await dropObsoleteIndexes(mongoose.connection);
   await backfillSourceKeys(mongoose.connection);
   await renameStorageToMemory(mongoose.connection);
+  await backfillMachineStatus(mongoose.connection);
 
-  const { Client, ScrtReport, Inventory } = require('./models');
-  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init()]);
+  const { Client, ScrtReport, Inventory, Contract, MigrationEvent } = require('./models');
+  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init()]);
 
   console.log(`[MongoDB] conectado em ${uri.replace(/\/\/[^@]+@/, '//***@')}`);
 }
