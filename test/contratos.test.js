@@ -223,6 +223,19 @@ async function main() {
     r = await admin.req(`${C}/contracts/${ad1}`);
     check('detalhe do aditivo aponta o contrato de origem', r.body.parent && r.body.parent.number === 'CT-001', r.body.parent);
 
+    // O aditivo tem arquivos próprios, e a lista traz a contagem (a linha expansível usa).
+    const formAd = new FormData();
+    formAd.append('file', new Blob([pdfBytes]), 'aditivo.pdf');
+    formAd.append('kind', 'aditivo');
+    r = await admin.req(`${C}/contracts/${ad1}/files`, { method: 'POST', body: formAd });
+    check('anexa arquivo ao termo aditivo', r.status === 201 && r.body.file.kind === 'aditivo', r.body);
+
+    r = await admin.req(`${C}/contracts`);
+    const paiComAnexo = r.body.find((c) => c._id === ct1);
+    check('lista traz fileCount de cada aditivo',
+      (paiComAnexo.amendments.find((a) => a._id === ad1) || {}).fileCount === 1,
+      paiComAnexo.amendments.map((a) => a.fileCount));
+
     r = await admin.req(`${C}/contracts/${ct1}`, { method: 'DELETE' });
     check('excluir contrato com aditivos -> 422', r.status === 422 && /aditivo/.test(r.body.error), r.body);
 

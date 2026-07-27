@@ -101,6 +101,16 @@
     <div class="field"><span>Tipo</span><div id="ct-type" class="role-grid"></div></div>
     <div class="field"><span>Situação</span><div id="ct-status" class="role-grid"></div></div>
     <label class="field"><span>Observações</span><input type="text" id="ct-notes" maxlength="240"></label>
+    <div class="field">
+      <span>Arquivo assinado (opcional)</span>
+      <div class="ct-file-pick">
+        <label class="btn btn-ghost btn-sm">
+          Escolher arquivo<input type="file" id="ct-file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx" hidden>
+        </label>
+        <span class="muted small" id="ct-file-name">Nenhum arquivo escolhido</span>
+      </div>
+      <p class="muted small" id="ct-file-hint" style="margin-top:4px"></p>
+    </div>
     <p class="form-error hidden" id="ct-error"></p>
     <div class="modal-actions">
       <button class="btn btn-danger-ghost" id="btn-delete-contract" style="margin-right:auto; display:none">Excluir contrato</button>

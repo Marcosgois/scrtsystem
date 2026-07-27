@@ -1445,12 +1445,13 @@ router.get('/clients/:id/contracts', asyncHandler(async (req, res) => {
   // Termos aditivos de qualquer contrato do cliente (para somar valores mesmo que o
   // aditivo não caia no filtro atual).
   const aditivos = await Contract.find({ client: req.params.id, parentContract: { $ne: null } })
-    .select('parentContract number name totalValue monthlyValue currency status signedAt startDate endDate').lean();
+    .select('parentContract number name totalValue monthlyValue currency status signedAt startDate endDate files').lean();
   const porPai = new Map();
   for (const a of aditivos) {
     const k = String(a.parentContract);
     if (!porPai.has(k)) porPai.set(k, []);
-    porPai.get(k).push(a);
+    const { files, ...resto } = a;
+    porPai.get(k).push({ ...resto, fileCount: (files || []).length });
   }
   // Contagens em lote (contratos por cliente são dezenas — sem agregação).
   const [machines, events] = await Promise.all([

@@ -1380,3 +1380,17 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
   .home-btn-text { display: none; }
   .user-chip-text { display: none; }
 }
+
+/* Termos aditivos: selo que expande a lista dentro da própria linha */
+.badge-toggle {
+  cursor: pointer; border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--ink-secondary); font-family: var(--font); font-weight: 500;
+}
+.badge-toggle:hover { background: var(--surface-hover); color: var(--ink); border-color: var(--primary); }
+.amendment-row > td { background: var(--surface-subtle); padding: 0 !important; }
+.amendment-box { padding: 12px 14px 14px; border-left: 3px solid var(--accent); }
+.amendment-box .infra-table { background: var(--surface); }
+.amendment-box .infra-table thead th { background: var(--surface-subtle); }
+
+/* Escolha de arquivo no cadastro do contrato */
+.ct-file-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

@@ -31,6 +31,7 @@ const state = {
   parentId: null,   // quando preenchido, o modal está criando um TERMO ADITIVO
   detailId: null,
   swSelection: new Map(),
+  expandidos: new Set(), // contratos com os termos aditivos abertos na lista
 };
 
 async function api(path, opts = {}) {
@@ -143,7 +144,9 @@ function renderContracts() {
         <tbody>${principais.map((c) => `
           <tr>
             <td><button type="button" class="btn-link" data-open="${c._id}"><strong>${esc(c.number)}</strong></button>
-              ${c.amendmentCount ? ` <span class="badge badge-neutral">+${c.amendmentCount} aditivo(s)</span>` : ''}
+              ${c.amendmentCount ? ` <button type="button" class="badge badge-toggle" data-exp="${c._id}"
+                  aria-expanded="${state.expandidos.has(c._id)}" title="Ver os termos aditivos">
+                  ${state.expandidos.has(c._id) ? '▾' : '▸'} ${c.amendmentCount} aditivo(s)</button>` : ''}
               ${c.name ? `<div class="muted small">${esc(c.name)}</div>` : ''}</td>
             <td>${tint(CT_TYPES, c.type)}</td>
             <td>${tint(CT_STATUS, c.status)}</td>
@@ -158,11 +161,41 @@ function renderContracts() {
               <button class="row-action" data-open="${c._id}" title="Abrir">${iconOpen()}</button>
               <button class="row-action" data-requires-edit data-edit="${c._id}" title="Editar">${iconEdit()}</button>
             </td>
-          </tr>`).join('')}</tbody>
+          </tr>
+          ${c.amendmentCount && state.expandidos.has(c._id) ? `<tr class="amendment-row"><td colspan="10">
+            <div class="amendment-box">
+              <table class="infra-table">
+                <thead><tr><th>Termo aditivo</th><th>Situação</th><th>Assinatura</th><th>Vigência</th><th class="num">Valor</th><th>Arquivos</th><th class="infra-actions-col"></th></tr></thead>
+                <tbody>${c.amendments.map((a) => `<tr>
+                  <td><button type="button" class="btn-link" data-open="${a._id}"><strong>${esc(a.number)}</strong></button>
+                    ${a.name ? `<div class="muted small">${esc(a.name)}</div>` : ''}</td>
+                  <td>${tint(CT_STATUS, a.status)}</td>
+                  <td class="small">${dt(a.signedAt)}</td>
+                  <td class="small">${dt(a.startDate)} → ${dt(a.endDate)}</td>
+                  <td class="num">${money(a.totalValue, a.currency)}</td>
+                  <td>${(a.fileCount || 0) ? `<span class="badge badge-neutral">${a.fileCount} arquivo(s)</span>` : '<span class="muted small">sem anexo</span>'}</td>
+                  <td class="infra-actions">
+                    <button class="row-action" data-open="${a._id}" title="Abrir">${iconOpen()}</button>
+                    <button class="row-action" data-requires-edit data-edit="${a._id}" title="Editar">${iconEdit()}</button>
+                  </td>
+                </tr>`).join('')}
+                <tr><td colspan="4"><strong>Contrato + aditivos</strong></td>
+                  <td class="num"><strong>${money(c.totalWithAmendments, c.currency)}</strong></td><td colspan="2"></td></tr>
+                </tbody>
+              </table>
+              <button class="btn btn-ghost btn-sm" data-requires-edit data-addad="${c._id}" style="margin-top:10px">+ Termo aditivo</button>
+            </div>
+          </td></tr>` : ''}`).join('')}</tbody>
       </table>
     </div></div>`;
   el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openDetail(b.dataset.open)));
   el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openContractModal(b.dataset.edit)));
+  el.querySelectorAll('[data-exp]').forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.exp;
+    if (state.expandidos.has(id)) state.expandidos.delete(id); else state.expandidos.add(id);
+    renderContracts();
+  }));
+  el.querySelectorAll('[data-addad]').forEach((b) => b.addEventListener('click', () => openContractModal(null, { parent: b.dataset.addad })));
 }
 
 function renderMigrations() {
@@ -296,6 +329,13 @@ function openContractModal(id, opts = {}) {
   const del = $('btn-delete-contract');
   del.style.display = c ? '' : 'none';
   del.onclick = c ? () => deleteContract(c) : null;
+  // Anexo: o upload só existe depois que o contrato tem id, então o arquivo fica
+  // guardado aqui e sobe logo após o POST/PUT.
+  $('ct-file').value = '';
+  $('ct-file-name').textContent = 'Nenhum arquivo escolhido';
+  $('ct-file-hint').textContent = c && (c.fileCount || (c.files || []).length)
+    ? `Já tem ${c.fileCount || c.files.length} arquivo(s). Um novo é adicionado, nada é substituído.`
+    : 'PDF do contrato ou termo aditivo assinado. Dá para anexar mais depois, no detalhe.';
   $('ct-error').classList.add('hidden');
   openModal('modal-contract');
   $('ct-number').focus();
@@ -314,17 +354,43 @@ async function saveContract() {
     totalValue: $('ct-total').value === '' ? null : Number($('ct-total').value),
     monthlyValue: $('ct-monthly').value === '' ? null : Number($('ct-monthly').value),
   };
-  if (state.parentId) body.parentContract = state.parentId;
+  const ehAditivo = Boolean(state.parentId);
+  if (ehAditivo) body.parentContract = state.parentId;
+  const arquivo = $('ct-file').files && $('ct-file').files[0];
+  const btn = $('btn-save-contract');
+  btn.disabled = true;
   try {
-    if (state.editId) await jsonPut(`/clients/${state.clientId}/contracts/${state.editId}`, body);
-    else await jsonPost(`/clients/${state.clientId}/contracts`, body);
-    const voltarPara = state.parentId || (state.detailId && state.editId ? state.detailId : null);
+    const salvo = state.editId
+      ? await jsonPut(`/clients/${state.clientId}/contracts/${state.editId}`, body)
+      : await jsonPost(`/clients/${state.clientId}/contracts`, body);
+
+    // O arquivo sobe depois porque a rota precisa do id do contrato.
+    let avisoAnexo = '';
+    if (arquivo) {
+      const form = new FormData();
+      form.append('file', arquivo);
+      form.append('kind', ehAditivo || (salvo && salvo.parentContract) ? 'aditivo' : 'contrato');
+      try {
+        await api(`/clients/${state.clientId}/contracts/${salvo._id}/files`, { method: 'POST', body: form });
+      } catch (e2) {
+        // O contrato já está gravado: avisa em vez de fingir que deu tudo certo.
+        avisoAnexo = ` (o anexo falhou: ${e2.message})`;
+      }
+    }
+
+    // Depois de criar um aditivo, abre o próprio aditivo — é onde se anexa o
+    // resto e se vinculam máquinas/PIDs. Ele tem link de volta para o contrato.
+    const abrir = state.editId ? (state.detailId ? state.detailId : null) : salvo._id;
     closeModals();
-    toast(state.parentId ? 'Termo aditivo salvo.' : 'Contrato salvo.');
+    toast(`${ehAditivo ? 'Termo aditivo' : 'Contrato'} salvo.${avisoAnexo}`, avisoAnexo ? 'error' : 'success');
     state.parentId = null;
     await loadAll();
-    if (voltarPara) openDetail(voltarPara);
-  } catch (e) { err.textContent = e.message; err.classList.remove('hidden'); }
+    if (abrir) openDetail(abrir);
+  } catch (e) {
+    err.textContent = e.message; err.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function deleteContract(c) {
@@ -578,6 +644,10 @@ $('client-select').addEventListener('change', async (e) => {
 });
 $('btn-new-contract').addEventListener('click', () => { if (state.clientId) openContractModal(null); });
 $('btn-save-contract').addEventListener('click', saveContract);
+$('ct-file').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  $('ct-file-name').textContent = f ? f.name : 'Nenhum arquivo escolhido';
+});
 $('btn-new-migration').addEventListener('click', () => {
   if (!state.clientId) return;
   const ativas = state.machines.filter((m) => m.status !== 'substituida');
