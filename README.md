@@ -326,6 +326,88 @@ Tabela larga **rola dentro do próprio card**, nunca a página. Para isso valem 
 usa `minmax(0, 1fr)` — com `1fr` puro o piso implícito de `min-content` faz a tabela esticar a
 coluna e a página inteira passa a rolar na horizontal.
 
+## Banco no servidor e cópia local
+
+O MongoDB de produção fica no servidor (`zcontroldesk`), que é a **fonte da verdade**. Esta
+máquina mantém uma **cópia** para trabalho offline e segurança.
+
+### Por que cópia e não um replica set
+
+Um membro secundário de replica set precisa ser alcançável **pelo primário**. Um notebook atrás
+de NAT, desligado a maior parte do tempo, não é — e um secundário inalcançável só atrapalha o
+primário (eleições, oplog retido). Cópia periódica por *pull* entrega o que se quer aqui — ter
+sempre uma cópia — sem fragilizar o servidor.
+
+### Comandos
+
+```bash
+npm run db:status   # compara os dois lados; não escreve nada
+npm run db:pull     # servidor → local   (atualiza a cópia)
+npm run db:push     # local → servidor   (carga inicial / subir trabalho local)
+```
+
+Os dois últimos **mostram o plano e não fazem nada** sem `--yes`:
+
+```bash
+node scripts/sync-db.js --pull --yes
+```
+
+Travas embutidas: recusa se origem e destino forem o mesmo servidor, e recusa apagar um destino
+com dados a partir de uma origem vazia (só com `--force`). A cópia substitui coleção por coleção
+— nunca escreve na origem. Os índices são recriados pela aplicação no próximo start.
+
+A URI do servidor vive em `SYNC_REMOTE_URI` no `.env`, que **não é versionado**. Nenhuma
+credencial entra no repositório.
+
+### Os arquivos não estão no banco
+
+Os PDFs de contrato e os SCRTs originais ficam no **disco**, não no MongoDB (o limite de 16 MB
+por documento não comporta uma planilha de 30 MB). Sincronizar só o banco deixa a aplicação sem
+eles — "Ver arquivos SCRT" e a prévia do contrato passam a dar 404. As duas pastas:
+
+```
+data/scrt-files/       # SCRTs originais enviados
+data/contract-files/   # PDFs de contrato e termos aditivos
+```
+
+Com acesso SSH ao servidor, o par do `db:pull` é:
+
+```bash
+rsync -avz --delete usuario@148.100.74.249:/caminho/do/app/data/scrt-files/     data/scrt-files/
+rsync -avz --delete usuario@148.100.74.249:/caminho/do/app/data/contract-files/ data/contract-files/
+```
+
+### Automatizar a cópia
+
+Para uma cópia diária às 20h, `crontab -e`:
+
+```cron
+0 20 * * * /usr/local/bin/node scripts/sync-db.js --pull --yes >> data/logs/sync.log 2>&1
+```
+
+O banco local precisa estar no ar na hora (o `npm start` o mantém). Confira o caminho do node com
+`which node`.
+
+## Publicar a aplicação
+
+**GitHub Pages não serve para esta aplicação.** Ele publica apenas arquivos estáticos: não roda
+Node/Express, e o navegador não fala o protocolo do MongoDB. Colocar a string de conexão no
+código do front entregaria usuário e senha do banco para qualquer visitante.
+
+O caminho natural é **rodar a aplicação no mesmo servidor onde já está o MongoDB**:
+
+```bash
+# no servidor
+git clone git@github.ibm.com:marcosgois/zControlDesk.git && cd zControlDesk
+npm install
+echo 'MONGODB_URI=mongodb://admin:SENHA@127.0.0.1:27017/tfpsystem?authSource=admin' > .env
+npm start            # sob pm2/systemd para subir junto com a máquina
+```
+
+Repare no `127.0.0.1`: com a aplicação no mesmo host, o banco não precisa mais aceitar conexões
+de fora — o que permite **fechar a porta 27017 para a internet** (ver abaixo). Um nginx na frente
+resolve domínio e HTTPS.
+
 ## API (resumo)
 
 Todas as rotas ficam sob `/api`. Exceto `/api/auth/*`, todas exigem login; as que estão sob

@@ -17,7 +17,10 @@
     "test:forecast": "node test/forecast.test.js",
     "test:mlc": "node test/mlc.test.js",
     "import:mlc-caixa": "node scripts/import-mlc-caixa.js",
-    "import:lspr": "node scripts/import-lspr.js"
+    "import:lspr": "node scripts/import-lspr.js",
+    "db:status": "node scripts/sync-db.js --status",
+    "db:pull": "node scripts/sync-db.js --pull",
+    "db:push": "node scripts/sync-db.js --push"
   },
   "engines": {
     "node": ">=18"
