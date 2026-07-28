@@ -405,12 +405,11 @@ Para ligar, em **Settings → Pages** do repositório: *Source* = `Deploy from a
 *Branch* = `main`, pasta = `/docs`. Em poucos minutos sai em
 `https://pages.github.ibm.com/marcosgois/zControlDesk/`.
 
-Enquanto a aplicação não estiver publicada, a página diz isso com todas as letras. Quando
-estiver, edite a constante `APP_URL` no topo do `<script>` em `docs/index.html` que o botão
-**Acessar o painel** aparece:
+O botão **Acessar o painel** aponta para a aplicação no ar. Se o endereço mudar, é uma linha
+só, no fim do `<script>` em `docs/index.html`:
 
 ```js
-const APP_URL = 'https://zcontroldesk.seu-dominio.ibm.com';
+const APP_URL = 'https://148.100.74.249.nip.io';
 ```
 
 > Um detalhe que costuma morder: servir o **front** pelo Pages e chamar a **API** no servidor
@@ -421,19 +420,25 @@ const APP_URL = 'https://zcontroldesk.seu-dominio.ibm.com';
 
 ### Onde a aplicação roda
 
-O caminho natural é **no mesmo servidor onde já está o MongoDB**:
+Em produção, **no mesmo servidor do MongoDB**: um LinuxONE com RHEL 9.8 em **s390x**,
+`148.100.74.249`. Está no ar em **<https://148.100.74.249.nip.io>**, atrás de nginx, sob
+systemd, com certificado do Let's Encrypt renovado automaticamente.
 
-```bash
-# no servidor
-git clone git@github.ibm.com:marcosgois/zControlDesk.git && cd zControlDesk
-npm install
-echo 'MONGODB_URI=mongodb://admin:SENHA@127.0.0.1:27017/tfpsystem?authSource=admin' > .env
-npm start            # sob pm2/systemd para subir junto com a máquina
-```
+Foi assim que a **porta 27017 saiu da internet**: com a aplicação no mesmo host, o banco só
+precisa escutar em `127.0.0.1`. Antes disso, ela estava aberta para o mundo inteiro com apenas
+a senha protegendo dados de consumo e contrato de clientes.
 
-Repare no `127.0.0.1`: com a aplicação no mesmo host, o banco não precisa mais aceitar conexões
-de fora — o que permite **fechar a porta 27017 para a internet** (ver abaixo). Um nginx na frente
-resolve domínio e HTTPS.
+O procedimento completo — instalação, publicação de versão nova, sincronização da cópia local
+pelo túnel SSH, backup e a tabela de "o que dá errado" — está em **[`deploy/`](deploy/)**. Três
+coisas que valem saber antes de mexer:
+
+- O `npm ci` no servidor exige `MONGOMS_DISABLE_POSTINSTALL=1`: o `mongodb-memory-server` está
+  em `dependencies` e tenta baixar um `mongod` que **não existe para s390x**. Em produção ele
+  nunca é carregado, porque o `require` é lazy e `MONGODB_URI` está definido.
+- A aplicação escuta na **8008**, não na 3000. Com SELinux Enforcing, o nginx só conecta em
+  portas `http_port_t` — e é preciso o boolean `httpd_can_network_relay` além do rótulo.
+- Publique com `git archive HEAD`, **não** com `rsync` da árvore de trabalho: o rsync não lê o
+  `.gitignore` e levaria junto as planilhas de cliente e a pasta `SCRT/`.
 
 ## API (resumo)
 
