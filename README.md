@@ -390,11 +390,38 @@ O banco local precisa estar no ar na hora (o `npm start` o mantém). Confira o c
 
 ## Publicar a aplicação
 
-**GitHub Pages não serve para esta aplicação.** Ele publica apenas arquivos estáticos: não roda
-Node/Express, e o navegador não fala o protocolo do MongoDB. Colocar a string de conexão no
-código do front entregaria usuário e senha do banco para qualquer visitante.
+**GitHub Pages não roda esta aplicação.** Ele publica apenas arquivos estáticos: não executa
+Node/Express, não assina o cookie de sessão, não recebe upload, e o navegador não fala o
+protocolo do MongoDB. Pôr a string de conexão no código do front entregaria usuário e senha do
+banco para qualquer visitante.
 
-O caminho natural é **rodar a aplicação no mesmo servidor onde já está o MongoDB**:
+### O que o Pages publica: o portal
+
+A pasta [`docs/`](docs/) tem uma página estática que serve de **porta de entrada** — o que o
+sistema faz, os cinco módulos, como rodar, e o botão para a aplicação onde ela estiver no ar.
+É autocontida (nenhum recurso externo) e não contém dado de cliente nem endereço de servidor.
+
+Para ligar, em **Settings → Pages** do repositório: *Source* = `Deploy from a branch`,
+*Branch* = `main`, pasta = `/docs`. Em poucos minutos sai em
+`https://pages.github.ibm.com/marcosgois/zControlDesk/`.
+
+Enquanto a aplicação não estiver publicada, a página diz isso com todas as letras. Quando
+estiver, edite a constante `APP_URL` no topo do `<script>` em `docs/index.html` que o botão
+**Acessar o painel** aparece:
+
+```js
+const APP_URL = 'https://zcontroldesk.seu-dominio.ibm.com';
+```
+
+> Um detalhe que costuma morder: servir o **front** pelo Pages e chamar a **API** no servidor
+> não funciona bem. A página do Pages é HTTPS, então `fetch` para um servidor `http://` é
+> bloqueado como conteúdo misto; e mesmo com HTTPS o cookie de sessão passa a ser *cross-site*,
+> exigindo `SameSite=None` e CORS com credenciais — que o Safari bloqueia de qualquer forma.
+> Front e API no mesmo domínio (a aplicação servindo os dois) evita tudo isso.
+
+### Onde a aplicação roda
+
+O caminho natural é **no mesmo servidor onde já está o MongoDB**:
 
 ```bash
 # no servidor

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IBM Z Control Desk</title>
+<!--
+  Portal do IBM Z Control Desk publicado no GitHub Pages.
+
+  O GitHub Pages serve APENAS arquivos estáticos: não roda Node/Express, e o
+  navegador não fala o protocolo do MongoDB. Por isso esta página não é a
+  aplicação — é a porta de entrada dela, com o que o sistema faz e o link para
+  onde ele está no ar.
+
+  Para apontar o botão para a aplicação, troque APP_URL logo abaixo pelo endereço
+  do servidor. Enquanto estiver vazio, a página mostra o estado "ainda não
+  publicada" em vez de um botão quebrado.
+-->
+<style>
+  :root {
+    --azul: #0f62fe; --roxo: #6929c4; --claro: #78a9ff; --lilas: #be95ff;
+    --fundo: #05060a; --texto: #f4f4f4;
+    --fonte: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 15px; -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+  body {
+    font-family: var(--fonte); background: var(--fundo); color: var(--texto);
+    line-height: 1.5; min-height: 100vh; overflow-x: hidden;
+  }
+  a { color: inherit; }
+
+  /* Fundo animado em CSS puro — mesma identidade da aplicação, sem carregar
+     os 670 KB do three.js numa página que é só porta de entrada. */
+  .fundo {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(1100px 700px at 78% 8%, rgba(15,98,254,.22), transparent 60%),
+      radial-gradient(900px 700px at 8% 92%, rgba(105,41,196,.20), transparent 55%),
+      var(--fundo);
+  }
+  .grade {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .5;
+    background-image:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(circle at 60% 30%, #000 20%, transparent 75%);
+    -webkit-mask-image: radial-gradient(circle at 60% 30%, #000 20%, transparent 75%);
+    animation: desliza 32s linear infinite;
+  }
+  @keyframes desliza { to { background-position: 48px 48px, 48px 48px; } }
+
+  .pagina { position: relative; z-index: 1; }
+  .faixa { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  header.topo { display: flex; align-items: center; justify-content: space-between; padding: 22px 24px; max-width: 1100px; margin: 0 auto; gap: 16px; flex-wrap: wrap; }
+  .marca { display: flex; align-items: center; gap: 12px; }
+  .selo {
+    width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--azul), var(--roxo)); color: #fff;
+    font-weight: 700; font-size: 18px; box-shadow: 0 6px 22px rgba(15,98,254,.45);
+  }
+  .marca b { font-size: 15px; font-weight: 600; }
+  .link-repo {
+    display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px;
+    font-size: 13px; text-decoration: none; color: #fff;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.2);
+  }
+  .link-repo:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.5); }
+
+  .heroi { padding: 60px 24px 40px; max-width: 1100px; margin: 0 auto; }
+  .etiqueta {
+    display: inline-flex; align-items: center; gap: 9px; font-size: 12px; letter-spacing: .4px;
+    color: #a6c8ff; border: 1px solid rgba(120,169,255,.32); background: rgba(15,98,254,.1);
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 22px;
+  }
+  .ponto { width: 7px; height: 7px; border-radius: 50%; background: #42be65; box-shadow: 0 0 10px #42be65; }
+  h1 { font-size: clamp(34px, 5.5vw, 60px); line-height: 1.05; font-weight: 600; letter-spacing: -1.2px; max-width: 16ch; }
+  h1 em { font-style: normal; background: linear-gradient(120deg, var(--claro) 10%, var(--lilas) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .chamada { margin-top: 20px; font-size: clamp(15px, 2vw, 17px); line-height: 1.62; color: rgba(244,244,244,.72); max-width: 58ch; }
+
+  .acoes { margin-top: 32px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .botao {
+    display: inline-flex; align-items: center; gap: 10px; padding: 13px 24px; border-radius: 999px;
+    font-size: 15px; font-weight: 600; text-decoration: none; border: none; font-family: var(--fonte);
+  }
+  .botao.principal { color: #fff; background: linear-gradient(120deg, var(--azul), #4589ff); box-shadow: 0 10px 30px rgba(15,98,254,.45); transition: transform .16s ease, box-shadow .16s ease; }
+  .botao.principal:hover { transform: translateY(-2px); box-shadow: 0 16px 38px rgba(15,98,254,.55); }
+  .botao.vazado { color: #fff; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.22); }
+  .botao.vazado:hover { background: rgba(255,255,255,.12); }
+
+  .aviso {
+    margin-top: 28px; padding: 16px 18px; border-radius: 12px; max-width: 640px;
+    background: rgba(241,194,27,.09); border: 1px solid rgba(241,194,27,.32);
+    font-size: 13.5px; line-height: 1.6; color: rgba(244,244,244,.85);
+  }
+  .aviso strong { color: #f1c21b; }
+  .aviso code, code.linha {
+    font-family: var(--mono); font-size: 12.5px; background: rgba(255,255,255,.08);
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  section { padding: 34px 24px; max-width: 1100px; margin: 0 auto; }
+  h2 { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(244,244,244,.42); margin-bottom: 18px; font-weight: 600; }
+
+  .cartoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 13px; }
+  .cartao {
+    padding: 20px; border-radius: 14px; background: rgba(255,255,255,.035);
+    border: 1px solid rgba(255,255,255,.09); transition: transform .18s ease, border-color .18s ease, background .18s ease;
+  }
+  .cartao:hover { transform: translateY(-3px); border-color: rgba(120,169,255,.45); background: rgba(255,255,255,.06); }
+  .icone {
+    width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 14px;
+    background: rgba(15,98,254,.16); border: 1px solid rgba(120,169,255,.28); color: #a6c8ff;
+  }
+  .cartao h3 { font-size: 14.5px; font-weight: 600; margin-bottom: 6px; }
+  .cartao p { font-size: 12.5px; line-height: 1.55; color: rgba(244,244,244,.6); }
+
+  .passos { counter-reset: p; display: grid; gap: 12px; max-width: 760px; }
+  .passo {
+    position: relative; padding: 14px 16px 14px 52px; border-radius: 12px;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+    font-size: 13.5px; line-height: 1.6; color: rgba(244,244,244,.78);
+  }
+  .passo::before {
+    counter-increment: p; content: counter(p);
+    position: absolute; left: 16px; top: 14px; width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 11.5px; font-weight: 700; color: #fff;
+    background: linear-gradient(135deg, var(--azul), var(--roxo));
+  }
+  .passo strong { color: var(--texto); }
+
+  footer { max-width: 1100px; margin: 0 auto; padding: 26px 24px 44px; font-size: 12px; color: rgba(244,244,244,.34); border-top: 1px solid rgba(255,255,255,.07); }
+
+  @media (prefers-reduced-motion: reduce) { .grade { animation: none; } }
+  @media (max-width: 640px) { .heroi { padding: 36px 24px 28px; } h1 { max-width: none; } }
+</style>
+</head>
+<body>
+<div class="fundo"></div>
+<div class="grade"></div>
+
+<div class="pagina">
+  <header class="topo">
+    <div class="marca"><div class="selo">Z</div><b>IBM Z Control Desk</b></div>
+    <a class="link-repo" href="https://github.ibm.com/marcosgois/zControlDesk" target="_blank" rel="noopener">
+      Repositório
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+  </header>
+
+  <div class="heroi">
+    <span class="etiqueta"><span class="ponto"></span> Governança de mainframe · SCRT · Tailored Fit Pricing</span>
+    <h1>Todo o consumo <em>IBM&nbsp;Z</em> dos seus clientes, sob controle.</h1>
+    <p class="chamada">
+      Consumo SCRT, contratos de MLC, inventário de software licenciado, parque físico e o ciclo de
+      MO/MES — num só painel, com acesso por cliente.
+    </p>
+
+    <div class="acoes" id="acoes"></div>
+    <div id="estado"></div>
+  </div>
+
+  <section>
+    <h2>Cinco módulos</h2>
+    <div class="cartoes">
+      <div class="cartao">
+        <div class="icone"><svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <h3>Consumo zOTC</h3><p>Leitura do SCRT, MSU por máquina e LPAR, baseline, comparativo mês a mês e projeção de capacidade.</p>
+      </div>
+      <div class="cartao">
+        <div class="icone"><svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <h3>Consumo MLC</h3><p>Contrato de MLC por cliente e por ano contratual, com o consumo sincronizado do SCRT.</p>
+      </div>
+      <div class="cartao">
+        <div class="icone"><svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+        <h3>Inventário</h3><p>Relatório IBM SW Material: PIDs, licenças e o casamento 1:1 com o S&amp;S, com marcação de Demo/PoC.</p>
+      </div>
+      <div class="cartao">
+        <div class="icone"><svg width="19" height="19" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+        <h3>Infraestrutura</h3><p>Sites, máquinas e LPARs, referência de capacidade LSPR e o histórico de cada máquina.</p>
+      </div>
+      <div class="cartao">
+        <div class="icone"><svg width="19" height="19" viewBox="0 0 16 16" fill="none"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9.5 1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9.5 1.5V5H13" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+        <h3>Contratos</h3><p>Contratos e termos aditivos ligando máquinas e PIDs, com os PDFs assinados e o ciclo de MO/MES.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Rodar na sua máquina</h2>
+    <div class="passos">
+      <div class="passo"><strong>Clone e instale</strong> — <code class="linha">git clone git@github.ibm.com:marcosgois/zControlDesk.git &amp;&amp; cd zControlDesk &amp;&amp; npm install</code></div>
+      <div class="passo"><strong>Suba</strong> — <code class="linha">npm start</code>. Um MongoDB local sobe junto, com os dados em <code>./data</code>; nada é instalado no sistema.</div>
+      <div class="passo"><strong>Abra <code>http://localhost:3000</code></strong> — no primeiro acesso o sistema pede a criação do administrador. Depois é o admin quem cadastra os demais usuários.</div>
+      <div class="passo"><strong>Para usar o banco do servidor</strong>, defina <code>MONGODB_URI</code> no <code>.env</code>. O <code>README</code> traz o procedimento de sincronização (<code>npm run db:pull</code>).</div>
+    </div>
+  </section>
+
+  <footer>
+    IBM Z Control Desk · Consumo Mainframe · Tailored Fit Pricing (SCRT) · uso interno IBM
+  </footer>
+</div>
+
+<script>
+  /* ─────────────────────────────────────────────────────────────────────
+     Endereço da aplicação no ar. Troque pelo do servidor, por exemplo:
+       const APP_URL = 'https://zcontroldesk.seu-dominio.ibm.com';
+     Deixe '' enquanto ela não estiver publicada — a página avisa em vez de
+     oferecer um botão que não leva a lugar nenhum.
+     ───────────────────────────────────────────────────────────────────── */
+  const APP_URL = '';
+
+  const seta = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M3 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const acoes = document.getElementById('acoes');
+  const estado = document.getElementById('estado');
+
+  if (APP_URL) {
+    acoes.innerHTML =
+      '<a class="botao principal" href="' + APP_URL + '">Acessar o painel ' + seta + '</a>'
+      + '<a class="botao vazado" href="#" onclick="document.querySelector(\'section\').scrollIntoView();return false">Ver os módulos</a>';
+  } else {
+    acoes.innerHTML = '<a class="botao vazado" href="https://github.ibm.com/marcosgois/zControlDesk" target="_blank" rel="noopener">Ver o repositório ' + seta + '</a>';
+    estado.innerHTML =
+      '<div class="aviso"><strong>A aplicação ainda não está publicada num servidor.</strong><br>'
+      + 'Esta página é estática (GitHub Pages), então ela não roda o sistema — o IBM Z Control Desk '
+      + 'é uma aplicação Node/Express com MongoDB e precisa de um servidor. Enquanto isso, dá para '
+      + 'rodar localmente com <code>npm start</code> (passo a passo abaixo).<br><br>'
+      + 'Quando publicar, edite <code>APP_URL</code> em <code>docs/index.html</code> e o botão '
+      + '“Acessar o painel” aparece aqui.</div>';
+  }
+</script>
+</body>
+</html>
