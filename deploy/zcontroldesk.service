@@ -1,0 +1,161 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# IBM Z Control Desk — unit systemd de PRODUÇÃO
+# RHEL 9 (s390x) · Node 22 do AppStream · MongoDB local (mongod.service)
+#
+# Instalação:
+#   sudo useradd --system --home-dir /opt/zcontroldesk --shell /sbin/nologin zcd
+#   sudo install -d -m 750 -o zcd -g zcd \
+#        /var/lib/zcontroldesk/scrt-files \
+#        /var/lib/zcontroldesk/contract-files \
+#        /var/lib/zcontroldesk/logs
+#   sudo install -m 600 -o root -g root /dev/null /etc/zcontroldesk.env
+#   sudo nano /etc/zcontroldesk.env          # use deploy/env.exemplo como modelo
+#   sudo install -m 644 deploy/zcontroldesk.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now zcontroldesk
+#   sudo systemctl status zcontroldesk && journalctl -u zcontroldesk -f
+#
+# Conferência do endurecimento depois de subir:
+#   systemd-analyze security zcontroldesk.service
+#   systemctl show zcontroldesk -p ProtectSystem -p ReadWritePaths
+# ═══════════════════════════════════════════════════════════════════════════
+
+[Unit]
+Description=IBM Z Control Desk — consumo de MSU, contratos e inventário
+Documentation=file:/opt/zcontroldesk/README.md
+
+# network-online (e não só network.target) porque o app.listen precisa da
+# interface já configurada quando HOST=127.0.0.1 vier do arquivo de ambiente.
+Wants=network-online.target
+After=network-online.target mongod.service
+
+# Requires: sem o MongoDB a aplicação não tem o que fazer — se o mongod for
+# parado, este serviço para junto, em vez de ficar de pé servindo erro 500.
+# ATENÇÃO: After/Requires ordenam o START, não garantem que o mongod já esteja
+# ACEITANDO CONEXÕES. O connectDb usa serverSelectionTimeoutMS=8000 e o
+# server.js sai com process.exit(1) se estourar — quem resolve a corrida é o
+# Restart=on-failure lá embaixo, não esta seção.
+Requires=mongod.service
+
+# Cada tentativa frustrada custa ~13s (8s de timeout do Mongo + 5s de espera do
+# RestartSec). Esta janela dá ~4 minutos de insistência — cobre um mongod lento
+# no boot — e depois desiste, para que erro de configuração apareça como
+# "failed" no status em vez de reiniciar em loop para sempre.
+# Estas duas chaves são da seção [Unit]: no [Service] o systemd só emite um
+# aviso de "Unknown key name" e o limite volta ao padrão (5 em 10s).
+StartLimitIntervalSec=300
+StartLimitBurst=20
+
+[Service]
+Type=simple
+User=zcd
+Group=zcd
+
+# WorkingDirectory é OBRIGATÓRIO, não estético: o dotenv (server.js:3) procura
+# o .env em process.cwd(), não em __dirname. Aqui usamos EnvironmentFile e não
+# .env, mas o cwd também é o que faz os caminhos relativos internos baterem.
+WorkingDirectory=/opt/zcontroldesk
+ExecStart=/usr/bin/node /opt/zcontroldesk/server.js
+
+# Lido pelo systemd como root ANTES de trocar para o usuário zcd — por isso o
+# arquivo pode ser 0600 root:root e o zcd nunca precisa ler a senha do Mongo.
+# Também por isso o ProtectSystem=strict (que deixa /etc read-only) não atrapalha.
+# Sem o "-" na frente: se o arquivo sumir, o serviço FALHA em vez de subir sem
+# MONGODB_URI e tentar levantar um mongod embutido na 27017 — que colidiria com
+# o MongoDB real do servidor e, em s390x, nem tem binário para baixar.
+EnvironmentFile=/etc/zcontroldesk.env
+
+Restart=on-failure
+RestartSec=5
+
+# O shutdown do server.js fecha HTTP, desconecta o mongoose e sai; 20s sobra.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zcontroldesk
+
+# ── Isolamento ────────────────────────────────────────────────────────────
+NoNewPrivileges=yes
+# Nenhuma capability é necessária: a app escuta em porta alta (PORT=3000) atrás
+# do nginx. Se um dia alguém puser PORT=80 aqui, o bind falha com EACCES — o
+# certo continua sendo o proxy reverso, não devolver CAP_NET_BIND_SERVICE.
+CapabilityBoundingSet=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+UMask=0077
+
+# AF_NETLINK entra na lista de propósito: o getaddrinfo da glibc abre um socket
+# netlink para escolher endereço de origem. Com MONGODB_URI em 127.0.0.1 isso
+# raramente pesa, mas a falha, quando aparece, é um EAI intermitente que ninguém
+# associa a esta linha.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+# Filtro de syscalls: seccomp-bpf funciona em s390x. Se o serviço morrer com
+# SIGSYS logo no start, comente esta linha e troque temporariamente por
+# SystemCallLog=@system-service para descobrir qual chamada falta.
+SystemCallFilter=@system-service
+
+# NÃO adicione MemoryDenyWriteExecution=yes. O JIT do V8 precisa de páginas
+# graváveis e depois executáveis; com essa diretiva o Node morre no arranque com
+# SIGSEGV/SIGBUS e a mensagem não menciona a diretiva. É o erro mais copiado de
+# tutorial de endurecimento genérico.
+
+# ── Sistema de arquivos: read-only, com exceções explícitas ───────────────
+# ProtectSystem=strict monta TODA a hierarquia (inclusive /opt, /etc, /var e
+# /usr) somente-leitura dentro do namespace do serviço. Isso protege de verdade,
+# porque no RHEL 9 o Node roda em unconfined_service_t — ou seja, o SELinux não
+# confina este processo em nada, e este namespace é o único confinamento que
+# existe. Confira com: ps -eZ | grep node
+ProtectSystem=strict
+
+# ReadWritePaths é OBRIGATÓRIO por causa da linha acima: sem ele, todo caminho
+# de escrita da aplicação volta EROFS (errno 30, "Read-only file system") — que
+# NÃO é EACCES, então não adianta procurar AVC de SELinux no audit.log.
+#
+# O que quebra sem esta linha, ponto a ponto:
+#   • src/routes.js:56-57  — upload de SCRT: fs.writeFileSync em SCRT_FILES_DIR
+#     estoura EROFS. A rota devolve 500 e o relatório é gravado no Mongo SEM o
+#     arquivo original: o botão de baixar/ver passa a responder "o arquivo
+#     original deste SCRT não foi guardado" (routes.js:648) para sempre.
+#   • src/routes.js:78-79  — anexo de contrato: mesmo EROFS, o PDF do contrato
+#     simplesmente não existe depois de "salvo com sucesso".
+#   • src/logger.js:49-50  — log de acesso diário: o erro é ENGOLIDO (o catch só
+#     imprime um aviso uma vez, "log nunca pode derrubar a aplicação"). A app
+#     segue funcionando e a trilha de auditoria de quem acessou o quê some sem
+#     ninguém notar. Este é o mais perigoso dos três, justamente por ser silencioso.
+#   • src/auth.js:23-25    — segredo de sessão: idem, cai no catch e a app passa a
+#     usar um segredo EFÊMERO. Efeito visível: todo mundo é deslogado a cada
+#     restart do serviço. Por isso AUTH_SECRET é obrigatório no arquivo de
+#     ambiente — com ele definido, auth.js:18 retorna antes e nada é escrito.
+#
+# Um caminho só (o pai) cobre os três diretórios porque a app faz mkdirSync
+# recursivo. Manter os dados FORA de /opt é o que permite que a pasta do código
+# continue 100% somente-leitura e que um redeploy com rsync --delete nunca
+# encoste em contrato de cliente.
+#   SCRT_FILES_DIR=/var/lib/zcontroldesk/scrt-files
+#   CONTRACT_FILES_DIR=/var/lib/zcontroldesk/contract-files
+#   LOG_DIR=/var/lib/zcontroldesk/logs
+ReadWritePaths=/var/lib/zcontroldesk
+
+# Garante que /var/lib/zcontroldesk exista, com dono zcd e rótulo SELinux certo,
+# mesmo em servidor novo — ReadWritePaths apontando para diretório inexistente
+# faz o serviço FALHAR no start, com mensagem que não explica o motivo.
+StateDirectory=zcontroldesk
+StateDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target

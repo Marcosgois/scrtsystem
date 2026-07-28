@@ -204,14 +204,41 @@
   </footer>
 </div>
 
-<script>
+    <h1>AskZ</h1>
+
+    <!-- Local onde o chat será renderizado -->
+    <div id="root"></div>
+
+    <script>
+  window.wxOConfiguration = {
+    orchestrationID: "923c6598906640bcbb3104eac1e6ecf3_49dd0c96-cb5c-4763-9e0c-fa69ccd29b11",
+    hostURL: "https://br-sao.watson-orchestrate.cloud.ibm.com",
+    rootElementID: "root",
+    deploymentPlatform: "ibmcloud",
+    crn: "crn:v1:bluemix:public:watsonx-orchestrate:br-sao:a/923c6598906640bcbb3104eac1e6ecf3:49dd0c96-cb5c-4763-9e0c-fa69ccd29b11::",
+    chatOptions: {
+        agentId: "b0c75235-1890-48dc-8f38-99713c19538d", 
+    }
+  };
+  setTimeout(function () {
+    const script = document.createElement('script');
+    script.src = `${window.wxOConfiguration.hostURL}/wxochat/wxoLoader.js?embed=true`;
+    script.addEventListener('load', function () {
+        wxoLoader.init();
+    });
+    document.head.appendChild(script);
+  }, 0);                     
+</script>
+
+<script> 
   /* ─────────────────────────────────────────────────────────────────────
-     Endereço da aplicação no ar. Troque pelo do servidor, por exemplo:
-       const APP_URL = 'https://zcontroldesk.seu-dominio.ibm.com';
-     Deixe '' enquanto ela não estiver publicada — a página avisa em vez de
-     oferecer um botão que não leva a lugar nenhum.
+     Endereço da aplicação no ar. O nome nip.io resolve para o IP do servidor
+     LinuxONE e é o que permite um certificado válido do Let's Encrypt sem
+     depender de DNS próprio; no dia em que houver um CNAME da IBM, é só
+     trocar aqui. Deixe '' se a aplicação sair do ar — a página avisa em vez
+     de oferecer um botão que não leva a lugar nenhum.
      ───────────────────────────────────────────────────────────────────── */
-  const APP_URL = '';
+  const APP_URL = 'https://148.100.74.249.nip.io';
 
   const seta = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M3 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const acoes = document.getElementById('acoes');
