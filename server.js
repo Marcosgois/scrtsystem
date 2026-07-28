@@ -11,6 +11,10 @@ const { sessionUserId } = require('./src/auth');
 const { User } = require('./src/models');
 
 const PORT = process.env.PORT || 3000;
+// Atrás de um proxy reverso, HOST=127.0.0.1 impede que a aplicação seja alcançada
+// direto na porta dela, por fora do TLS. Vazio = todas as interfaces (o padrão em
+// desenvolvimento, onde não há proxy na frente).
+const HOST = process.env.HOST || undefined;
 // Com MONGODB_URI definido no .env (Atlas/servidor próprio), usa esse banco.
 // Sem MONGODB_URI, sobe um MongoDB local persistente com dados em ./data/mongodb.
 const MONGODB_URI = process.env.MONGODB_URI || null;
@@ -114,8 +118,8 @@ async function main() {
     process.exit(1);
   }
 
-  const server = app.listen(PORT, () => {
-    console.log(`IBM Z Control Desk rodando em http://localhost:${PORT}`);
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`IBM Z Control Desk rodando em http://${HOST || 'localhost'}:${PORT}`);
     console.log(`[log] ${log.resumo()}`);
   });
 

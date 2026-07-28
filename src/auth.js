@@ -77,15 +77,25 @@ function readCookie(req, name) {
   }
   return null;
 }
+// Atributos comuns ao cookie de sessão. Em produção ele ganha Secure, e daí sai
+// uma consequência que não é óbvia: servir a aplicação em HTTP puro com
+// NODE_ENV=production faz o navegador DESCARTAR o cookie — o login falha sem
+// mensagem nenhuma. Atrás de um proxy reverso, portanto, o TLS não é opcional.
+function cookieAttrs() {
+  const attrs = ['Path=/', 'HttpOnly', 'SameSite=Lax'];
+  if (process.env.NODE_ENV === 'production') attrs.push('Secure');
+  return attrs;
+}
 function setSessionCookie(res, userId) {
   const exp = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000;
   const token = signSession({ uid: String(userId), exp });
-  const attrs = [`${COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${SESSION_DAYS * 24 * 60 * 60}`];
-  if (process.env.NODE_ENV === 'production') attrs.push('Secure');
+  const attrs = [`${COOKIE}=${token}`, ...cookieAttrs(), `Max-Age=${SESSION_DAYS * 24 * 60 * 60}`];
   res.setHeader('Set-Cookie', attrs.join('; '));
 }
 function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  // Os mesmos atributos da emissão: um cookie Secure não é apagado por um
+  // Set-Cookie que difira nos flags em alguns navegadores.
+  res.setHeader('Set-Cookie', [`${COOKIE}=`, ...cookieAttrs(), 'Max-Age=0'].join('; '));
 }
 function sessionUserId(req) {
   const payload = verifySession(readCookie(req, COOKIE));
