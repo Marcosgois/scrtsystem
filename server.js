@@ -34,6 +34,11 @@ app.disable('x-powered-by');
 // de consumo, então o host da IBM é liberado apenas ali — o resto do app segue estrito.
 const WXO_ORIGIN = process.env.WXO_ORIGIN || 'https://br-sao.watson-orchestrate.cloud.ibm.com';
 const WXO_WSS = WXO_ORIGIN.replace(/^https:/, 'wss:');
+// O Cloudflare injeta o beacon de Web Analytics (Browser Insights) em TODA página
+// proxied; sem liberar o domínio dele, o navegador bloqueia o beacon.min.js (erro no
+// console). Vai na CSP base porque a injeção acontece em todas as páginas.
+const CF_INSIGHTS = 'https://static.cloudflareinsights.com';   // beacon.min.js
+const CF_INSIGHTS_RUM = 'https://cloudflareinsights.com';      // POST das métricas
 function cspHeader(req) {
   const askz = req.path === '/consumo' || req.path === '/index.html'; // páginas com o widget
   const x = askz ? ' ' + WXO_ORIGIN : '';
@@ -46,10 +51,10 @@ function cspHeader(req) {
     `img-src 'self' data: blob:${x}`,
     `font-src 'self' data:${x}`,
     `style-src 'self' 'unsafe-inline'${x}`,
-    `script-src 'self' 'unsafe-inline'${x}`,
+    `script-src 'self' 'unsafe-inline' ${CF_INSIGHTS}${x}`,
     `worker-src 'self' blob:${x}`,
     `frame-src 'self'${x}`,
-    `connect-src 'self'${askz ? ' ' + WXO_ORIGIN + ' ' + WXO_WSS : ''}`,
+    `connect-src 'self' ${CF_INSIGHTS_RUM}${askz ? ' ' + WXO_ORIGIN + ' ' + WXO_WSS : ''}`,
   ].join('; ');
 }
 app.use((req, res, next) => { res.setHeader('Content-Security-Policy', cspHeader(req)); next(); });
