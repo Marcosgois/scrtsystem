@@ -18,6 +18,11 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
+  // Sem isto o multer decodifica o nome do arquivo como latin1 (default herdado
+  // do busboy) e todo acento chega quebrado — os navegadores mandam UTF-8.
+  // Opção disponível a partir do multer 2.1; até a 2.0 era preciso reinterpretar
+  // o nome na mão (Buffer.from(nome, 'latin1').toString('utf8')).
+  defParamCharset: 'utf-8',
 });
 
 function normalizeName(s) {
@@ -531,10 +536,7 @@ router.post('/clients/:id/reports', upload.single('file'), asyncHandler(async (r
   }
 
   const sourceKey = sourceKeyOf(parsed.machines);
-  const fileName = req.file.originalname
-    // multer 1.x entrega o filename como latin1; reinterpreta para UTF-8 (acentos).
-    ? Buffer.from(req.file.originalname, 'latin1').toString('utf8')
-    : null;
+  const fileName = req.file.originalname || null;
 
   // Conflito: alguma máquina deste arquivo já foi reportada por OUTRA origem no mesmo mês.
   const irmaos = await ScrtReport.find({
@@ -1616,8 +1618,7 @@ router.post('/clients/:id/contracts/:cid/files', upload.single('file'), asyncHan
   const contract = await findContract(req.params.id, req.params.cid);
   if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
   if (!req.file) return res.status(400).json({ error: 'Envie um arquivo.' });
-  // multer 1.x entrega o nome em latin1.
-  const name = Buffer.from(req.file.originalname || 'arquivo', 'latin1').toString('utf8');
+  const name = req.file.originalname || 'arquivo';
   const kind = CONTRACT_FILE_KINDS.includes(req.body && req.body.kind) ? req.body.kind : 'contrato';
   contract.files.push({
     name, size: req.file.size, contentType: contractContentType(name), kind,

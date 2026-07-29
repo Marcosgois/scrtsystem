@@ -100,6 +100,25 @@ async function main() {
     check('?download=1 -> attachment', /attachment/.test(fres.headers.get('content-disposition') || ''));
     await fres.arrayBuffer();
 
+    // Nome com acento: o multer decodifica como latin1 por default (herança do
+    // busboy). Depende de defParamCharset:'utf-8' em routes.js — se alguém tirar,
+    // o nome volta a chegar "ManutenÃ§Ã£o".
+    const nomeAcentuado = 'Contrato Manutenção 2026 – Anexo çãõ.pdf';
+    const formAcento = new FormData();
+    formAcento.append('file', new Blob([pdfBytes]), nomeAcentuado);
+    r = await admin.req(`${C}/contracts/${ct1}/files`, { method: 'POST', body: formAcento });
+    check('upload preserva acento no nome do arquivo',
+      r.status === 201 && r.body.file.name === nomeAcentuado, r.body.file && r.body.file.name);
+    await admin.req(`${C}/contracts/${ct1}/files/${r.body.file._id}`, { method: 'DELETE' });
+
+    // Estouro do limite de 25 MB: o MulterError tem que virar 400 em português,
+    // não 500. Quem traduz é o middleware de erro do server.js.
+    const formGrande = new FormData();
+    formGrande.append('file', new Blob([Buffer.alloc(26 * 1024 * 1024, 0x41)]), 'gigante.pdf');
+    r = await admin.req(`${C}/contracts/${ct1}/files`, { method: 'POST', body: formGrande });
+    check('arquivo acima de 25 MB -> 400 "Falha no upload"',
+      r.status === 400 && /^Falha no upload:/.test((r.body && r.body.error) || ''), { status: r.status, body: r.body });
+
     r = await admin.req(`${C}/contracts`);
     check('lista traz fileCount e não traz software[]', r.body[0].fileCount === 1 && r.body[0].software === undefined, r.body[0]);
 

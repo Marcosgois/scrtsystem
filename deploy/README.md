@@ -153,8 +153,6 @@ de comando, que ficaria visível no `ps`.
 - **Sem firewall.** `firewalld` não está instalado e o `iptables` tem política `ACCEPT`
   sem regras. Hoje só 22, 80 e 443 escutam em interface pública, então a superfície é
   pequena — mas nada impede que um serviço futuro suba em `0.0.0.0` sem ninguém notar.
-- **`multer` 1.x** tem vulnerabilidades corrigidas na 2.x; a atualização tem mudança de
-  API e não entrou neste deploy.
 
 ## Arquivos deste diretório
 

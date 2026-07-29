@@ -71,7 +71,11 @@ app.use((err, req, res, next) => {
   if (err && err.name === 'MulterError') {
     return res.status(400).json({ error: `Falha no upload: ${err.message}` });
   }
-  if (err && /unexpected end of form/i.test(err.message || '')) {
+  // Upload cortado no meio. O multer 2.x passou a sinalizar a queda da conexão
+  // com Error("Request aborted"/"Request closed"/"Request error") — antes só
+  // chegava o "Unexpected end of form" do busboy, que ainda vale para corpo
+  // multipart truncado. Sem os dois casos, cliente que desiste vira 500.
+  if (err && /unexpected end of form|request (aborted|closed|error)/i.test(err.message || '')) {
     return res.status(400).json({ error: 'Upload interrompido — envie o arquivo novamente.' });
   }
   if (err && err.type === 'entity.parse.failed') {

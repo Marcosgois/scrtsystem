@@ -134,6 +134,11 @@ async function main() {
     check('reenvio do mesmo mês -> replaced=true, status 200', r.status === 200 && r.body.replaced === true, r.body);
     check('mantém um único relatório do mês', r.body.report._id === reportId);
 
+    // Nome com acento: sem defParamCharset:'utf-8' o multer entrega latin1 e o
+    // rawFile.name fica "SCRT Junho AcentuaÃ§Ã£o.csv".
+    r = await api(`/clients/${caixaId}/reports`, { method: 'POST', body: uploadForm(SAMPLE, 'SCRT Junho Acentuação.csv') });
+    check('rawFile.name preserva acento', r.body.report.rawFile.name === 'SCRT Junho Acentuação.csv', r.body.report.rawFile);
+
     // Upload para cliente errado gera aviso
     r = await api(`/clients/${brbId}/reports`, { method: 'POST', body: uploadForm(SAMPLE, '#JUN2026.csv') });
     check('SCRT da CAIXA no cliente BRB gera aviso de divergência',
