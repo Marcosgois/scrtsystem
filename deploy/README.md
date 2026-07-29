@@ -39,6 +39,54 @@ Atualizar o dev com uma cópia fresca de prod (banco + arquivos), de mão única
 ./deploy/refresh-dev.sh --sim
 ```
 
+## CI/CD (GitHub Actions)
+
+`.github/workflows/deploy.yml` automatiza o mesmo fluxo manual: **push na `main` → testa →
+publica em dev → publica em prod (com aprovação manual)**. Pull request só roda os testes;
+dá para disparar à mão em **Actions → Run workflow**. O deploy é o próprio `deploy.sh`
+(reaproveitado via `ZCD_KEY/ZCD_HOST/ZCD_USER`), então CI e mão fazem exatamente a mesma
+coisa — `git archive HEAD` → `npm ci` → restart → healthcheck em `/login`.
+
+Roda **só no github.ibm.com** (`if: github.server_url == 'https://github.ibm.com'`); o
+espelho público no github.com pula todos os jobs — sem deploy duplo, sem secrets lá. Os
+jobs de **deploy** ainda têm um interruptor: só rodam com a variável **`DEPLOY_ENABLED=true`**.
+Enquanto ela não existe, todo push roda **só os testes** — assim dá para ligar o pipeline
+por partes sem um deploy prematuro falhando por falta de secret.
+
+Para ligar (uma vez, no repositório `github.ibm.com/marcosgois/zControlDesk`):
+
+1. **Uma chave SSH dedicada ao CI** (não reuse a `zDesk.pem` pessoal):
+   ```bash
+   ssh-keygen -t ed25519 -f zcd-ci -N "" -C "github-actions-deploy"
+   ```
+   Ponha a **pública** no servidor, na conta `linux1`:
+   ```bash
+   ssh -i "…/zDesk.pem" linux1@148.100.74.249 'cat >> ~/.ssh/authorized_keys' < zcd-ci.pub
+   ```
+   > Como `linux1` tem sudo sem senha, essa chave = acesso total ao servidor. É inerente
+   > ao modelo push-por-SSH. Guarde o privado só no secret; apague o arquivo local depois.
+
+2. **Secrets** (Settings → Secrets and variables → Actions):
+   - `DEPLOY_SSH_KEY` — o conteúdo do arquivo **privado** `zcd-ci`.
+   - `DEPLOY_HOST` — `148.100.74.249`.
+   - `DEPLOY_USER` — `linux1`.
+
+3. **Aprovação manual do prod** (Settings → Environments → **prod** → *Required reviewers*):
+   adicione quem aprova. Sem isso, o job de prod publica direto após o dev. O ambiente
+   **dev** não precisa de proteção.
+
+4. **Ligar o pipeline** (Settings → Secrets and variables → Actions → *Variables*):
+   crie a variável **`DEPLOY_ENABLED`** com valor `true`. Só depois disso os pushes na
+   `main` passam a publicar; antes, rodam só os testes. Para pausar os deploys sem mexer no
+   workflow, é só apagar essa variável.
+
+5. **Runner x86.** O workflow usa `ubuntu-latest`. Os testes exigem x86 porque o
+   `mongodb-memory-server` baixa um `mongod` sem binário s390x/arm. Se o github.ibm.com
+   só tiver runners **self-hosted**, troque `runs-on: ubuntu-latest` pelo label deles
+   (ex.: `[self-hosted, linux, x64]`) nos três jobs — e confirme que esse runner
+   **consegue SSH até `148.100.74.249:22`**. As faixas de IP do runner precisam alcançar a
+   porta 22 (que o firewall deixa aberta).
+
 ## Cloudflare e firewall — como o tráfego chega
 
 O Cloudflare está em **modo proxy** (a origem fica escondida) com **SSL/TLS Full (strict)**.

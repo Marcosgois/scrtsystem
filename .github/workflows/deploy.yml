@@ -1,0 +1,95 @@
+name: CI / Deploy
+
+# push na main  -> testa -> publica em dev -> publica em prod (com aprovação manual)
+# pull request  -> só testa
+# Actions > Run workflow -> disparo manual (workflow_dispatch)
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false   # nunca cancelar um deploy no meio do caminho
+
+jobs:
+  test:
+    # Só roda no repositório da IBM. O espelho público (github.com) pula tudo — evita
+    # deploy duplo e o uso de secrets que lá não existem.
+    if: github.server_url == 'https://github.ibm.com'
+    # x86 obrigatório: o mongodb-memory-server baixa um binário do mongod que NÃO existe
+    # para s390x/arm. Se o github.ibm.com usar runners self-hosted, troque por algo como
+    # [self-hosted, linux, x64].
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Rodar a suíte de testes
+        run: npm test
+
+  deploy-dev:
+    needs: test
+    if: github.server_url == 'https://github.ibm.com' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: dev
+      url: https://zcontroldesk-dev.linuxone.com.br
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar chave SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          umask 077
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Publicar em dev
+        env:
+          ZCD_HOST: ${{ secrets.DEPLOY_HOST }}
+          ZCD_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          export ZCD_KEY="$HOME/.ssh/deploy_key"
+          bash deploy/deploy.sh dev --sim
+      - name: Limpar chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  deploy-prod:
+    needs: deploy-dev
+    if: github.server_url == 'https://github.ibm.com' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # A aprovação manual vem da proteção do "environment" prod (Settings > Environments >
+    # prod > Required reviewers). Sem isso configurado, prod publica direto após o dev.
+    environment:
+      name: prod
+      url: https://zcontroldesk.linuxone.com.br
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar chave SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          umask 077
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Publicar em prod
+        env:
+          ZCD_HOST: ${{ secrets.DEPLOY_HOST }}
+          ZCD_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          export ZCD_KEY="$HOME/.ssh/deploy_key"
+          bash deploy/deploy.sh prod --sim
+      - name: Limpar chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
