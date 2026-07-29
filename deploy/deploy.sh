@@ -18,7 +18,7 @@ set -euo pipefail
 AMBIENTE="${1:-}"
 SIM="${2:-}"
 case "$AMBIENTE" in
-  dev)  APP_DIR=/opt/zcontroldesk-dev; SERVICO=zcontroldesk-dev; PORTA=8009; URL="https://dev.zcontroldesk.linuxone.com.br" ;;
+  dev)  APP_DIR=/opt/zcontroldesk-dev; SERVICO=zcontroldesk-dev; PORTA=8009; URL="https://zcontroldesk-dev.linuxone.com.br" ;;
   prod) APP_DIR=/opt/zcontroldesk;     SERVICO=zcontroldesk;     PORTA=8008; URL="https://zcontroldesk.linuxone.com.br" ;;
   *) echo "uso: $0 <dev|prod> [--sim]"; exit 2 ;;
 esac
