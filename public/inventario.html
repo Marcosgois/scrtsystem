@@ -1270,12 +1270,12 @@
           <table id="tblModalRecords" style="margin-top: 0;">
             <thead>
               <tr style="background:#0f62fe; color:white;">
-                <th>SW Serial</th>
-                <th>Effective Date (Data Efetivação)</th>
-                <th>PO Number</th>
-                <th>Categoria</th>
-                <th>Status</th>
-                <th>VUs do Registro</th>
+                <th class="mdl-sortable" data-sort="swSerial">SW Serial<span class="mdl-sort-ico"></span></th>
+                <th class="mdl-sortable" data-sort="effDate">Effective Date (Data Efetivação)<span class="mdl-sort-ico"></span></th>
+                <th class="mdl-sortable" data-sort="poNumber">PO Number<span class="mdl-sort-ico"></span></th>
+                <th class="mdl-sortable" data-sort="category">Categoria<span class="mdl-sort-ico"></span></th>
+                <th class="mdl-sortable" data-sort="status">Status<span class="mdl-sort-ico"></span></th>
+                <th class="mdl-sortable" data-sort="vuCount">VUs do Registro<span class="mdl-sort-ico"></span></th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -2272,6 +2272,51 @@
       return { summary, vueCode, vueDesc, announcement };
     }
 
+    // ── Ordenação da tabela "Registros do PID & effective dates" do modal ──
+    // Abre por Effective Date mais recente (o contrato mais novo no topo); clicar no
+    // cabeçalho reordena, e clicar de novo inverte. Datas/números começam decrescente.
+    let modalRecList = [];
+    let modalRecSort = { col: 'effDate', asc: false };
+
+    function renderModalRecs() {
+      const tbody = document.querySelector('#tblModalRecords tbody');
+      if (!tbody) return;
+      const { col, asc } = modalRecSort;
+      const chave = (p) => (col === 'effDate' ? (parseEffDateToISO(p.effDate) || '') : (col === 'vuCount' ? p.vuCount : p[col]));
+      const recs = modalRecList.slice().sort((a, b) => {
+        const va = chave(a), vb = chave(b);
+        if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va;
+        return asc
+          ? String(va || '').localeCompare(String(vb || ''), 'pt-BR', { numeric: true })
+          : String(vb || '').localeCompare(String(va || ''), 'pt-BR', { numeric: true });
+      });
+      tbody.innerHTML = recs.map((p) => `
+        <tr>
+          <td><strong>${htmlEsc(p.swSerial)}</strong></td>
+          <td style="color:#0f62fe; font-weight:700;">${htmlEsc(p.effDate || '-')}</td>
+          <td>${htmlEsc(p.poNumber || '-')}</td>
+          <td>${p.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
+          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${htmlEsc(p.status || '-')}</span></td>
+          <td class="val-highlight">${p.vuCount > 0 ? p.vuCount.toLocaleString('pt-BR') : '-'}</td>
+        </tr>`).join('');
+      document.querySelectorAll('#tblModalRecords thead th.mdl-sortable').forEach((th) => {
+        const ico = th.querySelector('.mdl-sort-ico');
+        if (ico) ico.textContent = th.dataset.sort === col ? (asc ? ' ▲' : ' ▼') : ' ↕';
+      });
+    }
+
+    // Liga o clique nos cabeçalhos uma única vez (a tabela já existe no DOM).
+    document.querySelectorAll('#tblModalRecords thead th.mdl-sortable').forEach((th) => {
+      th.style.cursor = 'pointer';
+      th.style.userSelect = 'none';
+      th.addEventListener('click', () => {
+        const col = th.dataset.sort;
+        if (modalRecSort.col === col) modalRecSort.asc = !modalRecSort.asc;
+        else modalRecSort = { col, asc: !(col === 'effDate' || col === 'vuCount') };
+        renderModalRecs();
+      });
+    });
+
     function openProductModal(productId) {
       const allInstances = globalInventoryData.filter(p => p.productId === productId);
       if (allInstances.length === 0) return;
@@ -2354,24 +2399,17 @@
         });
       }
 
-      // Preenche a tabela de registros (com Effective Date e Status) no modal
-      const tbodyRecords = document.querySelector('#tblModalRecords tbody');
-      if (tbodyRecords) {
-        tbodyRecords.innerHTML = '';
-        allInstances.forEach(p => {
-          const row = document.createElement('tr');
-          const vuCount = p.features.reduce((s, f) => s + f.numericValue, 0);
-          row.innerHTML = `
-            <td><strong>${htmlEsc(p.swSerial)}</strong></td>
-            <td style="color:#0f62fe; font-weight:700;">${htmlEsc(p.effDate || '-')}</td>
-            <td>${htmlEsc(p.poNumber || '-')}</td>
-            <td>${p.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
-            <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${htmlEsc(p.status || '-')}</span></td>
-            <td class="val-highlight">${vuCount > 0 ? vuCount.toLocaleString('pt-BR') : '-'}</td>
-          `;
-          tbodyRecords.appendChild(row);
-        });
-      }
+      // Registros do modal: guarda a lista e ordena (default: Effective Date mais recente).
+      modalRecList = allInstances.map((p) => ({
+        swSerial: p.swSerial || '-',
+        effDate: p.effDate || '-',
+        poNumber: p.poNumber || '-',
+        category: p.category,
+        status: p.status || '-',
+        vuCount: p.features.reduce((s, f) => s + f.numericValue, 0),
+      }));
+      modalRecSort = { col: 'effDate', asc: false };
+      renderModalRecs();
 
       document.getElementById('productDetailModal').style.display = 'flex';
     }
