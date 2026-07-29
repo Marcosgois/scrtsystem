@@ -191,6 +191,51 @@ que estará velha.
 `mongodump` com `--config` (um arquivo 0600 contendo `password:`) em vez de `-p` na linha
 de comando, que ficaria visível no `ps`.
 
+## Réplica do banco no Atlas (DR)
+
+Para não perder os dados se a máquina morrer, o banco `tfpsystem` é **espelhado de hora em
+hora** para um cluster **MongoDB Atlas** (destino off-site, fora do LinuxONE). Não é um
+secundário ao vivo — o Atlas gerenciado não entra num replica set on-prem —, é uma **cópia
+agendada**: `mongodump` da produção → `mongorestore --drop` no Atlas. RPO de ~1 hora.
+
+| | |
+|---|---|
+| Timer | `zcd-atlas-backup.timer` — `OnCalendar=hourly`, `Persistent=true` |
+| Serviço | `zcd-atlas-backup.service` (oneshot) → `/usr/local/sbin/zcd-atlas-backup` |
+| Credencial | `/etc/zcontroldesk-atlas.conf` (0600 root) — `uri: "..."` do Atlas, **sem senha em argv** |
+| Alcance | **só o banco** (~5 MB). Os arquivos binários **não** entram (ver abaixo) |
+
+Duas armadilhas que custaram depuração:
+
+- **A URI do Atlas no `.conf` não pode ter banco no path** (`.../mongodb.net/?...`, não
+  `.../mongodb.net/tfpsystem?...`). Com um banco default o `mongorestore` interpreta como
+  `--db`, entra em "modo banco único" e ignora o subdiretório `tfpsystem/` do dump —
+  restaura **0 documentos** sem erro óbvio. Sem banco no path, o mapeamento vem do nome da
+  pasta do dump.
+- **O IP do servidor tem de estar na _IP Access List_ do Atlas** (`148.100.74.249/32`).
+  Sem isso o handshake TLS é cortado com `tlsv1 alert internal error` — parece erro de
+  TLS, é bloqueio de rede.
+
+Operar:
+
+```bash
+sudo systemctl start zcd-atlas-backup.service   # roda o espelho agora
+```
+
+```bash
+sudo journalctl -u zcd-atlas-backup.service -n 20 --output=cat   # ver o último resultado
+```
+
+```bash
+sudo systemctl list-timers zcd-atlas-backup.timer   # quando roda de novo
+```
+
+> ⚠️ **Falta o destino dos arquivos.** O Atlas guarda só o banco; os ~50 MB de SCRTs e
+> PDFs em `/var/lib/zcontroldesk` continuam só no servidor. Um `restore` a partir do Atlas
+> traria os metadados (quais relatórios, quais contratos) mas os arquivos apareceriam como
+> 404. Falta escolher um destino off-site para eles (IBM COS / S3 / outra máquina) e um
+> `rsync`/`rclone` no mesmo timer.
+
 ## O que dá errado
 
 | Sintoma | Causa | Correção |
@@ -228,3 +273,8 @@ de comando, que ficaria visível no `ps`.
   segredos.
 - `deploy.sh` — publicação `git archive` por ambiente (`dev`/`prod`).
 - `refresh-dev.sh` — copia banco + arquivos de prod para dev, de mão única.
+- `atlas-backup.sh` — o espelho DR do banco para o Atlas (instalado em
+  `/usr/local/sbin/zcd-atlas-backup`). Não contém segredo: a URI do Atlas fica em
+  `/etc/zcontroldesk-atlas.conf`, fora do repositório.
+- `zcd-atlas-backup.service` / `zcd-atlas-backup.timer` — o oneshot e o gatilho de hora
+  em hora do espelho DR.

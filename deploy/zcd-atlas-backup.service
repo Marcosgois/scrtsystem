@@ -1,0 +1,10 @@
+[Unit]
+Description=zControl Desk - espelho do MongoDB para o Atlas (DR)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zcd-atlas-backup
+Nice=10
+IOSchedulingClass=idle

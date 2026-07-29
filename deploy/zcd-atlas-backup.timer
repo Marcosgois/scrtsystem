@@ -1,0 +1,10 @@
+[Unit]
+Description=zControl Desk - dispara o espelho DR de hora em hora
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=180
+Persistent=true
+
+[Install]
+WantedBy=timers.target
