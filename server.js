@@ -29,20 +29,30 @@ app.disable('x-powered-by');
 // HSTS/X-Frame-Options/X-Content-Type-Options/Referrer-Policy, mas não CSP. Como
 // o front usa scripts e handlers inline, 'unsafe-inline' é necessário hoje; o
 // resto fica trancado em 'self' (nada de script/-conexão/-frame externos).
-const CSP = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline'",
-  "worker-src 'self' blob:",
-  "connect-src 'self'",
-].join('; ');
-app.use((req, res, next) => { res.setHeader('Content-Security-Policy', CSP); next(); });
+//
+// Exceção escopada: o widget AskZ (IBM watsonx Orchestrate) é embutido SÓ na página
+// de consumo, então o host da IBM é liberado apenas ali — o resto do app segue estrito.
+const WXO_ORIGIN = process.env.WXO_ORIGIN || 'https://br-sao.watson-orchestrate.cloud.ibm.com';
+const WXO_WSS = WXO_ORIGIN.replace(/^https:/, 'wss:');
+function cspHeader(req) {
+  const askz = req.path === '/consumo' || req.path === '/index.html'; // páginas com o widget
+  const x = askz ? ' ' + WXO_ORIGIN : '';
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    `img-src 'self' data: blob:${x}`,
+    `font-src 'self' data:${x}`,
+    `style-src 'self' 'unsafe-inline'${x}`,
+    `script-src 'self' 'unsafe-inline'${x}`,
+    `worker-src 'self' blob:${x}`,
+    `frame-src 'self'${x}`,
+    `connect-src 'self'${askz ? ' ' + WXO_ORIGIN + ' ' + WXO_WSS : ''}`,
+  ].join('; ');
+}
+app.use((req, res, next) => { res.setHeader('Content-Security-Policy', cspHeader(req)); next(); });
 
 // Inventários de software chegam como JSON grande (centenas de produtos) — 25 MB cobre com folga.
 app.use(express.json({ limit: '25mb' }));

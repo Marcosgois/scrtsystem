@@ -536,5 +536,27 @@
 <script src="auth-client.js"></script>
 <script src="scrt-files.js"></script>
 <script src="app.js"></script>
+
+<!-- AskZ — assistente do IBM watsonx Orchestrate (widget flutuante). O host da IBM
+     é liberado na CSP só nesta página (ver cspHeader em server.js). -->
+<div id="root"></div>
+<script>
+  window.wxOConfiguration = {
+    orchestrationID: "923c6598906640bcbb3104eac1e6ecf3_49dd0c96-cb5c-4763-9e0c-fa69ccd29b11",
+    hostURL: "https://br-sao.watson-orchestrate.cloud.ibm.com",
+    rootElementID: "root",
+    deploymentPlatform: "ibmcloud",
+    crn: "crn:v1:bluemix:public:watsonx-orchestrate:br-sao:a/923c6598906640bcbb3104eac1e6ecf3:49dd0c96-cb5c-4763-9e0c-fa69ccd29b11::",
+    chatOptions: {
+      agentId: "b0c75235-1890-48dc-8f38-99713c19538d",
+    },
+  };
+  setTimeout(function () {
+    const script = document.createElement('script');
+    script.src = `${window.wxOConfiguration.hostURL}/wxochat/wxoLoader.js?embed=true`;
+    script.addEventListener('load', function () { wxoLoader.init(); });
+    document.head.appendChild(script);
+  }, 0);
+</script>
 </body>
 </html>
