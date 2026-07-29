@@ -3120,7 +3120,7 @@
   STATUS_INFO['ECUS QUBP'] = { t: 'ECUS QUBP', d: STATUS_INFO.QUBP.d };
   STATUS_INFO['ECUS SLBP'] = { t: 'ECUS SLBP', d: STATUS_INFO.SLBP.d, bullets: STATUS_INFO.SLBP.bullets };
 
-  const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   /** Descreve um texto de status (simples, composto, ou lista separada por vírgula). */
   function describeStatus(text) {
@@ -3650,7 +3650,9 @@
 
   function contractLinkBtn(prod) {
     const ligado = contractMap[recKey(prod).toUpperCase()];
-    const args = `'${escHtml(prod.productId)}', '${escHtml(prod.swSerial)}'`;
+    // pidSafe (não escHtml): estes vão para dentro de string JS de um onclick inline,
+    // onde escape de HTML não protege e a aspa simples quebraria o literal (XSS).
+    const args = `'${pidSafe(prod.productId)}', '${pidSafe(prod.swSerial)}'`;
     return `<button type="button" class="tfp-pair-btn" onclick="tfpLinkContract(event, ${args})"`
       + ` title="${ligado ? 'Trocar ou remover o contrato' : 'Vincular este registro a um contrato'}">`
       + `${ligado ? 'contrato' : '+ contrato'}</button>`;
@@ -3751,7 +3753,9 @@
 
   function demoBtn(prod) {
     const marcado = isDemo(prod);
-    const args = `'${escHtml(prod.productId)}', '${escHtml(prod.swSerial)}'`;
+    // pidSafe (não escHtml): estes vão para dentro de string JS de um onclick inline,
+    // onde escape de HTML não protege e a aspa simples quebraria o literal (XSS).
+    const args = `'${pidSafe(prod.productId)}', '${pidSafe(prod.swSerial)}'`;
     return `<button type="button" class="tfp-pair-btn${marcado ? ' tfp-demo-on' : ''}"`
       + ` onclick="tfpToggleDemo(event, ${args})"`
       + ` title="${marcado ? 'Desmarcar Demo/PoC' : 'Marcar este registro como Demo/PoC'}">`
@@ -3785,7 +3789,9 @@
     const ajustado = pairOverrides.some(
       (o) => o.ssPid === prod.productId && o.ssSerial === prod.swSerial
     );
-    const args = `'${escHtml(prod.productId)}', '${escHtml(prod.swSerial)}'`;
+    // pidSafe (não escHtml): estes vão para dentro de string JS de um onclick inline,
+    // onde escape de HTML não protege e a aspa simples quebraria o literal (XSS).
+    const args = `'${pidSafe(prod.productId)}', '${pidSafe(prod.swSerial)}'`;
     const btn = (fn, txt, title) =>
       `<button type="button" class="tfp-pair-btn" onclick="${fn}(event, ${args})"`
       + ` title="${escHtml(title)}">${escHtml(txt)}</button>`;
