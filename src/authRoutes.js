@@ -59,9 +59,18 @@ const deny = (res, req, motivo) => {
  */
 async function clientAccessGuard(req, res, next) {
   const user = req.user;
-  const p = req.path;
   const write = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
   let m;
+
+  // O Express NÃO decodifica req.path, mas ENTREGA req.params já decodificado
+  // ao handler. Sem alinhar os dois, um id percent-encoded (%36a6… no lugar de
+  // 6a6…) escapa dos regexes abaixo, cai no next() do fim e o handler serve o
+  // recurso mesmo assim — furando o isolamento entre clientes. Decodificamos
+  // aqui para casar o MESMO valor que o handler vai ver. Sequência inválida
+  // (que decodeURIComponent recusa) é tentativa de burla: nega.
+  let p;
+  try { p = decodeURIComponent(req.path); }
+  catch (e) { return deny(res, req, 'caminho malformado'); }
 
   // Criar cliente
   if (p === '/clients' && req.method === 'POST') return user.role === 'admin' ? next() : deny(res, req, 'criar cliente exige administrador');
@@ -81,7 +90,16 @@ async function clientAccessGuard(req, res, next) {
     if (!rep) return next(); // 404 vem do handler
     return (write ? auth.canEdit(user, rep.client) : auth.canView(user, rep.client)) ? next() : deny(res, req, 'sem acesso ao cliente do relatório');
   }
-  next(); // /clients (lista) e /inventories são filtrados no próprio handler
+  // Fecha por padrão: sob /clients/<seg>, se <seg> é um id de cliente VÁLIDO que
+  // não casou os padrões acima, é tentativa de burlar o guard (ex.: id de 12
+  // bytes que escapa do regex de 24 hex, ou alguma normalização que não previmos)
+  // — nega. Antes o next() cego aqui era o que deixava o bypass funcionar.
+  // Um segmento que nem é ObjectId não corresponde a cliente nenhum: deixa o
+  // handler devolver 400/404, como faz para /clients lista e /inventories.
+  if ((m = p.match(/^\/clients\/([^/]+)/)) && isValidId(m[1])) {
+    return deny(res, req, 'rota de cliente não reconhecida pelo guard');
+  }
+  next();
 }
 
 // ── Rotas públicas de auth ──

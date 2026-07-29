@@ -109,6 +109,18 @@ async function main() {
     r = await view.req(`/clients/${bb._id}/dashboard`);
     check('view NÃO acessa a BB -> 403', r.status === 403, r.status);
 
+    // Regressão: o guard casava req.path CRU (o Express não o decodifica), mas o
+    // handler recebe req.params DECODIFICADO. Um id percent-encoded escapava do
+    // regex e vazava o cliente de outro. Tem de dar 403 pelas duas formas.
+    const bbEnc1 = '%' + bb._id[0].charCodeAt(0).toString(16) + bb._id.slice(1);
+    r = await view.req(`/clients/${bbEnc1}/dashboard`);
+    check('view NÃO acessa a BB com id percent-encoded -> 403', r.status === 403, r.status);
+    const bbEncFull = bb._id.split('').map((c) => '%' + c.charCodeAt(0).toString(16)).join('');
+    r = await view.req(`/clients/${bbEncFull}/dashboard`);
+    check('view NÃO acessa a BB com id todo encodado -> 403', r.status === 403, r.status);
+    r = await view.req(`/clients/${bbEnc1}`, { method: 'DELETE' });
+    check('view NÃO exclui a BB com id encodado -> 403', r.status === 403, r.status);
+
     r = await view.req('/clients', { method: 'POST', json: { name: 'Nova' } });
     check('view NÃO cria cliente -> 403', r.status === 403, r.status);
 
