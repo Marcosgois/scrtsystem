@@ -7,9 +7,10 @@
 
 const express = require('express');
 const mongoose = require('mongoose');
-const { User, ScrtReport } = require('./models');
+const { User, ScrtReport, AuditLog } = require('./models');
 const auth = require('./auth');
 const log = require('./logger');
+const audit = require('./audit');
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -48,7 +49,15 @@ function requireAdmin(req, res, next) {
   next();
 }
 const deny = (res, req, motivo) => {
-  if (req) log.auth.negado(req, motivo || 'sem acesso ao cliente');
+  if (req) {
+    log.auth.negado(req, motivo || 'sem acesso ao cliente');
+    // Só registra na auditoria a negação de uma TENTATIVA de mudança (não a de leitura),
+    // que é o que interessa numa investigação.
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      const cm = String(req.path).match(/\/clients\/([a-f0-9]{24})/i);
+      audit.event(req, { action: 'negado', summary: motivo, status: 403, clientId: cm ? cm[1] : undefined });
+    }
+  }
   return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
 };
 
@@ -126,6 +135,7 @@ authRouter.post('/setup', asyncHandler(async (req, res) => {
   auth.setSessionCookie(res, user._id);
   log.lembrarUsuario(user);
   log.auth.setup(req, user);
+  audit.event(req, { action: 'setup', actor: user, entityType: 'User', entityLabel: user.email, status: 201, summary: 'primeiro administrador' });
   res.status(201).json(publicUser(user));
 }));
 
@@ -136,16 +146,19 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   if (!user || !auth.verifyPassword(password, user.passwordSalt, user.passwordHash)) {
     // O motivo vai só para o log; a resposta continua genérica de propósito.
     log.auth.login(req, email, false, user ? 'senha incorreta' : 'e-mail não cadastrado');
+    audit.event(req, { action: 'login-falho', entityType: 'Sessão', entityLabel: email, status: 401, summary: user ? 'senha incorreta' : 'e-mail não cadastrado' });
     return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
   }
   auth.setSessionCookie(res, user._id);
   log.lembrarUsuario(user);
   log.auth.login(req, user.email, true);
+  audit.event(req, { action: 'login', actor: user, entityType: 'Sessão', status: 200 });
   res.json(publicUser(user));
 }));
 
 authRouter.post('/logout', (req, res) => {
   log.auth.logout(req, req.user);
+  if (req.user) audit.event(req, { action: 'logout', entityType: 'Sessão', status: 200 });
   auth.clearSessionCookie(res);
   res.json({ ok: true });
 });
@@ -229,6 +242,66 @@ adminRouter.delete('/users/:id', asyncHandler(async (req, res) => {
   }
   await User.deleteOne({ _id: req.params.id });
   res.json({ ok: true });
+}));
+
+// ── Consulta da trilha de auditoria (só admin) ──
+function auditFilter(q) {
+  const f = {};
+  if (isValidId(q.client)) f['client.id'] = new mongoose.Types.ObjectId(q.client);
+  if (isValidId(q.actor)) f['actor.id'] = new mongoose.Types.ObjectId(q.actor);
+  if (q.action) f.action = String(q.action);
+  if (q.from || q.to) {
+    f.at = {};
+    if (q.from) { const d = new Date(q.from); if (!isNaN(d)) f.at.$gte = d; }
+    if (q.to) { const d = new Date(q.to); if (!isNaN(d)) f.at.$lte = d; }
+    if (!Object.keys(f.at).length) delete f.at;
+  }
+  if (q.q && String(q.q).trim()) {
+    const rx = new RegExp(String(q.q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    f.$or = [{ 'entity.label': rx }, { 'actor.email': rx }, { path: rx }, { summary: rx }];
+  }
+  return f;
+}
+
+adminRouter.get('/audit', asyncHandler(async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const filter = auditFilter(req.query);
+  const [total, items] = await Promise.all([
+    AuditLog.countDocuments(filter),
+    AuditLog.find(filter).sort({ at: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+  ]);
+  res.json({ total, page, limit, items });
+}));
+
+adminRouter.get('/audit.csv', asyncHandler(async (req, res) => {
+  const items = await AuditLog.find(auditFilter(req.query)).sort({ at: -1 }).limit(10000).lean();
+  const cel = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const resumoMudancas = (e) => {
+    if (e.changes && e.changes.length) return e.changes.map((c) => `${c.field}: ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}`).join(' | ');
+    if (e.before) return `apagado: ${JSON.stringify(e.before)}`;
+    if (e.after) return `criado: ${JSON.stringify(e.after)}`;
+    return e.summary || '';
+  };
+  const head = ['data_hora', 'quem', 'acao', 'entidade', 'cliente', 'ip', 'metodo', 'caminho', 'status', 'detalhe'];
+  const linhas = items.map((e) => [
+    e.at ? new Date(e.at).toISOString() : '',
+    (e.actor && e.actor.email) || '',
+    e.action || '',
+    e.entity ? `${e.entity.type || ''}${e.entity.label ? ': ' + e.entity.label : ''}` : '',
+    (e.client && e.client.name) || '',
+    e.ip || '',
+    e.method || '',
+    e.path || '',
+    e.status || '',
+    resumoMudancas(e),
+  ].map(cel).join(','));
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="auditoria.csv"');
+  res.send('﻿' + [head.join(','), ...linhas].join('\n'));
 }));
 
 module.exports = { attachUser, requireAuth, requireAdmin, clientAccessGuard, authRouter, adminRouter };

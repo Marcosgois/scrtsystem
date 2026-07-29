@@ -118,8 +118,8 @@ async function connectDb(uri) {
   await renameStorageToMemory(mongoose.connection);
   await backfillMachineStatus(mongoose.connection);
 
-  const { Client, ScrtReport, Inventory, Contract, MigrationEvent } = require('./models');
-  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init()]);
+  const { Client, ScrtReport, Inventory, Contract, MigrationEvent, AuditLog } = require('./models');
+  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init(), AuditLog.init()]);
 
   console.log(`[MongoDB] conectado em ${uri.replace(/\/\/[^@]+@/, '//***@')}`);
 }

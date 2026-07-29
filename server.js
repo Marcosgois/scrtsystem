@@ -34,6 +34,7 @@ app.use(log.requestLogger(sessionUserId));
 app.use('/api', attachUser);                        // req.user (ou null) a partir do cookie
 app.use('/api/auth', authRouter);                   // público: status/setup/login/logout/me
 app.use('/api', requireAuth);                       // o resto exige login
+app.use('/api', require('./src/audit').middleware); // trilha de auditoria das mutações
 app.use('/api/admin', requireAdmin, adminRouter);   // administração de usuários
 app.use('/api', clientAccessGuard);                 // acesso por cliente (view/edit)
 app.use('/api', apiRoutes);                          // rotas existentes dos módulos

@@ -50,6 +50,11 @@
 </header>
 
 <main class="container" id="main">
+  <div class="segmented admin-tabs" id="admin-tabs">
+    <button type="button" class="seg active" data-view="users">Usuários</button>
+    <button type="button" class="seg" data-view="audit">Auditoria</button>
+  </div>
+
   <section id="admin-view">
     <div class="client-header">
       <div>
@@ -75,6 +80,62 @@
       </table>
     </div>
     <div class="empty-inline hidden" id="users-empty">Nenhum usuário cadastrado ainda.</div>
+  </section>
+
+  <section id="audit-view" class="hidden">
+    <div class="client-header">
+      <div>
+        <h2>Auditoria</h2>
+        <p class="muted">Tudo que cada pessoa fez em cada cliente — data/hora, o que criou, editou (antes → depois) ou excluiu, e quem entrou.</p>
+      </div>
+    </div>
+
+    <div class="audit-filters">
+      <label class="field"><span>Cliente</span><select id="af-client"></select></label>
+      <label class="field"><span>Pessoa</span><select id="af-actor"></select></label>
+      <label class="field"><span>Ação</span>
+        <select id="af-action">
+          <option value="">Todas</option>
+          <option value="create">Criação</option>
+          <option value="update">Edição</option>
+          <option value="delete">Exclusão</option>
+          <option value="login">Login</option>
+          <option value="logout">Logout</option>
+          <option value="login-falho">Login falho</option>
+          <option value="negado">Acesso negado</option>
+          <option value="setup">Setup</option>
+        </select>
+      </label>
+      <label class="field"><span>De</span><input type="date" id="af-from"></label>
+      <label class="field"><span>Até</span><input type="date" id="af-to"></label>
+      <label class="field af-search"><span>Buscar</span><input type="search" id="af-q" placeholder="entidade, e-mail, caminho…"></label>
+      <div class="af-actions">
+        <button class="btn btn-primary" id="af-apply">Filtrar</button>
+        <button class="btn btn-ghost" id="af-clear">Limpar</button>
+        <button class="btn btn-ghost" id="af-csv">Exportar CSV</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="infra-table" id="audit-table">
+        <thead>
+          <tr>
+            <th>Quando</th>
+            <th>Quem</th>
+            <th>Ação</th>
+            <th>Entidade</th>
+            <th>Cliente</th>
+            <th>Detalhe</th>
+          </tr>
+        </thead>
+        <tbody id="audit-body"></tbody>
+      </table>
+    </div>
+    <div class="empty-inline hidden" id="audit-empty">Nada registrado para esse filtro.</div>
+    <div class="audit-foot">
+      <span class="muted small" id="audit-count"></span>
+      <button class="btn btn-ghost hidden" id="audit-more">Carregar mais</button>
+    </div>
   </section>
 </main>
 

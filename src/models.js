@@ -504,6 +504,50 @@ const lsprModelSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Trilha de auditoria — quem fez o quê, em qual cliente, quando, com o "antes →
+   depois" de cada mudança. É SÓ-APPEND: o app nunca edita nem apaga uma entrada
+   (por isso não tem timestamps automáticos — o carimbo é o campo `at`). Nunca
+   guarda senha/token: o middleware de captura sanitiza antes de gravar.
+   ────────────────────────────────────────────────────────────────────────── */
+const auditChangeSchema = new mongoose.Schema(
+  { field: String, from: mongoose.Schema.Types.Mixed, to: mongoose.Schema.Types.Mixed },
+  { _id: false }
+);
+const auditLogSchema = new mongoose.Schema(
+  {
+    at: { type: Date, default: Date.now },
+    actor: {
+      id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      email: String,
+      name: String,
+    },
+    action: { type: String },   // create | update | delete | login | logout | login-falho | negado | setup
+    entity: {
+      type: { type: String },   // Client | InfraMachine | InfraSite | InfraLpar | Contract | MigrationEvent | ScrtReport | Inventory | MLC | User | Sessão
+      id: String,
+      label: String,            // rótulo humano: nome / serial / número do contrato
+    },
+    client: {
+      id: { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
+      name: String,
+    },
+    method: String,
+    path: String,
+    ip: String,
+    status: Number,
+    changes: { type: [auditChangeSchema], default: undefined },  // updates: [{campo, de, para}]
+    before: mongoose.Schema.Types.Mixed,   // deletes: o que foi apagado
+    after: mongoose.Schema.Types.Mixed,    // creates: o que foi criado
+    summary: String,
+  },
+  { minimize: false, versionKey: false }
+);
+auditLogSchema.index({ at: -1 });
+auditLogSchema.index({ 'client.id': 1, at: -1 });
+auditLogSchema.index({ 'actor.id': 1, at: -1 });
+auditLogSchema.index({ action: 1, at: -1 });
+
 const Client = mongoose.model('Client', clientSchema);
 const ScrtReport = mongoose.model('ScrtReport', scrtReportSchema);
 const Inventory = mongoose.model('Inventory', inventorySchema);
@@ -514,8 +558,9 @@ const User = mongoose.model('User', userSchema);
 const LsprModel = mongoose.model('LsprModel', lsprModelSchema);
 const Contract = mongoose.model('Contract', contractSchema);
 const MigrationEvent = mongoose.model('MigrationEvent', migrationEventSchema);
+const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 
 module.exports = {
   Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel,
-  Contract, MigrationEvent,
+  Contract, MigrationEvent, AuditLog,
 };

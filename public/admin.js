@@ -266,4 +266,111 @@ async function deleteUser(u) {
 $('btn-new-user').addEventListener('click', () => openUserModal(null));
 $('btn-save-user').addEventListener('click', saveUser);
 
+/* ── Auditoria ──────────────────────────────────────── */
+const auditState = { page: 1, limit: 100, hasMore: false, loading: false, loaded: false };
+const ACTION_LABEL = { create: 'Criou', update: 'Editou', delete: 'Excluiu', login: 'Entrou', logout: 'Saiu', 'login-falho': 'Login falho', negado: 'Negado', setup: 'Setup' };
+const ACTION_CLASS = { create: 'ok', update: 'info', delete: 'danger', 'login-falho': 'warn', negado: 'warn' };
+
+function fmtWhen(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? '—' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+const fmtVal = (v) => (v == null ? '∅' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+const hasDetail = (e) => (e.changes && e.changes.length) || e.before || e.after || e.summary;
+
+function detailHtml(e) {
+  if (e.changes && e.changes.length) {
+    return '<table class="audit-diff"><tbody>' + e.changes.map((c) =>
+      `<tr><th>${esc(c.field)}</th><td class="from">${esc(fmtVal(c.from))}</td><td class="arrow">→</td><td class="to">${esc(fmtVal(c.to))}</td></tr>`).join('') + '</tbody></table>';
+  }
+  if (e.before) return `<div class="audit-blob"><span class="muted small">apagado:</span><pre>${esc(JSON.stringify(e.before, null, 2))}</pre></div>`;
+  if (e.after) return `<div class="audit-blob"><span class="muted small">criado:</span><pre>${esc(JSON.stringify(e.after, null, 2))}</pre></div>`;
+  return `<span class="muted">${esc(e.summary || '—')}</span>`;
+}
+
+function renderAudit(items, reset) {
+  const body = $('audit-body');
+  if (reset) body.innerHTML = '';
+  $('audit-empty').classList.toggle('hidden', !(reset && !items.length));
+  const rows = items.map((e, i) => {
+    const rid = `ad-${auditState.page}-${i}`;
+    const ent = e.entity ? `${esc(e.entity.type || '')}${e.entity.label ? ' · <strong>' + esc(e.entity.label) + '</strong>' : ''}` : '<span class="muted small">—</span>';
+    const cli = e.client && e.client.name ? esc(e.client.name) : '<span class="muted small">—</span>';
+    const act = `<span class="audit-badge ${ACTION_CLASS[e.action] || ''}">${ACTION_LABEL[e.action] || esc(e.action || '')}</span>`;
+    const det = hasDetail(e) ? `<button type="button" class="btn-link audit-expand" data-target="${rid}">ver</button>` : '<span class="muted small">—</span>';
+    return `<tr>
+        <td class="nowrap">${fmtWhen(e.at)}</td>
+        <td>${esc((e.actor && e.actor.email) || '—')}</td>
+        <td>${act}</td>
+        <td>${ent}</td>
+        <td>${cli}</td>
+        <td>${det}</td>
+      </tr>
+      <tr class="audit-detail hidden" id="${rid}"><td colspan="6">${detailHtml(e)}</td></tr>`;
+  }).join('');
+  body.insertAdjacentHTML('beforeend', rows);
+  body.querySelectorAll('.audit-expand:not([data-wired])').forEach((b) => {
+    b.setAttribute('data-wired', '1');
+    b.addEventListener('click', () => {
+      const row = document.getElementById(b.dataset.target);
+      if (row) { const hidden = row.classList.toggle('hidden'); b.textContent = hidden ? 'ver' : 'ocultar'; }
+    });
+  });
+}
+
+function auditQuery() {
+  const p = new URLSearchParams();
+  const set = (k, id) => { const v = $(id).value.trim(); if (v) p.set(k, v); };
+  set('client', 'af-client'); set('actor', 'af-actor'); set('action', 'af-action'); set('q', 'af-q');
+  const from = $('af-from').value; if (from) p.set('from', from);
+  const to = $('af-to').value; if (to) { const d = new Date(to); d.setHours(23, 59, 59, 999); p.set('to', d.toISOString()); }
+  return p;
+}
+
+async function loadAudit(reset) {
+  if (auditState.loading) return;
+  auditState.loading = true;
+  if (reset) auditState.page = 1;
+  const p = auditQuery();
+  p.set('limit', String(auditState.limit));
+  p.set('page', String(auditState.page));
+  try {
+    const data = await api(`/admin/audit?${p.toString()}`);
+    renderAudit(data.items || [], reset);
+    const shown = (auditState.page - 1) * auditState.limit + (data.items || []).length;
+    auditState.hasMore = shown < data.total;
+    $('audit-more').classList.toggle('hidden', !auditState.hasMore);
+    $('audit-count').textContent = data.total ? `${shown} de ${data.total} registros` : 'Nenhum registro';
+  } catch (e) {
+    toast(`Falha ao carregar auditoria: ${e.message}`, 'error');
+  } finally {
+    auditState.loading = false;
+    auditState.loaded = true;
+  }
+}
+
+function populateAuditFilters() {
+  $('af-client').innerHTML = '<option value="">Todos os clientes</option>' +
+    state.clients.map((c) => `<option value="${c._id}">${esc(c.name)}</option>`).join('');
+  $('af-actor').innerHTML = '<option value="">Todas as pessoas</option>' +
+    state.users.map((u) => `<option value="${u._id}">${esc(u.name || u.email)}</option>`).join('');
+}
+
+function showView(view) {
+  document.querySelectorAll('#admin-tabs .seg').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  $('admin-view').classList.toggle('hidden', view !== 'users');
+  $('audit-view').classList.toggle('hidden', view !== 'audit');
+  $('btn-new-user').style.display = view === 'users' ? '' : 'none';
+  if (view === 'audit' && !auditState.loaded) { populateAuditFilters(); loadAudit(true); }
+}
+
+document.querySelectorAll('#admin-tabs .seg').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+$('af-apply').addEventListener('click', () => loadAudit(true));
+$('af-clear').addEventListener('click', () => {
+  ['af-client', 'af-actor', 'af-action', 'af-from', 'af-to', 'af-q'].forEach((id) => { $(id).value = ''; });
+  loadAudit(true);
+});
+$('audit-more').addEventListener('click', () => { auditState.page += 1; loadAudit(false); });
+$('af-csv').addEventListener('click', () => { window.location.href = `/api/admin/audit.csv?${auditQuery().toString()}`; });
+
 load().catch((e) => toast(`Falha ao carregar: ${e.message}`, 'error'));
