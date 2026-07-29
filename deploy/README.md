@@ -1,8 +1,64 @@
 # Deploy — IBM Z Control Desk
 
-A aplicação está no ar em **<https://148.100.74.249.nip.io>**, no mesmo LinuxONE que
-roda o MongoDB. Este documento descreve **o que está instalado de verdade** e como
-operar no dia a dia. Não é um plano: é o registro da instalação.
+No ar em **<https://zcontroldesk.linuxone.com.br>** (produção) e
+**<https://zcontroldesk-dev.linuxone.com.br>** (desenvolvimento), atrás do Cloudflare,
+no mesmo LinuxONE que roda o MongoDB. Este documento descreve **o que está instalado de
+verdade** e como operar no dia a dia. Não é um plano: é o registro da instalação.
+
+## Dois ambientes e os domínios
+
+São duas instâncias no mesmo servidor, isoladas: código, usuário de serviço, banco e
+arquivos separados. Publica-se em **dev** primeiro, testa, e promove-se **o mesmo commit**
+para **prod**.
+
+| | Produção | Desenvolvimento |
+|---|---|---|
+| Domínio | `zcontroldesk.linuxone.com.br` | `zcontroldesk-dev.linuxone.com.br` |
+| Código | `/opt/zcontroldesk` | `/opt/zcontroldesk-dev` |
+| Serviço | `zcontroldesk` (porta 8008) | `zcontroldesk-dev` (porta 8009) |
+| Banco | `tfpsystem` (usuário `zcd_app`) | `tfpsystem_dev` (usuário `zcd_dev`) |
+| Dados | `/var/lib/zcontroldesk` (dono `zcd`) | `/var/lib/zcontroldesk-dev` (dono `zcd-dev`) |
+| Ambiente | `/etc/zcontroldesk.env` | `/etc/zcontroldesk-dev.env` |
+| Acesso | login do app | **basic-auth** (usuário `dev`) + login do app |
+
+Publicar e promover, do Mac:
+
+```bash
+./deploy/deploy.sh dev --sim     # publica o HEAD em dev
+```
+
+```bash
+./deploy/deploy.sh prod --sim    # promove o MESMO commit para prod
+```
+
+Sem `--sim` é só ensaio. O script exige árvore git limpa e sobe `git archive HEAD`.
+
+Atualizar o dev com uma cópia fresca de prod (banco + arquivos), de mão única:
+
+```bash
+./deploy/refresh-dev.sh --sim
+```
+
+## Cloudflare e firewall — como o tráfego chega
+
+O Cloudflare está em **modo proxy** (a origem fica escondida) com **SSL/TLS Full (strict)**.
+Entre o Cloudflare e o servidor, o TLS usa um **Cloudflare Origin Certificate** wildcard
+(`*.linuxone.com.br`, 15 anos) cuja chave privada foi gerada no servidor e nunca saiu de
+lá (`/etc/pki/nginx/zcd-origin.{crt,key}`).
+
+O **firewall (`firewalld`) só aceita 80/443 das faixas de IP do Cloudflare** (ipsets
+`cloudflare4`/`cloudflare6` + rich rules na zona `public`); a 22 fica aberta para o SSH.
+Consequência: **bater direto no IP `148.100.74.249` ou no `nip.io` não responde mais** —
+o acesso é só pelos domínios, via Cloudflare. Isso, com o `bindIp 127.0.0.1` do Mongo e o
+`rpcbind` desligado, fecha a superfície que estava exposta.
+
+Se as faixas do Cloudflare mudarem (raro), reatualize os ipsets a partir de
+`https://www.cloudflare.com/ips-v4` e `.../ips-v6` e dê `firewall-cmd --reload`.
+
+> Ao mexer no firewall pelo SSH, arme antes um "dead-man switch" para não se trancar
+> para fora: `sudo systemd-run --on-active=600 --unit=fw-deadman systemctl stop firewalld`
+> desliga o firewall em 10 min se algo der errado; cancele com
+> `sudo systemctl stop fw-deadman.timer` quando confirmar que o acesso continua.
 
 ## Por que no mesmo servidor do banco
 
@@ -141,26 +197,34 @@ de comando, que ficaria visível no `ps`.
 |---|---|---|
 | 502 em tudo, log com `(13: Permission denied)` | boolean do SELinux desligado | `sudo setsebool -P httpd_can_network_relay 1` |
 | 502 com `(111: Connection refused)` | aplicação caída ou noutra porta | `systemctl status zcontroldesk` e conferir `PORT` no `/etc/zcontroldesk.env` |
-| Login não entra, sem erro na tela | acesso por HTTP em vez de HTTPS | usar `https://148.100.74.249.nip.io` — o cookie `Secure` é descartado em HTTP |
+| Login não entra, sem erro na tela | acesso por HTTP em vez de HTTPS | usar `https://zcontroldesk.linuxone.com.br` — o cookie `Secure` é descartado em HTTP |
+| Site inteiro fora do ar (`error 1016`/`521` no Cloudflare) | firewall barrando o Cloudflare (faixas mudaram?) ou app/nginx caídos | conferir `systemctl status nginx zcontroldesk`; reatualizar os ipsets `cloudflare4/6` |
 | `npm ci` falha baixando `mongod` | s390x sem binário community | `MONGOMS_DISABLE_POSTINSTALL=1` |
 | Download de SCRT/PDF dá 404 | arquivo não veio junto | os binários vivem em `/var/lib/zcontroldesk`, fora do deploy do código |
 | `db:pull` não conecta | túnel fechado | `./scripts/tunel-db.sh` noutro terminal |
 | Todo mundo deslogado após restart | `AUTH_SECRET` ausente no ambiente | conferir `/etc/zcontroldesk.env` — sem ele o segredo vira efêmero |
-| Certificado expirado | timer do certbot parado | `systemctl status certbot-renew.timer` |
+| Dev pede senha do navegador | é o basic-auth do dev (esperado) | usuário `dev`; a senha está no gerenciador |
 
 ## Pendências conhecidas
 
-- **Sem firewall.** `firewalld` não está instalado e o `iptables` tem política `ACCEPT`
-  sem regras. Hoje só 22, 80 e 443 escutam em interface pública, então a superfície é
-  pequena — mas nada impede que um serviço futuro suba em `0.0.0.0` sem ninguém notar.
+- **Certificado nip.io órfão.** O `148.100.74.249.nip.io` do Let's Encrypt não é mais
+  alcançável (o firewall bloqueia o acesso direto), então o `certbot-renew` vai falhar
+  para ele a cada tentativa — ruído, não risco. Limpeza opcional:
+  `sudo certbot delete --cert-name 148.100.74.249.nip.io` e remover o server block antigo
+  em `/etc/nginx/conf.d/zcontroldesk.conf` (deixando os domínios em `zcontroldesk-domains.conf`).
+- **`cockpit` liberado no firewall** por padrão do RHEL, mas o serviço não está rodando —
+  inofensivo; `firewall-cmd --permanent --zone=public --remove-service=cockpit` limpa.
 
 ## Arquivos deste diretório
 
 - `zcontroldesk.service` — o unit instalado. Vale ler os comentários antes de mexer:
   explicam por que `ReadWritePaths` é obrigatório e por que `MemoryDenyWriteExecution`
   mataria o JIT do V8.
-- `nginx-zcontroldesk.conf` — a conf do proxy **antes** do certbot. O bloco 443 no
-  servidor foi escrito pelo `certbot --nginx`.
+- `nginx-domains.conf` — os server blocks de prod e dev atrás do Cloudflare (instalado em
+  `/etc/nginx/conf.d/zcontroldesk-domains.conf`). Cabeçalhos de segurança, basic-auth no
+  dev, IP real via `CF-Connecting-IP`.
+- `nginx-zcontroldesk.conf` — a conf antiga do nip.io (histórica; ver pendência acima).
 - `env.exemplo` — modelo do `/etc/zcontroldesk.env`, com placeholders no lugar dos
   segredos.
-- `deploy.sh` — publicação por rsync, alternativa ao `git archive` acima.
+- `deploy.sh` — publicação `git archive` por ambiente (`dev`/`prod`).
+- `refresh-dev.sh` — copia banco + arquivos de prod para dev, de mão única.
