@@ -17,7 +17,10 @@ const { computeMlcView } = require('./mlc');
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  // fileSize cobre a parte de arquivo; os demais limites contêm multipart abusivo
+  // (muitos campos/partes materializados na memória). Excedente vira MulterError,
+  // que o handler de erro do server.js já converte em 400.
+  limits: { fileSize: 25 * 1024 * 1024, files: 1, parts: 20, fields: 10, fieldNameSize: 100, fieldSize: 1 * 1024 * 1024 },
   // Sem isto o multer decodifica o nome do arquivo como latin1 (default herdado
   // do busboy) e todo acento chega quebrado — os navegadores mandam UTF-8.
   // Opção disponível a partir do multer 2.1; até a 2.0 era preciso reinterpretar
@@ -1302,10 +1305,15 @@ async function attachLspr(machines) {
 async function attachContracts(machines) {
   const ids = [...new Set(machines.map((m) => m.contract && String(m.contract)).filter(Boolean))];
   const rows = ids.length
-    ? await Contract.find({ _id: { $in: ids } }).select('number name type status startDate endDate').lean()
+    ? await Contract.find({ _id: { $in: ids } }).select('number name type status startDate endDate client').lean()
     : [];
   const byId = new Map(rows.map((r) => [String(r._id), r]));
-  for (const m of machines) m.contractRef = byId.get(String(m.contract || '')) || null;
+  for (const m of machines) {
+    const c = byId.get(String(m.contract || ''));
+    // Defesa em profundidade: só anexa se o contrato é do MESMO cliente da máquina,
+    // para uma referência cruzada indevida não vazar metadados de contrato alheio.
+    m.contractRef = c && String(c.client) === String(m.client) ? c : null;
+  }
   return machines;
 }
 
@@ -2299,6 +2307,10 @@ router.post('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
     const ok = await InfraSite.exists({ _id: set.site, client: client._id });
     if (!ok) return res.status(422).json({ error: 'Site inválido para este cliente.' });
   }
+  if (set.contract) {
+    const ok = await Contract.exists({ _id: set.contract, client: client._id });
+    if (!ok) return res.status(422).json({ error: 'Contrato inválido para este cliente.' });
+  }
   res.status(201).json(await InfraMachine.create({ client: client._id, ...set }));
 }));
 
@@ -2364,6 +2376,10 @@ router.put('/clients/:id/infra/machines/:machineId', asyncHandler(async (req, re
     const ok = await InfraSite.exists({ _id: set.site, client: req.params.id });
     if (!ok) return res.status(422).json({ error: 'Site inválido para este cliente.' });
   }
+  if (set.contract) {
+    const ok = await Contract.exists({ _id: set.contract, client: req.params.id });
+    if (!ok) return res.status(422).json({ error: 'Contrato inválido para este cliente.' });
+  }
   const machine = await InfraMachine.findOneAndUpdate({ _id: req.params.machineId, client: req.params.id }, { $set: set }, { new: true })
     .select('-configTxtContent -configCfrContent').populate('site', 'name location role').lean();
   if (!machine) return res.status(404).json({ error: 'Máquina não encontrada.' });
@@ -2402,6 +2418,10 @@ router.put('/clients/:id/infra/lpars/:lparId', asyncHandler(async (req, res) => 
   if (!isValidId(req.params.id) || !isValidId(req.params.lparId)) return res.status(400).json({ error: 'Id inválido.' });
   const set = lparUpdate(req.body || {});
   if (set.name !== undefined && !set.name) return res.status(400).json({ error: 'O nome da LPAR não pode ficar vazio.' });
+  if (set.machine) {
+    const ok = await InfraMachine.exists({ _id: set.machine, client: req.params.id });
+    if (!ok) return res.status(422).json({ error: 'Máquina inválida para este cliente.' });
+  }
   const lpar = await InfraLpar.findOneAndUpdate({ _id: req.params.lparId, client: req.params.id }, { $set: set }, { new: true }).lean();
   if (!lpar) return res.status(404).json({ error: 'LPAR não encontrada.' });
   res.json(lpar);

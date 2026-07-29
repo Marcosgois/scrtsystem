@@ -1287,6 +1287,12 @@
   </div>
 
   <script>
+    // Escapa texto do usuário antes de virar HTML (XSS armazenado). Declaração de
+    // função => global, alcança as funções deste e do outro <script>.
+    function htmlEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    // Neutraliza um productId antes de usá-lo em id/handler inline (contexto de
+    // string JS, onde escape de HTML não protege). Idempotente e no-op para PIDs normais.
+    function pidSafe(s) { return String(s == null ? '' : s).replace(/[^\w.\- ]/g, ''); }
     let globalInventoryData = [];
     let clientInfo = { name: "Não Identificado", number: "Não Identificado" };
     let currentCategoryFilter = 'ALL';
@@ -2307,7 +2313,7 @@
       document.getElementById('mdlCategory').innerHTML = isSS ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>';
       document.getElementById('mdlTotalVU').innerText = `Total VUs Consolidadas: ${totalVUConsolidated > 0 ? totalVUConsolidated.toLocaleString('pt-BR') : '-'}`;
       
-      document.getElementById('mdlAiSummary').innerHTML = knowledge.summary;
+      document.getElementById('mdlAiSummary').textContent = knowledge.summary;
       document.getElementById('mdlAnnouncement').innerText = knowledge.announcement;
       
       const cleanPidCode = firstProd.productId.replace(/[^A-Z0-9]/g, '');
@@ -2339,9 +2345,9 @@
         consolidatedFeatures.forEach(f => {
           const row = document.createElement('tr');
           row.innerHTML = `
-            <td><strong>↳ ${f.featureCode}</strong></td>
-            <td>${f.description}</td>
-            <td>${f.metric}</td>
+            <td><strong>↳ ${htmlEsc(f.featureCode)}</strong></td>
+            <td>${htmlEsc(f.description)}</td>
+            <td>${htmlEsc(f.metric)}</td>
             <td class="val-highlight">${f.numericValue > 0 ? f.numericValue.toLocaleString('pt-BR') : '-'}</td>
           `;
           tbodyModal.appendChild(row);
@@ -2356,11 +2362,11 @@
           const row = document.createElement('tr');
           const vuCount = p.features.reduce((s, f) => s + f.numericValue, 0);
           row.innerHTML = `
-            <td><strong>${p.swSerial}</strong></td>
-            <td style="color:#0f62fe; font-weight:700;">${p.effDate || '-'}</td>
-            <td>${p.poNumber || '-'}</td>
+            <td><strong>${htmlEsc(p.swSerial)}</strong></td>
+            <td style="color:#0f62fe; font-weight:700;">${htmlEsc(p.effDate || '-')}</td>
+            <td>${htmlEsc(p.poNumber || '-')}</td>
             <td>${p.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
-            <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${p.status || '-'}</span></td>
+            <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${htmlEsc(p.status || '-')}</span></td>
             <td class="val-highlight">${vuCount > 0 ? vuCount.toLocaleString('pt-BR') : '-'}</td>
           `;
           tbodyRecords.appendChild(row);
@@ -2386,6 +2392,7 @@
 
     function toggleExpandPIDRow(evt, pid) {
       if (evt) evt.stopPropagation();
+      pid = pidSafe(pid);
       const subRow = document.getElementById(`expand-row-${pid}`);
       const btn = document.getElementById(`btn-expand-${pid}`);
       
@@ -2414,15 +2421,15 @@
       data.forEach(prod => {
         const pRow = document.createElement('tr');
         pRow.className = 'row-parent row-clickable';
-        pRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+        pRow.setAttribute('onclick', `openProductModal('${pidSafe(prod.productId)}')`);
         pRow.title = "Clique para abrir detalhes, carta de anúncio e VUE do produto";
         pRow.innerHTML = `
-          <td><strong>${prod.productId}</strong></td>
-          <td>${prod.swSerial}</td>
-          <td style="color:#0f62fe; font-weight:600;">${prod.effDate || '-'}</td>
-          <td>${prod.description}</td>
+          <td><strong>${htmlEsc(prod.productId)}</strong></td>
+          <td>${htmlEsc(prod.swSerial)}</td>
+          <td style="color:#0f62fe; font-weight:600;">${htmlEsc(prod.effDate || '-')}</td>
+          <td>${htmlEsc(prod.description)}</td>
           <td>${prod.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
-          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${prod.status || '-'}</span></td>
+          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${htmlEsc(prod.status || '-')}</span></td>
           <td>-</td>
           <td>-</td>
         `;
@@ -2431,17 +2438,17 @@
         prod.features.forEach(feat => {
           const fRow = document.createElement('tr');
           fRow.className = 'row-child row-clickable';
-          fRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+          fRow.setAttribute('onclick', `openProductModal('${pidSafe(prod.productId)}')`);
           fRow.title = "Clique para abrir detalhes do produto pai";
           fRow.innerHTML = `
-            <td style="padding-left: 28px;">↳ ${feat.featureCode}</td>
+            <td style="padding-left: 28px;">↳ ${htmlEsc(feat.featureCode)}</td>
             <td>-</td>
             <td>-</td>
-            <td>${feat.description}</td>
+            <td>${htmlEsc(feat.description)}</td>
             <td>-</td>
             <td>-</td>
-            <td>${feat.metric}</td>
-            <td class="val-highlight">${feat.configValue}</td>
+            <td>${htmlEsc(feat.metric)}</td>
+            <td class="val-highlight">${htmlEsc(feat.configValue)}</td>
           `;
           tbody.appendChild(fRow);
         });
@@ -2466,7 +2473,8 @@
     }
 
     function renderSubRecordsTable(pid) {
-      const container = document.getElementById(`sub-records-container-${pid}`);
+      const pidId = pidSafe(pid);
+      const container = document.getElementById(`sub-records-container-${pidId}`);
       if (!container) return;
 
       const item = currentConsolidatedMap[pid];
@@ -2502,23 +2510,23 @@
           <thead>
             <tr style="background: #393939; color: #ffffff; font-size: 0.78rem; text-transform: uppercase;">
               <th style="padding: 6px 10px; text-align: left;">#</th>
-              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 1)">SW Serial ${getSortIcon(1)}</th>
-              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 2)">Effective Date ${getSortIcon(2)}</th>
-              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 3)">PO Number ${getSortIcon(3)}</th>
-              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 4)">Categoria ${getSortIcon(4)}</th>
-              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 5)">Status ${getSortIcon(5)}</th>
-              <th style="padding: 6px 10px; text-align: right; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pid}', 6)">VUs da Instância ${getSortIcon(6)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pidId}', 1)">SW Serial ${getSortIcon(1)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pidId}', 2)">Effective Date ${getSortIcon(2)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pidId}', 3)">PO Number ${getSortIcon(3)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pidId}', 4)">Categoria ${getSortIcon(4)}</th>
+              <th style="padding: 6px 10px; text-align: left; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pidId}', 5)">Status ${getSortIcon(5)}</th>
+              <th style="padding: 6px 10px; text-align: right; cursor: pointer; user-select: none;" onclick="sortExpandedPIDRecords(event, '${pidId}', 6)">VUs da Instância ${getSortIcon(6)}</th>
             </tr>
           </thead>
           <tbody>
             ${records.map((rec, idx) => `
               <tr style="border-bottom: 1px solid #e0e0e0; font-size: 0.85rem;">
                 <td style="padding: 6px 10px; color: #6e6e6e;">${idx + 1}</td>
-                <td style="padding: 6px 10px;"><strong>${rec.swSerial}</strong></td>
-                <td style="padding: 6px 10px; color: #0f62fe; font-weight: 700;">${rec.effDate}</td>
-                <td style="padding: 6px 10px; color: #525252;">${rec.poNumber}</td>
+                <td style="padding: 6px 10px;"><strong>${htmlEsc(rec.swSerial)}</strong></td>
+                <td style="padding: 6px 10px; color: #0f62fe; font-weight: 700;">${htmlEsc(rec.effDate)}</td>
+                <td style="padding: 6px 10px; color: #525252;">${htmlEsc(rec.poNumber)}</td>
                 <td style="padding: 6px 10px;">${rec.category === 'SS' ? '<span class="badge badge-ss">S&S</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
-                <td style="padding: 6px 10px;"><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${rec.status}</span></td>
+                <td style="padding: 6px 10px;"><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;">${htmlEsc(rec.status)}</span></td>
                 <td style="padding: 6px 10px; text-align: right; font-weight: bold; color: #161616;">${rec.vuCount > 0 ? rec.vuCount.toLocaleString('pt-BR') : '-'}</td>
               </tr>
             `).join('')}
@@ -2621,33 +2629,33 @@
 
         const row = document.createElement('tr');
         row.className = 'row-clickable';
-        row.setAttribute('onclick', `openProductModal('${item.productId}')`);
+        row.setAttribute('onclick', `openProductModal('${pidSafe(item.productId)}')`);
         row.title = `Clique na linha para ver modal completo ou clique no botão de Total de Registros para expandir`;
         row.innerHTML = `
-          <td><strong>${item.productId}</strong></td>
-          <td>${item.description}</td>
+          <td><strong>${htmlEsc(item.productId)}</strong></td>
+          <td>${htmlEsc(item.description)}</td>
           <td>
-            <button type="button" id="btn-expand-${item.productId}" data-count="${item.count}" class="btn-expand-records" onclick="toggleExpandPIDRow(event, '${item.productId}')" title="Clique para expandir e ver Effective Date dos ${item.count} registros">
+            <button type="button" id="btn-expand-${pidSafe(item.productId)}" data-count="${item.count}" class="btn-expand-records" onclick="toggleExpandPIDRow(event, '${pidSafe(item.productId)}')" title="Clique para expandir e ver Effective Date dos ${item.count} registros">
               ${item.count}x · expandir
             </button>
           </td>
-          <td><span title="${item.serials.join(', ')}">${serialsText}</span></td>
+          <td><span title="${htmlEsc(item.serials.join(', '))}">${htmlEsc(serialsText)}</span></td>
           <td>${item.category === 'SS' ? '<span class="badge badge-ss">S&S Suporte</span>' : '<span class="badge badge-lic">Licença</span>'}</td>
-          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;" title="${item.statuses.join(', ')}">${statusText}</span></td>
+          <td><span class="badge" style="background:#e0e0e0; color:#161616; font-weight:600;" title="${htmlEsc(item.statuses.join(', '))}">${htmlEsc(statusText)}</span></td>
           <td class="val-highlight" data-value="${item.totalVU}">${item.totalVU > 0 ? item.totalVU.toLocaleString('pt-BR') : '-'}</td>
         `;
         tbody.appendChild(row);
 
         const expRow = document.createElement('tr');
-        expRow.id = `expand-row-${item.productId}`;
+        expRow.id = `expand-row-${pidSafe(item.productId)}`;
         expRow.style.display = 'none';
         expRow.innerHTML = `
           <td colspan="7" style="padding: 12px 18px; background: #f0f4f9; border-bottom: 2px solid #0f62fe;">
             <div style="font-weight: 700; font-size: 0.85rem; color: #0f62fe; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-              <span>Registros individuais do PID ${item.productId}</span>
+              <span>Registros individuais do PID ${htmlEsc(item.productId)}</span>
               <span style="font-weight: normal; font-size: 0.8rem; color: #525252;">${item.count} registro(s)</span>
             </div>
-            <div id="sub-records-container-${item.productId}"></div>
+            <div id="sub-records-container-${pidSafe(item.productId)}"></div>
           </td>
         `;
         tbody.appendChild(expRow);
@@ -3799,7 +3807,7 @@
     const marca = paired ? ' tfp-row-ss-pair' : (opts.coverage ? ' tfp-row-lic-pair' : '');
     const row = document.createElement('tr');
     row.className = `row-parent row-clickable${marca}`;
-    row.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+    row.setAttribute('onclick', `openProductModal('${pidSafe(prod.productId)}')`);
     row.title = paired
       ? `S&S da licença ${paired.lic.productId} (serial ${paired.lic.swSerial})`
         + ` — casado por ${paired.basis}`
@@ -3836,7 +3844,7 @@
     (prod.features || []).forEach((feat) => {
       const fRow = document.createElement('tr');
       fRow.className = `row-child row-clickable${marca}`;
-      fRow.setAttribute('onclick', `openProductModal('${prod.productId}')`);
+      fRow.setAttribute('onclick', `openProductModal('${pidSafe(prod.productId)}')`);
       fRow.innerHTML =
         `<td style="padding-left: 28px;">↳ ${escHtml(feat.featureCode)}</td>` +
         '<td>-</td><td>-</td>' +

@@ -82,7 +82,7 @@ async function main() {
   // Login obrigatório: cria o 1º admin e guarda a sessão para os uploads.
   const setupRes = await fetch(`${BASE}/auth/setup`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'Mig Admin', email: 'mig@admin.local', password: 'migpass1' }),
+    body: JSON.stringify({ name: 'Mig Admin', email: 'mig@admin.local', password: 'migpass123' }),
   });
   authCookie = (setupRes.headers.get('set-cookie') || '').split(';')[0];
   check('setup do admin para a migração', setupRes.status === 201 && /zcd_session=/.test(authCookie), setupRes.status);

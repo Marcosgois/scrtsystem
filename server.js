@@ -22,6 +22,28 @@ const LOCAL_DB_PATH = path.join(__dirname, 'data', 'mongodb');
 const LOCAL_DB_PORT = Number(process.env.LOCAL_DB_PORT || 27017);
 
 const app = express();
+// Não anunciar o framework (reduz fingerprinting). O nginx já faz server_tokens off.
+app.disable('x-powered-by');
+
+// Content-Security-Policy (defesa em profundidade contra XSS): o nginx já envia
+// HSTS/X-Frame-Options/X-Content-Type-Options/Referrer-Policy, mas não CSP. Como
+// o front usa scripts e handlers inline, 'unsafe-inline' é necessário hoje; o
+// resto fica trancado em 'self' (nada de script/-conexão/-frame externos).
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline'",
+  "worker-src 'self' blob:",
+  "connect-src 'self'",
+].join('; ');
+app.use((req, res, next) => { res.setHeader('Content-Security-Policy', CSP); next(); });
+
 // Inventários de software chegam como JSON grande (centenas de produtos) — 25 MB cobre com folga.
 app.use(express.json({ limit: '25mb' }));
 
@@ -116,7 +138,7 @@ async function main() {
     const { seedLspr } = require('./src/lsprSeed');
     await seedLspr({ log: console.log }).catch((e) => console.warn('[LSPR] seed ignorado:', e.message));
   } catch (err) {
-    console.error(`\n[MongoDB] Não foi possível conectar em ${uri}`);
+    console.error(`\n[MongoDB] Não foi possível conectar em ${uri.replace(/\/\/[^@]*@/, '//***@')}`);
     console.error(`[MongoDB] ${err.message}`);
     console.error('[MongoDB] Confira o MONGODB_URI no arquivo .env e tente de novo.\n');
     await stopLocalMongo(localMongod);

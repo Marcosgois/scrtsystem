@@ -56,7 +56,7 @@ async function main() {
     // ── Login admin ──
     const setup = await fetch(`${BASE}/auth/setup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Admin', email: 'a@x.com', password: 'admin123' }),
+      body: JSON.stringify({ name: 'Admin', email: 'a@x.com', password: 'admin12399' }),
     });
     authCookie = (setup.headers.get('set-cookie') || '').split(';')[0];
     check('admin logado', setup.status === 201 && /zcd_session=/.test(authCookie), setup.status);

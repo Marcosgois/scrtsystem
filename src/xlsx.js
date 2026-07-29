@@ -95,8 +95,27 @@ function parseSheet(xml, shared) {
  * Lê as abas de um .xlsx.
  * @returns {Array<{name: string, rows: string[][]}>} na ordem do workbook
  */
+// Só estas entradas são necessárias para ler as abas; o resto do ZIP é ignorado.
+// Teto de descompressão para conter zip bomb (ex.: 50 MB de zeros ~ 51 KB comprimidos):
+// uma entrada não pode passar de MAX_ENTRADA, nem o total de MAX_TOTAL.
+const XLSX_PRECISA = new Set(['xl/sharedStrings.xml', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels']);
+const MAX_ENTRADA = 80 * 1024 * 1024;
+const MAX_TOTAL = 200 * 1024 * 1024;
+
+class XlsxGrande extends Error {}
+
 function readXlsxSheets(buffer) {
-  const files = unzipSync(new Uint8Array(buffer));
+  let orcamento = 0;
+  const files = unzipSync(new Uint8Array(buffer), {
+    filter: (f) => {
+      // Só descompacta o que a leitura usa (as 3 fixas + as worksheets).
+      if (!XLSX_PRECISA.has(f.name) && !f.name.startsWith('xl/worksheets/')) return false;
+      if (f.originalSize > MAX_ENTRADA) throw new XlsxGrande('planilha: entrada descompactada grande demais');
+      orcamento += f.originalSize;
+      if (orcamento > MAX_TOTAL) throw new XlsxGrande('planilha: descompressão total grande demais');
+      return true;
+    },
+  });
   const read = (name) => (files[name] ? strFromU8(files[name]) : null);
 
   const shared = parseSharedStrings(read('xl/sharedStrings.xml'));
@@ -132,4 +151,4 @@ function rowsToCsv(rows) {
     .join('\r\n');
 }
 
-module.exports = { isXlsx, readXlsxSheets, rowsToCsv };
+module.exports = { isXlsx, readXlsxSheets, rowsToCsv, XlsxGrande };

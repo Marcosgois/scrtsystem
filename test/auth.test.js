@@ -54,10 +54,10 @@ async function main() {
     r = await admin.req('/clients');
     check('sem login: /clients -> 401', r.status === 401, r.status);
 
-    r = await admin.req('/auth/setup', { method: 'POST', json: { name: 'Admin', email: 'admin@x.com', password: 'admin123' } });
+    r = await admin.req('/auth/setup', { method: 'POST', json: { name: 'Admin', email: 'admin@x.com', password: 'admin12399' } });
     check('setup cria admin e loga', r.status === 201 && r.body.role === 'admin' && admin.hasCookie(), r.body);
 
-    r = await admin.req('/auth/setup', { method: 'POST', json: { name: 'Outro', email: 'outro@x.com', password: 'x123456' } });
+    r = await admin.req('/auth/setup', { method: 'POST', json: { name: 'Outro', email: 'outro@x.com', password: 'x123456789' } });
     check('setup de novo -> 409 (já há usuários)', r.status === 409, r.status);
 
     // ── Admin cria clientes ──
@@ -71,18 +71,18 @@ async function main() {
 
     // ── Admin cria usuários (view e edit) ──
     r = await admin.req('/admin/users', { method: 'POST', json: {
-      name: 'Vera View', email: 'view@x.com', password: 'view123', role: 'user',
+      name: 'Vera View', email: 'view@x.com', password: 'view123456', role: 'user',
       access: [{ client: caixa._id, level: 'view' }],
     } });
     check('cria usuário view (CAIXA)', r.status === 201 && r.body.access.length === 1 && r.body.access[0].level === 'view', r.body);
 
     r = await admin.req('/admin/users', { method: 'POST', json: {
-      name: 'Edu Edit', email: 'edit@x.com', password: 'edit123', role: 'user',
+      name: 'Edu Edit', email: 'edit@x.com', password: 'edit123456', role: 'user',
       access: [{ client: caixa._id, level: 'edit' }],
     } });
     check('cria usuário edit (CAIXA)', r.status === 201 && r.body.access[0].level === 'edit', r.body);
 
-    r = await admin.req('/admin/users', { method: 'POST', json: { name: 'X', email: 'view@x.com', password: 'y12345', role: 'user' } });
+    r = await admin.req('/admin/users', { method: 'POST', json: { name: 'X', email: 'view@x.com', password: 'y123456789', role: 'user' } });
     check('e-mail duplicado -> 409', r.status === 409, r.status);
 
     r = await admin.req('/admin/users');
@@ -93,7 +93,7 @@ async function main() {
     r = await view.req('/auth/login', { method: 'POST', json: { email: 'view@x.com', password: 'errada' } });
     check('login com senha errada -> 401', r.status === 401, r.status);
 
-    r = await view.req('/auth/login', { method: 'POST', json: { email: 'view@x.com', password: 'view123' } });
+    r = await view.req('/auth/login', { method: 'POST', json: { email: 'view@x.com', password: 'view123456' } });
     check('view faz login', r.status === 200 && view.hasCookie(), r.body);
 
     r = await view.req('/clients');
@@ -129,7 +129,7 @@ async function main() {
 
     // ── Sessão EDIT ──
     const edit = session();
-    await edit.req('/auth/login', { method: 'POST', json: { email: 'edit@x.com', password: 'edit123' } });
+    await edit.req('/auth/login', { method: 'POST', json: { email: 'edit@x.com', password: 'edit123456' } });
     r = await edit.req(`/clients/${caixa._id}`, { method: 'PATCH', json: { monthlyBaselineMsu: 123 } });
     check('edit EDITA a CAIXA -> 200', r.status === 200, { status: r.status, err: r.body && r.body.error });
 

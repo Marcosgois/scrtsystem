@@ -63,14 +63,33 @@ function resolveEntity(path) {
 const SENSIVEL = new Set(['password', 'passwordHash', 'passwordSalt', 'senha', 'token', 'secret']);
 const GRANDE = new Set(['configTxtContent', 'configCfrContent', 'rawContent', 'content', 'products', 'data', 'base64', 'file']);
 
-function encolhe(v) {
-  if (typeof v === 'string') return v.length > 500 ? `${v.slice(0, 500)}… (${v.length} caracteres)` : v;
-  if (Array.isArray(v)) return v.length > 25 ? `[${v.length} itens]` : v.map(encolhe);
-  if (v && typeof v === 'object') return sanitizeDoc(v);
-  return v;
+// Tipos "folha" que NÃO devem ser percorridos: Date, Buffer e tipos BSON
+// (ObjectId, Decimal128…). Sem isto, percorrer um documento Mongoose ou o estado
+// interno circular dele estoura a pilha. Retorna [true, representação] se for folha.
+function folhaDe(v) {
+  if (v instanceof Date) return [true, v.toISOString()];
+  if (Buffer.isBuffer(v)) return [true, `[buffer ${v.length}b]`];
+  if (v && v._bsontype) return [true, String(v)];
+  return [false, null];
 }
-function sanitizeDoc(doc) {
+function encolhe(v, seen, depth) {
+  if (typeof v === 'string') return v.length > 500 ? `${v.slice(0, 500)}… (${v.length} caracteres)` : v;
+  if (!v || typeof v !== 'object') return v;
+  const [folha, repr] = folhaDe(v);
+  if (folha) return repr;
+  if (Array.isArray(v)) return v.length > 25 ? `[${v.length} itens]` : v.map((x) => encolhe(x, seen, depth + 1));
+  return sanitizeDoc(v, seen, depth + 1);
+}
+function sanitizeDoc(doc, seen, depth) {
+  seen = seen || new WeakSet();
+  depth = depth || 0;
+  // Documento Mongoose -> objeto simples (evita percorrer o $__ interno circular).
+  if (doc && typeof doc.toObject === 'function') { try { doc = doc.toObject(); } catch (e) { /* segue */ } }
   if (!doc || typeof doc !== 'object') return doc;
+  const [folha, repr] = folhaDe(doc);
+  if (folha) return repr;
+  if (seen.has(doc) || depth > 8) return '[…]';   // corta ciclo e profundidade excessiva
+  seen.add(doc);
   const out = Array.isArray(doc) ? [] : {};
   for (const [k, v] of Object.entries(doc)) {
     if (SENSIVEL.has(k)) continue;                       // some por completo
@@ -79,7 +98,7 @@ function sanitizeDoc(doc) {
       out[k] = Array.isArray(v) ? `[${v.length} itens]` : '[conteúdo grande omitido]';
       continue;
     }
-    out[k] = encolhe(v);
+    out[k] = encolhe(v, seen, depth + 1);
   }
   return out;
 }

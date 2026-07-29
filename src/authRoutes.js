@@ -11,10 +11,16 @@ const { User, ScrtReport, AuditLog } = require('./models');
 const auth = require('./auth');
 const log = require('./logger');
 const audit = require('./audit');
+const guardaLogin = require('./loginGuard');
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_SENHA = 10;
+const ipOf = (req) => {
+  const fwd = req.headers['x-forwarded-for'];
+  return (fwd ? String(fwd).split(',')[0].trim() : (req.socket && req.socket.remoteAddress)) || '-';
+};
 
 function publicUser(u) {
   if (!u) return null;
@@ -30,8 +36,14 @@ function publicUser(u) {
 /** Carrega req.user (ou null) a partir do cookie de sessão. */
 async function attachUser(req, res, next) {
   try {
-    const uid = auth.sessionUserId(req);
-    req.user = uid && isValidId(uid) ? await User.findById(uid).lean() : null;
+    const payload = auth.sessionPayload(req);
+    const uid = payload && payload.uid;
+    if (uid && isValidId(uid)) {
+      const u = await User.findById(uid).lean();
+      // Revogação: o token carrega a versão; se não bate com a do usuário (senha
+      // trocada / "sair de todos os dispositivos"), a sessão é considerada inválida.
+      req.user = u && Number(payload.tv || 0) === Number(u.tokenVersion || 0) ? u : null;
+    } else req.user = null;
   } catch (e) { req.user = null; }
   next();
 }
@@ -115,7 +127,7 @@ async function clientAccessGuard(req, res, next) {
 const authRouter = express.Router();
 
 authRouter.get('/status', asyncHandler(async (req, res) => {
-  const count = await User.estimatedDocumentCount();
+  const count = await User.countDocuments();
   res.json({ needsSetup: count === 0, user: publicUser(req.user) });
 }));
 
@@ -125,14 +137,14 @@ authRouter.get('/me', (req, res) => {
 });
 
 authRouter.post('/setup', asyncHandler(async (req, res) => {
-  const count = await User.estimatedDocumentCount();
+  const count = await User.countDocuments();
   if (count > 0) return res.status(409).json({ error: 'O sistema já tem usuários — peça a um admin.' });
   const { name, email, password } = req.body || {};
   const err = validateCreate({ name, email, password });
   if (err) return res.status(400).json({ error: err });
-  const { salt, hash } = auth.hashPassword(password);
-  const user = await User.create({ name: String(name).trim(), email: String(email).toLowerCase().trim(), passwordHash: hash, passwordSalt: salt, role: 'admin', access: [] });
-  auth.setSessionCookie(res, user._id);
+  const { salt, hash, params } = auth.hashPassword(password);
+  const user = await User.create({ name: String(name).trim(), email: String(email).toLowerCase().trim(), passwordHash: hash, passwordSalt: salt, passwordParams: params, role: 'admin', access: [] });
+  auth.setSessionCookie(res, user);
   log.lembrarUsuario(user);
   log.auth.setup(req, user);
   audit.event(req, { action: 'setup', actor: user, entityType: 'User', entityLabel: user.email, status: 201, summary: 'primeiro administrador' });
@@ -140,16 +152,38 @@ authRouter.post('/setup', asyncHandler(async (req, res) => {
 }));
 
 authRouter.post('/login', asyncHandler(async (req, res) => {
-  const email = String((req.body && req.body.email) || '').toLowerCase().trim();
+  const email = String((req.body && req.body.email) || '').toLowerCase().trim().slice(0, 200);
   const password = String((req.body && req.body.password) || '');
+  const chaveEmail = `email:${email}`;
+  const chaveIp = `ip:${ipOf(req)}`;
+
+  // Rate limit: trava por e-mail e por IP após muitas falhas (força-bruta/stuffing).
+  if (guardaLogin.bloqueado(chaveEmail, chaveIp)) {
+    const seg = guardaLogin.restanteSeg(chaveEmail, chaveIp);
+    log.auth.login(req, email, false, `bloqueado por ${seg}s`);
+    audit.event(req, { action: 'login-falho', entityType: 'Sessão', entityLabel: email, status: 429, summary: 'bloqueado por excesso de tentativas' });
+    return res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+  }
+
   const user = await User.findOne({ email });
-  if (!user || !auth.verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+  // Custo constante mesmo sem usuário: o tempo de resposta não revela se a conta existe.
+  if (!user) auth.dummyVerify(password);
+  if (!user || !auth.verifyPassword(password, user.passwordSalt, user.passwordHash, user.passwordParams)) {
+    guardaLogin.registrarFalha(chaveEmail, chaveIp);
     // O motivo vai só para o log; a resposta continua genérica de propósito.
     log.auth.login(req, email, false, user ? 'senha incorreta' : 'e-mail não cadastrado');
     audit.event(req, { action: 'login-falho', entityType: 'Sessão', entityLabel: email, status: 401, summary: user ? 'senha incorreta' : 'e-mail não cadastrado' });
     return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
   }
-  auth.setSessionCookie(res, user._id);
+  guardaLogin.limpar(chaveEmail, chaveIp);
+  // Upgrade transparente: se o hash usa parâmetros antigos do scrypt, re-hasheia agora.
+  if (auth.needsRehash(user.passwordParams)) {
+    try {
+      const nh = auth.hashPassword(password);
+      await User.updateOne({ _id: user._id }, { $set: { passwordHash: nh.hash, passwordSalt: nh.salt, passwordParams: nh.params } });
+    } catch (e) { /* upgrade é best-effort */ }
+  }
+  auth.setSessionCookie(res, user);
   log.lembrarUsuario(user);
   log.auth.login(req, user.email, true);
   audit.event(req, { action: 'login', actor: user, entityType: 'Sessão', status: 200 });
@@ -169,7 +203,7 @@ const adminRouter = express.Router();
 function validateCreate({ name, email, password }) {
   if (!name || !String(name).trim()) return 'Informe o nome.';
   if (!email || !EMAIL_RE.test(String(email).trim())) return 'E-mail inválido.';
-  if (!password || String(password).length < 6) return 'A senha precisa de ao menos 6 caracteres.';
+  if (!password || String(password).length < MIN_SENHA) return `A senha precisa de ao menos ${MIN_SENHA} caracteres.`;
   return null;
 }
 function parseAccess(list) {
@@ -196,10 +230,10 @@ adminRouter.post('/users', asyncHandler(async (req, res) => {
   if (err) return res.status(400).json({ error: err });
   const exists = await User.findOne({ email: String(email).toLowerCase().trim() });
   if (exists) return res.status(409).json({ error: 'Já existe um usuário com esse e-mail.' });
-  const { salt, hash } = auth.hashPassword(password);
+  const { salt, hash, params } = auth.hashPassword(password);
   const user = await User.create({
     name: String(name).trim(), email: String(email).toLowerCase().trim(),
-    passwordHash: hash, passwordSalt: salt,
+    passwordHash: hash, passwordSalt: salt, passwordParams: params,
     role: role === 'admin' ? 'admin' : 'user',
     access: role === 'admin' ? [] : parseAccess(req.body.access),
   });
@@ -214,9 +248,9 @@ adminRouter.put('/users/:id', asyncHandler(async (req, res) => {
   if (b.role !== undefined) update.role = b.role === 'admin' ? 'admin' : 'user';
   if (b.access !== undefined) update.access = parseAccess(b.access);
   if (b.password) {
-    if (String(b.password).length < 6) return res.status(400).json({ error: 'A senha precisa de ao menos 6 caracteres.' });
-    const { salt, hash } = auth.hashPassword(b.password);
-    update.passwordHash = hash; update.passwordSalt = salt;
+    if (String(b.password).length < MIN_SENHA) return res.status(400).json({ error: `A senha precisa de ao menos ${MIN_SENHA} caracteres.` });
+    const { salt, hash, params } = auth.hashPassword(b.password);
+    update.passwordHash = hash; update.passwordSalt = salt; update.passwordParams = params;
   }
   // Admin não tem acesso por cliente (vê tudo).
   if (update.role === 'admin') update.access = [];
@@ -227,7 +261,9 @@ adminRouter.put('/users/:id', asyncHandler(async (req, res) => {
     const admins = await User.countDocuments({ role: 'admin' });
     if (admins <= 1) return res.status(422).json({ error: 'Não é possível rebaixar o último administrador.' });
   }
-  const user = await User.findByIdAndUpdate(req.params.id, { $set: update }, { new: true }).lean();
+  // Trocar a senha invalida os tokens de sessão antigos (revogação por versão).
+  const mutacao = update.passwordHash ? { $set: update, $inc: { tokenVersion: 1 } } : { $set: update };
+  const user = await User.findByIdAndUpdate(req.params.id, mutacao, { new: true }).lean();
   res.json(publicUser(user));
 }));
 
@@ -277,7 +313,10 @@ adminRouter.get('/audit', asyncHandler(async (req, res) => {
 adminRouter.get('/audit.csv', asyncHandler(async (req, res) => {
   const items = await AuditLog.find(auditFilter(req.query)).sort({ at: -1 }).limit(10000).lean();
   const cel = (v) => {
-    const s = v == null ? '' : String(v);
+    let s = v == null ? '' : String(v);
+    // Neutraliza fórmula de planilha (CSV injection): valor iniciado por = + - @
+    // (ou TAB/CR) é avaliado pelo Excel/LibreOffice ao abrir. Prefixa com apóstrofo.
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const resumoMudancas = (e) => {

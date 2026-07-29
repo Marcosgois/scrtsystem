@@ -325,6 +325,12 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
     passwordSalt: { type: String, required: true },
+    // Parâmetros do scrypt usados neste hash (ex.: "N=131072,r=8,p=1"). Ausente =
+    // hash antigo com os defaults do Node; é re-hasheado no próximo login.
+    passwordParams: { type: String, default: null },
+    // Incrementado ao trocar a senha: invalida todos os tokens de sessão antigos
+    // (o token carrega a versão; attachUser compara). Revogação sem estado no servidor.
+    tokenVersion: { type: Number, default: 0 },
     role: { type: String, enum: ['admin', 'user'], default: 'user' },
     access: { type: [userAccessSchema], default: [] },
   },

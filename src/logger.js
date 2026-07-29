@@ -60,9 +60,17 @@ function escreverArquivo(linha) {
   }
 }
 
+// Neutraliza log injection (CWE-117): valores derivados do usuário (e-mail de
+// login, URL) podem trazer CR/LF/controle e forjar linhas. Tira tudo isso e
+// limita o tamanho, num único ponto por onde toda linha passa.
+function saneia(linha) {
+  return String(linha == null ? '' : linha).replace(/[\r\n\t\x00-\x1f\x7f]/g, ' ').slice(0, 2000);
+}
+
 function registrar(linha) {
-  console.log(`[${carimbo()}] ${linha}`);
-  escreverArquivo(linha);
+  const s = saneia(linha);
+  console.log(`[${carimbo()}] ${s}`);
+  escreverArquivo(s);
 }
 
 /** IP do cliente, respeitando proxy reverso quando houver. */

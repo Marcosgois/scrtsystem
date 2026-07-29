@@ -11,11 +11,11 @@ const fs = require('fs');
 const path = require('path');
 
 const COOKIE = 'zcd_session';
-const SESSION_DAYS = 30;
+const SESSION_DAYS = Number(process.env.SESSION_DAYS) || 7;
 
 // ── Segredo de assinatura (persistido para as sessões sobreviverem a restart) ──
 function loadSecret() {
-  if (process.env.AUTH_SECRET) return process.env.AUTH_SECRET;
+  if (process.env.AUTH_SECRET) return String(process.env.AUTH_SECRET).trim();
   const dir = path.join(__dirname, '..', 'data');
   const file = path.join(dir, 'auth-secret');
   try {
@@ -30,20 +30,47 @@ function loadSecret() {
   }
 }
 const SECRET = loadSecret();
+// Fail-closed: um segredo vazio/curto (arquivo truncado, env com espaços) permitiria
+// forjar tokens de sessão. Aborta o boot em vez de seguir com HMAC fraco.
+if (!SECRET || SECRET.length < 32) {
+  console.error('[auth] AUTH_SECRET ausente ou curto demais (< 32 chars). Abortando por segurança.');
+  process.exit(1);
+}
 
-// ── Senha ──
+// ── Senha (scrypt) ──
+// Parâmetros atuais (recomendação OWASP: N=2^17). Ficam gravados junto do hash
+// para permitir upgrade incremental sem travar quem tem hash antigo.
+const SCRYPT = { N: 1 << 17, r: 8, p: 1 };
+const KEYLEN = 64;
+const MAXMEM = 256 * 1024 * 1024; // 128*N*r ≈ 134 MB para N=2^17; o default de 32 MB não cabe
+const DUMMY_SALT = crypto.randomBytes(16).toString('hex');
+
+const encodeParams = (o) => `N=${o.N},r=${o.r},p=${o.p}`;
+function decodeParams(s) {
+  const o = { N: 16384, r: 8, p: 1 }; // sem params = defaults antigos do Node
+  if (s) for (const kv of String(s).split(',')) { const [k, v] = kv.split('='); if (k && v && o[k.trim()] !== undefined) o[k.trim()] = Number(v); }
+  return o;
+}
+function scrypt(password, salt, p) {
+  return crypto.scryptSync(String(password), salt, KEYLEN, { N: p.N, r: p.r, p: p.p, maxmem: MAXMEM }).toString('hex');
+}
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
-  return { salt, hash };
+  return { salt, hash: scrypt(password, salt, SCRYPT), params: encodeParams(SCRYPT) };
 }
-function verifyPassword(password, salt, hash) {
+function verifyPassword(password, salt, hash, params) {
   if (!salt || !hash) return false;
-  const test = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  let test;
+  try { test = scrypt(password, salt, decodeParams(params)); } catch (e) { return false; }
   const a = Buffer.from(test, 'hex');
   const b = Buffer.from(hash, 'hex');
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+// true se o hash usa parâmetros abaixo dos atuais (re-hashear no próximo login).
+function needsRehash(params) { return decodeParams(params).N < SCRYPT.N; }
+// Gasta o mesmo CPU de um verify quando o e-mail não existe, para o tempo de
+// resposta não revelar se a conta existe (anti-enumeração).
+function dummyVerify(password) { try { scrypt(password, DUMMY_SALT, SCRYPT); } catch (e) { /* ignore */ } }
 
 // ── Token de sessão (payload.assinatura, ambos base64url) ──
 const b64 = (buf) => Buffer.from(buf).toString('base64url');
@@ -86,9 +113,11 @@ function cookieAttrs() {
   if (process.env.NODE_ENV === 'production') attrs.push('Secure');
   return attrs;
 }
-function setSessionCookie(res, userId) {
+function setSessionCookie(res, user) {
   const exp = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000;
-  const token = signSession({ uid: String(userId), exp });
+  const uid = String((user && user._id) || user);
+  const tv = Number((user && user.tokenVersion) || 0);
+  const token = signSession({ uid, tv, exp });
   const attrs = [`${COOKIE}=${token}`, ...cookieAttrs(), `Max-Age=${SESSION_DAYS * 24 * 60 * 60}`];
   res.setHeader('Set-Cookie', attrs.join('; '));
 }
@@ -97,8 +126,11 @@ function clearSessionCookie(res) {
   // Set-Cookie que difira nos flags em alguns navegadores.
   res.setHeader('Set-Cookie', [`${COOKIE}=`, ...cookieAttrs(), 'Max-Age=0'].join('; '));
 }
+function sessionPayload(req) {
+  return verifySession(readCookie(req, COOKIE));
+}
 function sessionUserId(req) {
-  const payload = verifySession(readCookie(req, COOKIE));
+  const payload = sessionPayload(req);
   return payload ? payload.uid : null;
 }
 
@@ -115,7 +147,7 @@ const canView = (user, clientId) => accessLevel(user, clientId) != null;
 const canEdit = (user, clientId) => ['admin', 'edit'].includes(accessLevel(user, clientId));
 
 module.exports = {
-  COOKIE, hashPassword, verifyPassword, signSession, verifySession,
-  readCookie, setSessionCookie, clearSessionCookie, sessionUserId,
+  COOKIE, hashPassword, verifyPassword, needsRehash, dummyVerify, signSession, verifySession,
+  readCookie, setSessionCookie, clearSessionCookie, sessionUserId, sessionPayload,
   accessLevel, canView, canEdit,
 };

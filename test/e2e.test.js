@@ -68,7 +68,7 @@ async function main() {
 
     const setupRes = await fetch(`${BASE}/auth/setup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'E2E Admin', email: 'e2e@admin.local', password: 'e2epass1' }),
+      body: JSON.stringify({ name: 'E2E Admin', email: 'e2e@admin.local', password: 'e2epass123' }),
     });
     const setupBody = await setupRes.json().catch(() => null);
     authCookie = (setupRes.headers.get('set-cookie') || '').split(';')[0];

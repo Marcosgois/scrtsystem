@@ -55,7 +55,7 @@ async function main() {
   const admin = session();
   try {
     // ── Setup ──
-    let r = await admin.req('/auth/setup', { method: 'POST', json: { name: 'Admin', email: 'a@x.com', password: 'admin123' } });
+    let r = await admin.req('/auth/setup', { method: 'POST', json: { name: 'Admin', email: 'a@x.com', password: 'admin12399' } });
     check('admin criado', r.status === 201, r.status);
     const caixa = (await admin.req('/clients', { method: 'POST', json: { name: 'CAIXA' } })).body;
     const bb = (await admin.req('/clients', { method: 'POST', json: { name: 'BB' } })).body;
@@ -272,11 +272,11 @@ async function main() {
     /* ══════════ Acesso ══════════ */
     console.log('\n— acesso —');
     await admin.req('/admin/users', { method: 'POST', json: {
-      name: 'Vera', email: 'v@x.com', password: 'view123', role: 'user',
+      name: 'Vera', email: 'v@x.com', password: 'view123456', role: 'user',
       access: [{ client: caixa._id, level: 'view' }],
     } });
     const view = session();
-    await view.req('/auth/login', { method: 'POST', json: { email: 'v@x.com', password: 'view123' } });
+    await view.req('/auth/login', { method: 'POST', json: { email: 'v@x.com', password: 'view123456' } });
     r = await view.req(`${C}/contracts`);
     check('usuário view LÊ contratos', r.status === 200, r.status);
     r = await view.req(`${C}/contracts`, { method: 'POST', json: { number: 'X' } });

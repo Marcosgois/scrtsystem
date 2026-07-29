@@ -119,7 +119,10 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const params = new URLSearchParams(location.search);
-    const nextUrl = params.get('next') || '/consumo';
+    const rawNext = params.get('next') || '/consumo';
+    // Só caminho interno: começa com '/' e não com '//' nem '/\' (protocol-relative)
+    // e sem esquema — evita open redirect para site externo depois do login.
+    const nextUrl = /^\/[^/\\]/.test(rawNext) ? rawNext : '/consumo';
 
     const arrow = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -151,7 +154,7 @@
           <label class="field-dark"><span>E-mail</span>
             <input type="email" id="f-email" autocomplete="username" placeholder="voce@empresa.com" required></label>
           <label class="field-dark"><span>Senha</span>
-            <input type="password" id="f-password" autocomplete="new-password" placeholder="mínimo 6 caracteres" required></label>
+            <input type="password" id="f-password" autocomplete="new-password" placeholder="mínimo 10 caracteres" required></label>
           <button type="submit" class="btn-login" id="lc-submit">Criar e entrar ${arrow}</button>
         </form>`;
     }
