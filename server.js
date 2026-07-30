@@ -46,7 +46,7 @@ function cspHeader(req) {
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
-    "frame-ancestors 'none'",
+    "frame-ancestors 'self'",   // 'self' (não 'none'): a página /contratos precisa embutir o PDF same-origin em iframe
     "form-action 'self'",
     `img-src 'self' data: blob:${x}`,
     `font-src 'self' data:${x}`,
