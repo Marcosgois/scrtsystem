@@ -357,14 +357,14 @@ function populateAuditFilters() {
 }
 
 function showView(view) {
-  document.querySelectorAll('#admin-tabs .seg').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  document.querySelectorAll('#admin-tabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   $('admin-view').classList.toggle('hidden', view !== 'users');
   $('audit-view').classList.toggle('hidden', view !== 'audit');
   $('btn-new-user').style.display = view === 'users' ? '' : 'none';
   if (view === 'audit' && !auditState.loaded) { populateAuditFilters(); loadAudit(true); }
 }
 
-document.querySelectorAll('#admin-tabs .seg').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+document.querySelectorAll('#admin-tabs .seg-btn').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
 $('af-apply').addEventListener('click', () => loadAudit(true));
 $('af-clear').addEventListener('click', () => {
   ['af-client', 'af-actor', 'af-action', 'af-from', 'af-to', 'af-q'].forEach((id) => { $(id).value = ''; });
