@@ -33,6 +33,11 @@ Publicar e promover, do Mac:
 
 Sem `--sim` é só ensaio. O script exige árvore git limpa e sobe `git archive HEAD`.
 
+**Trava dev-first:** o `deploy.sh prod` **recusa** um commit que ainda não está rodando em
+dev — cada deploy grava o commit em `<APP_DIR>/.deployed-commit` e o prod compara com o de
+dev. Assim não dá para pular a validação em dev (foi uma regressão que passou direto para prod
+que motivou isso). Em emergência, `./deploy/deploy.sh prod --sim --force` ignora a trava.
+
 Atualizar o dev com uma cópia fresca de prod (banco + arquivos), de mão única:
 
 ```bash
