@@ -114,6 +114,24 @@
     }
     #selectCustomer:focus { outline: 2px solid var(--ibm-blue); outline-offset: -1px; }
 
+    /* Quando o seletor é movido para a barra escura do topo (relocateClientSelector),
+       ele tem de ficar igual ao #client-select dos outros módulos: transparente,
+       texto branco, sem moldura. A regra #selectCustomer acima usa ID + !important,
+       então só um seletor MAIS específico (ID + classe) consegue sobrescrever. */
+    #selectCustomer.tfp-client-select {
+      background: transparent !important;
+      border: none !important;
+      color: #fff !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+      max-width: 200px;
+      text-overflow: ellipsis;
+    }
+    #selectCustomer.tfp-client-select:focus { outline: none; }
+    #selectCustomer.tfp-client-select option { color: var(--text-color); }
+
     #savedStorageBadge {
       font-size: 11px !important;
       font-weight: 500 !important;
