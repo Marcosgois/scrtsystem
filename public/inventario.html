@@ -812,6 +812,31 @@
     .user-pop-item.danger { color: var(--danger); }
     .user-pop-item.danger:hover { background: #fff1f1; }
 
+    /* Idioma e créditos no rodapé do menu do usuário. Esta página não carrega o
+       styles.css, então precisa da própria cópia — sem ela as duas linhas saíam
+       sem estilo (texto solto, encostado na borda). */
+    .user-pop-lang {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 9px 12px; border-top: 1px solid var(--border-color);
+      font-size: 11px; color: var(--text-secondary);
+    }
+    .i18n-switch { display: inline-flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+    .i18n-opt {
+      border: none; border-right: 1px solid var(--border-color); background: var(--card-bg);
+      padding: 4px 9px; font-family: inherit; font-size: 11px; font-weight: 600;
+      color: var(--text-secondary); cursor: pointer; transition: background .12s ease, color .12s ease;
+    }
+    .i18n-opt:last-child { border-right: none; }
+    .i18n-opt:hover { background: var(--surface-hover); color: var(--text-color); }
+    .i18n-opt.active { background: var(--ibm-blue); color: #fff; }
+    .user-pop-credits {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 12px; border-top: 1px solid var(--border-color);
+      font-size: 11px; color: var(--text-secondary);
+    }
+    .user-pop-credits strong { color: var(--text-color); font-weight: 600; }
+    .user-pop-credits svg { flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,0.12); }
+
     /* Botão Home injetado pelo auth-client (esta página tem CSS próprio). */
     .home-btn {
       display: inline-flex; align-items: center; gap: 7px;
@@ -2789,7 +2814,9 @@
 (function () {
   'use strict';
 
-  const ACTIVE_KEY = 'tfp_inventario_ultimo_cliente';
+  // MESMA chave dos outros módulos (consumo, MLC, infra, contratos e a home): o
+  // cliente escolhido é GLOBAL — selecionou aqui, os outros abrem nele, e vice-versa.
+  const ACTIVE_KEY = 'tfp.clientId';
 
   // Cache em memória: clientId (IBM Z Control Desk) -> { clientName, customerNumber, updatedAt, products, pairOverrides }
   const invStore = {};
@@ -2976,7 +3003,8 @@
   window.goHome = function () {
     const select = document.getElementById('selectCustomer');
     if (select) select.value = '';
-    localStorage.removeItem(ACTIVE_KEY);
+    // NÃO apaga o ACTIVE_KEY: ele agora é a seleção global de cliente, e limpar
+    // aqui desselecionaria o cliente nos outros módulos. Isto só reseta a view.
     showEmptyState();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -2995,9 +3023,11 @@
       return;
     }
     delete invStore[clientId];
-    localStorage.removeItem(ACTIVE_KEY);
-    await window.populateCustomerDropdown(null);
-    window.goHome();
+    // O cliente continua cadastrado — só o inventário dele saiu. Mantém a seleção
+    // global (ACTIVE_KEY) para não desselecionar o cliente nos outros módulos;
+    // o 404 do inventário já cai no estado vazio dentro de loadCustomerData.
+    await window.populateCustomerDropdown(clientId);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Não é mais usado (dados vêm da API), mas o painel pode chamá-lo.
