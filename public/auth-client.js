@@ -43,6 +43,8 @@
     logout: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 2.5H3.5A1.5 1.5 0 0 0 2 4v8a1.5 1.5 0 0 0 1.5 1.5H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10.5 11 14 8l-3.5-3M14 8H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     home: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V7Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.5 14V9.5h3V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
     eye: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8Z" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="1.8" stroke="currentColor" stroke-width="1.2"/></svg>',
+    // Bandeira do Brasil desenhada em SVG — o emoji 🇧🇷 não renderiza no Windows/Chrome.
+    brasil: '<svg viewBox="0 0 28 20" width="17" height="12" role="img" aria-label="Brasil"><rect width="28" height="20" rx="2" fill="#009B3A"/><path d="M14 3.2 24.3 10 14 16.8 3.7 10Z" fill="#FEDF00"/><circle cx="14" cy="10" r="4" fill="#002776"/><path d="M10.3 11.5Q14 13.4 17.7 11.5" stroke="#fff" stroke-width="1.1" fill="none"/></svg>',
   };
 
   let me = null;
@@ -125,6 +127,7 @@
         ? '<a class="user-pop-item" href="/admin" role="menuitem">' + ICON.admin + 'Administração</a>'
         : '')
       + '<button type="button" class="user-pop-item danger" id="ac-logout" role="menuitem">' + ICON.logout + 'Sair</button>'
+      + '<div class="user-pop-credits">Criado por <strong>Leo Couto</strong> e <strong>Hulk</strong>' + ICON.brasil + '</div>'
       + '</div>';
     host.appendChild(wrap);
 

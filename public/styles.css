@@ -1239,6 +1239,14 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 .user-pop-item svg { opacity: 0.65; }
 .user-pop-item.danger { color: var(--danger); }
 .user-pop-item.danger:hover { background: var(--danger-light); }
+/* Créditos no rodapé do menu do usuário (aparece em todos os módulos). */
+.user-pop-credits {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 12px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--ink-secondary); background: var(--surface-alt, transparent);
+}
+.user-pop-credits strong { color: var(--ink); font-weight: 600; }
+.user-pop-credits svg { flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,0.12); }
 
 /* Selo "somente leitura" e ocultação de controles de edição */
 .readonly-badge {

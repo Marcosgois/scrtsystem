@@ -110,6 +110,9 @@
     .module-card:hover .mc-arrow { color: #a6c8ff; transform: translate(3px,-3px); }
 
     .home-foot { max-width: 1180px; margin: 0 auto; padding: 26px 28px 40px; font-size: 12px; color: rgba(244,244,244,0.34); border-top: 1px solid rgba(255,255,255,0.07); }
+    .home-credits { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: rgba(244,244,244,0.5); }
+    .home-credits strong { color: rgba(244,244,244,0.78); font-weight: 600; }
+    .br-flag { flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255,255,255,0.14); }
 
     .reveal { opacity: 0; }
 
@@ -185,7 +188,18 @@
       </div>
     </section>
 
-    <footer class="home-foot">IBM Z Control Desk · Consumo Mainframe · Tailored Fit Pricing (SCRT) · Acesso restrito</footer>
+    <footer class="home-foot">
+      <div>IBM Z Control Desk · Consumo Mainframe · Tailored Fit Pricing (SCRT) · Acesso restrito</div>
+      <div class="home-credits">
+        Criado por <strong>Leo Couto</strong> e <strong>Hulk</strong>
+        <svg class="br-flag" viewBox="0 0 28 20" width="19" height="13.5" role="img" aria-label="Brasil">
+          <rect width="28" height="20" rx="2" fill="#009B3A"/>
+          <path d="M14 3.2 24.3 10 14 16.8 3.7 10Z" fill="#FEDF00"/>
+          <circle cx="14" cy="10" r="4" fill="#002776"/>
+          <path d="M10.3 11.5Q14 13.4 17.7 11.5" stroke="#fff" stroke-width="1.1" fill="none"/>
+        </svg>
+      </div>
+    </footer>
   </div>
 
   <script src="vendor/three.min.js"></script>
