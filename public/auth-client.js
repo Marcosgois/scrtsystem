@@ -127,9 +127,13 @@
         ? '<a class="user-pop-item" href="/admin" role="menuitem">' + ICON.admin + 'Administração</a>'
         : '')
       + '<button type="button" class="user-pop-item danger" id="ac-logout" role="menuitem">' + ICON.logout + 'Sair</button>'
+      + '<div class="user-pop-lang"><span>Idioma</span><span data-i18n-switcher data-i18n-compact></span></div>'
       + '<div class="user-pop-credits">Criado por <strong>Leo Couto</strong> e <strong>Hulk</strong>' + ICON.brasil + '</div>'
       + '</div>';
     host.appendChild(wrap);
+    // O menu nasce depois do DOMContentLoaded, então o seletor de idioma dele
+    // precisa ser montado aqui (o i18n já rodou a passada inicial).
+    if (window.i18n) window.i18n.montarSeletores();
 
     const chip = wrap.querySelector('#ac-chip');
     const pop = wrap.querySelector('#ac-pop');

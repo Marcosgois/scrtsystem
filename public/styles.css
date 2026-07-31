@@ -1239,6 +1239,21 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 .user-pop-item svg { opacity: 0.65; }
 .user-pop-item.danger { color: var(--danger); }
 .user-pop-item.danger:hover { background: var(--danger-light); }
+/* Seletor de idioma (PT/ES/EN). Fica no menu do usuário e nas telas públicas. */
+.i18n-switch { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius); overflow: hidden; }
+.i18n-opt {
+  border: none; border-right: 1px solid var(--border-strong); background: var(--surface);
+  padding: 4px 9px; font-family: var(--font); font-size: 11px; font-weight: 600;
+  color: var(--ink-secondary); cursor: pointer; transition: background 0.12s ease, color 0.12s ease;
+}
+.i18n-opt:last-child { border-right: none; }
+.i18n-opt:hover { background: var(--surface-hover); color: var(--ink); }
+.i18n-opt.active { background: var(--primary); color: #fff; }
+.user-pop-lang {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--ink-secondary);
+}
+
 /* Créditos no rodapé do menu do usuário (aparece em todos os módulos). */
 .user-pop-credits {
   display: flex; align-items: center; justify-content: center; gap: 6px;

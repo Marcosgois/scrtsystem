@@ -84,11 +84,19 @@
     }
     .login-error.show { display: block; }
     .login-foot { margin-top: 26px; font-size: 11.5px; color: rgba(255,255,255,0.36); text-align: center; }
+    /* Seletor de idioma no tema escuro do login */
+    .login-lang { display: flex; justify-content: center; margin-top: 24px; }
+    .login-lang .i18n-switch { border-color: rgba(255,255,255,0.2); }
+    .login-lang .i18n-opt { background: rgba(255,255,255,0.05); border-right-color: rgba(255,255,255,0.16); color: rgba(255,255,255,0.6); padding: 5px 12px; }
+    .login-lang .i18n-opt:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .login-lang .i18n-opt.active { background: rgba(15,98,254,0.9); color: #fff; }
     .login-credits { margin-top: 7px; font-size: 11.5px; color: rgba(255,255,255,0.42); display: flex; align-items: center; justify-content: center; gap: 6px; }
     .login-credits strong { color: rgba(255,255,255,0.68); font-weight: 600; }
     .login-credits svg { flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255,255,255,0.16); }
     .lc-loading { color: rgba(255,255,255,0.5); font-size: 13px; }
   </style>
+  <script src="/i18n-dict.js"></script>
+  <script src="/i18n.js"></script>
 </head>
 <body>
   <aside class="login-aside">
@@ -115,6 +123,7 @@
     <div class="login-card">
       <div class="lc-mark"><div class="aside-mark">Z</div><strong>IBM Z Control Desk</strong></div>
       <div id="lc-body"><p class="lc-loading">Carregando…</p></div>
+      <div class="login-lang" data-i18n-switcher></div>
       <p class="login-foot">Acesso restrito · IBM Z Control Desk</p>
       <p class="login-credits">
         Criado por <strong>Leo Couto</strong> e <strong>Hulk</strong>

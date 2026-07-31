@@ -114,6 +114,13 @@
     .home-credits strong { color: rgba(244,244,244,0.78); font-weight: 600; }
     .br-flag { flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255,255,255,0.14); }
 
+    /* Seletor de idioma na barra escura (sobrescreve o tema claro do styles.css) */
+    .home-nav-right { display: flex; align-items: center; gap: 14px; }
+    .home-nav .i18n-switch { border-color: rgba(255,255,255,0.2); }
+    .home-nav .i18n-opt { background: rgba(255,255,255,0.05); border-right-color: rgba(255,255,255,0.16); color: rgba(244,244,244,0.6); }
+    .home-nav .i18n-opt:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .home-nav .i18n-opt.active { background: rgba(15,98,254,0.9); color: #fff; }
+
     .reveal { opacity: 0; }
 
     @media (prefers-reduced-motion: reduce) {
@@ -121,6 +128,8 @@
       .reveal { opacity: 1 !important; transform: none !important; }
     }
   </style>
+  <script src="/i18n-dict.js"></script>
+  <script src="/i18n.js"></script>
 </head>
 <body>
   <canvas id="bg-canvas" aria-hidden="true"></canvas>
@@ -132,7 +141,10 @@
         <div class="home-mark">Z</div>
         <b>IBM Z Control Desk</b>
       </div>
-      <a class="nav-cta" id="nav-cta" href="/login">Entrar</a>
+      <div class="home-nav-right">
+        <span data-i18n-switcher data-i18n-compact></span>
+        <a class="nav-cta" id="nav-cta" href="/login">Entrar</a>
+      </div>
     </nav>
 
     <header class="hero">
