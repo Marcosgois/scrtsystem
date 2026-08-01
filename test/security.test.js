@@ -81,6 +81,19 @@ async function main() {
   check('login inexistente e senha errada dão o mesmo 401 genérico',
     semUser.status === 401 && senhaErr.status === 401 && semUser.body.error === senhaErr.body.error, { a: semUser.body, b: senhaErr.body });
 
+  // ── Excluir cliente é exclusivo de administrador ──
+  // O editor tem o nível MAIS ALTO abaixo de admin ('edit') no cliente A, e ainda
+  // assim não pode excluí-lo: excluir cliente leva junto todo o histórico de SCRT.
+  const delEditor = await editor.req(`/clients/${A._id}`, { method: 'DELETE' });
+  check('não-admin com edição NÃO exclui cliente (403)', delEditor.status === 403, delEditor.status);
+  // (não há GET /clients/:id — a checagem é na listagem)
+  const listaDepois = (await admin.req('/clients')).body;
+  check('cliente sobrevive à tentativa do não-admin',
+    Array.isArray(listaDepois) && listaDepois.some((c) => String(c._id) === String(A._id)),
+    listaDepois && listaDepois.map && listaDepois.map((c) => c.name));
+  const delAdmin = await admin.req(`/clients/${A._id}`, { method: 'DELETE' });
+  check('admin consegue excluir o cliente', delAdmin.status === 200, delAdmin.status);
+
   // ── Rate limit: por último, pois tranca o IP do processo ──
   const bruta = session();
   let travou = false;
