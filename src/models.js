@@ -44,6 +44,31 @@ const mlcContractSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/*
+ * Um PERÍODO CONTRATUAL do cliente (zOTC/MLC).
+ *
+ * Antes havia um mês-âncora único (`contractYearStart`) e os anos saíam em blocos
+ * de 12 meses ao infinito — então, quando um contrato acabava e entrava outro, o
+ * novo "Ano 1" aparecia como "Ano 4". Agora o cliente tem uma LISTA de contratos
+ * em sequência, cada um com seus próprios anos e parâmetros de preço, e a
+ * contagem de anos reinicia a cada contrato.
+ *
+ * `endPeriodKey` vazio = contrato vigente (sem fim definido). Um intervalo sem
+ * contrato nenhum é permitido de propósito: o mês cai como "fora de contrato".
+ *
+ * Nada a ver com o model `Contract` (contratos de hardware/software com PDF): este
+ * aqui é o acordo comercial de consumo que define os anos e o preço do MSU.
+ */
+const clientContractSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },   // "BRB 2023"
+    startPeriodKey: { type: String, required: true },     // "2023-05"
+    endPeriodKey: { type: String, default: null },        // "2026-04" | null = vigente
+    years: { type: [mlcYearSchema], default: [] },        // parâmetros MLC deste contrato
+  },
+  { timestamps: true }
+);
+
 // Catálogo de tags de máquina (ex.: "Produção", "DW", "Dev/Test").
 // `ignored` marca as tags cujo consumo NÃO conta (dev/test por padrão).
 const machineTagDefSchema = new mongoose.Schema(
@@ -75,9 +100,14 @@ const clientSchema = new mongoose.Schema(
     // Mês de início do ano contratual (AAAA-MM). Ex.: "2024-06" => Ano 1 vai de
     // jun/24 a mai/25, Ano 2 de jun/25 a mai/26, etc. Habilita a visão "Por Ano
     // Contratual" no dashboard. Se vazio, o MLC (mlcContract.startPeriodKey) serve de base.
+    // LEGADO: mês-âncora único. Continua gravado por compatibilidade (é o início do
+    // contrato VIGENTE), mas quem manda agora é `contractPeriods` — ver o schema.
     contractYearStart: { type: String, default: null },
+    // Contratos em sequência (zOTC/MLC). A contagem de anos reinicia a cada um.
+    contractPeriods: { type: [clientContractSchema], default: [] },
     lparGroups: { type: [lparGroupSchema], default: [] },
-    // Contrato MLC (Monthly License Charge) — parâmetros por ano; consumo vem do SCRT.
+    // LEGADO: contrato MLC único. Migrado para contractPeriods[0]; mantido para
+    // não quebrar leitura antiga enquanto a migração roda.
     mlcContract: { type: mlcContractSchema, default: null },
     notes: { type: String, default: '' },
   },

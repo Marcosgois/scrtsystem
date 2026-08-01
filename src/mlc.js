@@ -45,6 +45,7 @@ function somaEncargos(encargos) {
  */
 function computeMlcView(contract, consumoByPeriod) {
   const start = contract && contract.startPeriodKey;
+  const fim = (contract && contract.endPeriodKey) || null;   // null = vigente
   const anos = (contract && contract.years) || [];
   if (!start || !anos.length) return { startPeriodKey: start || null, years: [] };
 
@@ -66,6 +67,9 @@ function computeMlcView(contract, consumoByPeriod) {
     const months = [];
     for (let mi = 0; mi < 12; mi++) {
       const periodKey = addMonths(start, i * 12 + mi);
+      // Contrato com fim definido não gera mês além dele (o último ano pode ser
+      // parcial — ex.: contrato de 2 anos e meio).
+      if (fim && periodKey > fim) break;
       const consumedMsu = consumoDe(periodKey);
       const has = consumedMsu != null;
       const growth = has ? consumedMsu - baselineMensalMsu : null;
@@ -102,7 +106,7 @@ function computeMlcView(contract, consumoByPeriod) {
     return {
       label: yr.label || `Ano ${i + 1}`,
       firstPeriodKey: addMonths(start, i * 12),
-      lastPeriodKey: addMonths(start, i * 12 + 11),
+      lastPeriodKey: months.length ? months[months.length - 1].periodKey : addMonths(start, i * 12 + 11),
       baselineAnnualMsu,
       baselineMensalMsu,
       baselineMensalRs,
@@ -119,4 +123,39 @@ function computeMlcView(contract, consumoByPeriod) {
   return { startPeriodKey: start, years };
 }
 
-module.exports = { computeMlcView, addMonths, labelOf, somaEncargos, MESES_PT };
+/**
+ * Visão de VÁRIOS contratos em sequência (o caso real: um contrato acaba e entra
+ * outro, e a contagem de anos reinicia). Cada contrato é calculado pela mesma
+ * computeMlcView acima — o que muda é que os anos vêm rotulados com o nome do
+ * contrato ("BRB 2023 · Ano 3"), então dois "Ano 1" nunca se confundem.
+ *
+ * @param contracts [{ _id, name, startPeriodKey, endPeriodKey, years }]
+ */
+function computeMlcViewMulti(contracts, consumoByPeriod) {
+  const lista = (contracts || [])
+    .filter((c) => c && c.startPeriodKey)
+    .slice()
+    .sort((a, b) => String(a.startPeriodKey).localeCompare(String(b.startPeriodKey)));
+
+  const out = lista.map((c) => {
+    const view = computeMlcView(c, consumoByPeriod);
+    return {
+      _id: c._id ? String(c._id) : null,
+      name: c.name || `Contrato ${String(c.startPeriodKey).slice(0, 4)}`,
+      startPeriodKey: c.startPeriodKey,
+      endPeriodKey: c.endPeriodKey || null,
+      vigente: !c.endPeriodKey,
+      years: view.years.map((y, i) => ({
+        ...y,
+        yearIndex: i,                                    // 0-based dentro DESTE contrato
+        contractName: c.name || `Contrato ${String(c.startPeriodKey).slice(0, 4)}`,
+        // Rótulo completo, o que aparece no gráfico e nas tabelas.
+        fullLabel: `${c.name || `Contrato ${String(c.startPeriodKey).slice(0, 4)}`} · ${y.label}`,
+      })),
+    };
+  });
+
+  return { contracts: out };
+}
+
+module.exports = { computeMlcView, computeMlcViewMulti, addMonths, labelOf, somaEncargos, MESES_PT };

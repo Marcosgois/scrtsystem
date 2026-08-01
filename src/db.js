@@ -102,6 +102,52 @@ async function backfillMachineStatus(connection) {
   }
 }
 
+/*
+ * Migra o contrato único (contractYearStart + mlcContract) para a lista
+ * contractPeriods. Antes o cliente tinha um mês-âncora só e os anos saíam em
+ * blocos de 12 meses ao infinito; agora são contratos em sequência, com a
+ * contagem de anos reiniciando a cada um.
+ *
+ * Idempotente: só toca em quem ainda não tem contractPeriods. O nome sai do ano
+ * de início ("Contrato 2023") — o usuário renomeia depois se quiser.
+ */
+async function migrateContractPeriods(connection) {
+  const coll = connection.db.collection('clients');
+  let antigos;
+  try {
+    antigos = await coll.find({
+      $and: [
+        { $or: [{ contractPeriods: { $exists: false } }, { contractPeriods: { $size: 0 } }] },
+        { $or: [{ contractYearStart: { $type: 'string' } }, { 'mlcContract.startPeriodKey': { $type: 'string' } }] },
+      ],
+    }).toArray();
+  } catch (err) {
+    if (err.codeName === 'NamespaceNotFound' || err.code === 26) return;
+    throw err;
+  }
+  if (!antigos.length) return;
+
+  for (const c of antigos) {
+    const mlc = c.mlcContract || {};
+    const inicio = c.contractYearStart || mlc.startPeriodKey;
+    if (!inicio || !/^\d{4}-\d{2}$/.test(inicio)) continue;
+    await coll.updateOne({ _id: c._id }, {
+      $set: {
+        contractPeriods: [{
+          _id: new mongoose.Types.ObjectId(),
+          name: `Contrato ${inicio.slice(0, 4)}`,
+          startPeriodKey: inicio,
+          endPeriodKey: null,          // vigente: quem encerra é o usuário
+          years: mlc.years || [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }],
+      },
+    });
+  }
+  console.log(`[MongoDB] ${antigos.length} cliente(s): contrato único → contractPeriods.`);
+}
+
 async function connectDb(uri) {
   mongoose.connection.on('error', (err) => {
     console.error('[MongoDB] erro de conexão:', err.message);
@@ -117,6 +163,7 @@ async function connectDb(uri) {
   await backfillSourceKeys(mongoose.connection);
   await renameStorageToMemory(mongoose.connection);
   await backfillMachineStatus(mongoose.connection);
+  await migrateContractPeriods(mongoose.connection);
 
   const { Client, ScrtReport, Inventory, Contract, MigrationEvent, AuditLog } = require('./models');
   await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init(), AuditLog.init()]);
