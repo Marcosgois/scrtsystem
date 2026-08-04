@@ -32,15 +32,21 @@ app.disable('x-powered-by');
 //
 // Exceção escopada: o widget AskZ (IBM watsonx Orchestrate) é embutido SÓ na página
 // de consumo, então o host da IBM é liberado apenas ali — o resto do app segue estrito.
+//
+// E só onde ASKZ estiver ligado no ambiente. Fica DESLIGADO por padrão (produção),
+// ligado em dev (ASKZ=on no /etc/zcontroldesk-dev.env). Amarrar o widget e a CSP à
+// mesma variável evita o estado incoerente de liberar o host externo numa página que
+// nem carrega o widget.
 const WXO_ORIGIN = process.env.WXO_ORIGIN || 'https://br-sao.watson-orchestrate.cloud.ibm.com';
 const WXO_WSS = WXO_ORIGIN.replace(/^https:/, 'wss:');
+const ASKZ = /^(1|on|true|sim)$/i.test(String(process.env.ASKZ || '').trim());
 // O Cloudflare injeta o beacon de Web Analytics (Browser Insights) em TODA página
 // proxied; sem liberar o domínio dele, o navegador bloqueia o beacon.min.js (erro no
 // console). Vai na CSP base porque a injeção acontece em todas as páginas.
 const CF_INSIGHTS = 'https://static.cloudflareinsights.com';   // beacon.min.js
 const CF_INSIGHTS_RUM = 'https://cloudflareinsights.com';      // POST das métricas
 function cspHeader(req) {
-  const askz = req.path === '/consumo' || req.path === '/index.html'; // páginas com o widget
+  const askz = ASKZ && (req.path === '/consumo' || req.path === '/index.html');
   const x = askz ? ' ' + WXO_ORIGIN : '';
   return [
     "default-src 'self'",
@@ -86,6 +92,14 @@ const adminPageGuard = async (req, res, next) => {
   if (u.role !== 'admin') return res.redirect('/consumo');
   next();
 };
+
+// Configuração que o front precisa conhecer, vinda do ambiente. Sem cache: mudar a
+// variável no servidor e reiniciar já vale no próximo carregamento.
+app.get('/env.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(`window.ZCD_ASKZ = ${ASKZ ? 'true' : 'false'};\n`);
+});
 
 app.get('/', sendPage('home.html'));               // homepage pública
 app.get('/login', sendPage('login.html'));         // login (+ setup do 1º admin)

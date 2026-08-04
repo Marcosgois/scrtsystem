@@ -8,6 +8,7 @@
   <script src="vendor/chart.umd.js"></script>
   <script src="/i18n-dict.js"></script>
   <script src="/i18n.js"></script>
+  <script src="/env.js"></script>
 </head>
 <body>
 
@@ -539,10 +540,13 @@
 <script src="scrt-files.js"></script>
 <script src="app.js"></script>
 
-<!-- AskZ — assistente do IBM watsonx Orchestrate (widget flutuante). O host da IBM
-     é liberado na CSP só nesta página (ver cspHeader em server.js). -->
+<!-- AskZ — assistente do IBM watsonx Orchestrate (widget flutuante).
+     Só é montado onde window.ZCD_ASKZ estiver ligado (/env.js, vindo da variável
+     ASKZ do ambiente): hoje isso vale em dev e NÃO em produção. A mesma variável
+     controla a liberação do host da IBM na CSP (cspHeader em server.js). -->
 <div id="root"></div>
 <script>
+  if (window.ZCD_ASKZ) {
   window.wxOConfiguration = {
     orchestrationID: "923c6598906640bcbb3104eac1e6ecf3_49dd0c96-cb5c-4763-9e0c-fa69ccd29b11",
     hostURL: "https://br-sao.watson-orchestrate.cloud.ibm.com",
@@ -559,6 +563,7 @@
     script.addEventListener('load', function () { wxoLoader.init(); });
     document.head.appendChild(script);
   }, 0);
+  }
 </script>
 </body>
 </html>
