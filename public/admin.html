@@ -55,6 +55,7 @@
   <div class="segmented admin-tabs" id="admin-tabs" role="group" aria-label="Visões da administração">
     <button type="button" class="seg-btn active" data-view="users">Usuários</button>
     <button type="button" class="seg-btn" data-view="audit">Auditoria</button>
+    <button type="button" class="seg-btn" data-view="lifecycle">Ciclo de vida IBM Z</button>
   </div>
 
   <section id="admin-view">
@@ -139,7 +140,78 @@
       <button class="btn btn-ghost hidden" id="audit-more">Carregar mais</button>
     </div>
   </section>
+
+  <section id="lifecycle-view" class="hidden">
+    <div class="client-header">
+      <div>
+        <h2>Ciclo de vida das máquinas IBM Z</h2>
+        <p class="muted">Quando cada geração foi anunciada, ficou disponível, saiu de comercialização e perde suporte. As colunas de anos são calculadas a partir das datas.</p>
+      </div>
+      <div class="client-header-actions">
+        <button class="btn btn-primary" id="btn-new-lifecycle">+ Nova máquina</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="infra-table" id="lifecycle-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Model</th>
+            <th>Family</th>
+            <th>ANN</th>
+            <th>GA</th>
+            <th>HW WDFM</th>
+            <th>LIC WDFM</th>
+            <th>CoSL/EOS</th>
+            <th class="num">ANN→GA</th>
+            <th class="num">GA→HW WDFM</th>
+            <th class="num">HW WDFM→EOS</th>
+            <th class="col-actions"></th>
+          </tr>
+        </thead>
+        <tbody id="lifecycle-body"></tbody>
+        <tfoot id="lifecycle-foot"></tfoot>
+      </table>
+    </div>
+    <div class="empty-inline hidden" id="lifecycle-empty">Nenhuma máquina cadastrada ainda.</div>
+
+    <p class="muted small" style="margin-top:14px">
+      <strong>ANN</strong> anúncio · <strong>GA</strong> disponibilidade geral ·
+      <strong>HW WDFM</strong> retirada do hardware de comercialização ·
+      <strong>LIC WDFM</strong> retirada do microcódigo licenciado ·
+      <strong>CoSL/EOS</strong> mudança de nível de suporte / fim de serviço.
+    </p>
+  </section>
 </main>
+
+<!-- Modal: ciclo de vida -->
+<div class="modal-backdrop hidden" id="modal-lifecycle">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-lifecycle-title">
+    <h2 id="modal-lifecycle-title">Nova máquina</h2>
+    <div class="user-form-grid">
+      <label class="field"><span>Type *</span><input type="text" id="lc-type" maxlength="12" placeholder="3931"></label>
+      <label class="field"><span>Model</span><input type="text" id="lc-model" maxlength="16" placeholder="A01"></label>
+      <label class="field"><span>Family *</span><input type="text" id="lc-family" maxlength="40" placeholder="z16"></label>
+    </div>
+    <div class="user-form-grid">
+      <label class="field"><span>ANN — anúncio</span><input type="date" id="lc-ann"></label>
+      <label class="field"><span>GA — disponibilidade</span><input type="date" id="lc-ga"></label>
+      <label class="field"><span>HW WDFM</span><input type="date" id="lc-hwWdfm"></label>
+      <label class="field"><span>LIC WDFM</span><input type="date" id="lc-licWdfm"></label>
+      <label class="field"><span>CoSL/EOS</span><input type="date" id="lc-coslEos"></label>
+    </div>
+    <label class="field"><span>Observações</span><input type="text" id="lc-notes" maxlength="300" placeholder="opcional"></label>
+    <p class="muted small">Deixe em branco a data que a IBM ainda não anunciou.</p>
+
+    <p class="form-error hidden" id="lc-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="btn-delete-lifecycle" style="margin-right:auto; display:none">Excluir</button>
+      <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-lifecycle">Salvar</button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal: usuário -->
 <div class="modal-backdrop hidden" id="modal-user">

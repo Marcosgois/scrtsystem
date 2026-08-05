@@ -165,8 +165,15 @@ async function connectDb(uri) {
   await backfillMachineStatus(mongoose.connection);
   await migrateContractPeriods(mongoose.connection);
 
-  const { Client, ScrtReport, Inventory, Contract, MigrationEvent, AuditLog } = require('./models');
-  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init(), AuditLog.init()]);
+  const { Client, ScrtReport, Inventory, Contract, MigrationEvent, AuditLog, MachineLifecycle } = require('./models');
+  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init(), AuditLog.init(), MachineLifecycle.init()]);
+
+  // Ciclo de vida das máquinas IBM Z: referência pública que o app assume existir.
+  // Fica AQUI (e não no server.js) porque existem vários caminhos de boot — app,
+  // demo e testes — e todos passam por connectDb. Só insere o que falta, então
+  // correção feita na tela de administração nunca é sobrescrita.
+  await require('./lifecycleSeed').seedLifecycle({ log: console.log })
+    .catch((e) => console.warn('[ciclo de vida] seed ignorado:', e.message));
 
   console.log(`[MongoDB] conectado em ${uri.replace(/\/\/[^@]+@/, '//***@')}`);
 }

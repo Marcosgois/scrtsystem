@@ -360,8 +360,10 @@ function showView(view) {
   document.querySelectorAll('#admin-tabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   $('admin-view').classList.toggle('hidden', view !== 'users');
   $('audit-view').classList.toggle('hidden', view !== 'audit');
+  $('lifecycle-view').classList.toggle('hidden', view !== 'lifecycle');
   $('btn-new-user').style.display = view === 'users' ? '' : 'none';
   if (view === 'audit' && !auditState.loaded) { populateAuditFilters(); loadAudit(true); }
+  if (view === 'lifecycle' && !lifecycleState.loaded) loadLifecycle();
 }
 
 document.querySelectorAll('#admin-tabs .seg-btn').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
@@ -372,5 +374,108 @@ $('af-clear').addEventListener('click', () => {
 });
 $('audit-more').addEventListener('click', () => { auditState.page += 1; loadAudit(false); });
 $('af-csv').addEventListener('click', () => { window.location.href = `/api/admin/audit.csv?${auditQuery().toString()}`; });
+
+/* ── Ciclo de vida das máquinas IBM Z ────────────────────────────────────────
+   Referência de mercado (tabela "IBM Mainframe Life Cycle History"), só para
+   administrador. As colunas de anos vêm calculadas do servidor — não são
+   digitadas, para não divergirem das datas. */
+const lifecycleState = { loaded: false, items: [], medias: {}, editando: null };
+
+const LC_CAMPOS = ['type', 'model', 'family', 'ann', 'ga', 'hwWdfm', 'licWdfm', 'coslEos', 'notes'];
+// "2022-05-31" -> "31/05/2022". Sem new Date(): a string já é a data, e converter
+// para Date faria a data voltar um dia em fuso negativo.
+function lcData(s) {
+  if (!s) return '—';
+  const [a, m, d] = String(s).split('-');
+  return `${d}/${m}/${a}`;
+}
+const lcAno = (v) => (v == null ? '—' : v.toFixed(1));
+
+function renderLifecycle() {
+  const tbody = $('lifecycle-body');
+  const items = lifecycleState.items;
+  $('lifecycle-empty').classList.toggle('hidden', items.length > 0);
+  tbody.innerHTML = items.map((d) => `
+    <tr>
+      <td><strong>${esc(d.type)}</strong></td>
+      <td>${esc(d.model || '—')}</td>
+      <td>${esc(d.family)}</td>
+      <td>${lcData(d.ann)}</td>
+      <td>${lcData(d.ga)}</td>
+      <td>${lcData(d.hwWdfm)}</td>
+      <td>${lcData(d.licWdfm)}</td>
+      <td>${lcData(d.coslEos)}</td>
+      <td class="num">${lcAno(d.annToGa)}</td>
+      <td class="num">${lcAno(d.gaToHwWdfm)}</td>
+      <td class="num">${lcAno(d.hwWdfmToEos)}</td>
+      <td class="col-actions"><button class="row-action" data-lcedit="${esc(d._id)}" title="Editar">✎</button></td>
+    </tr>`).join('');
+
+  const m = lifecycleState.medias || {};
+  $('lifecycle-foot').innerHTML = items.length ? `
+    <tr>
+      <td colspan="8" style="text-align:right"><strong>Média</strong></td>
+      <td class="num"><strong>${lcAno(m.annToGa)}</strong></td>
+      <td class="num"><strong>${lcAno(m.gaToHwWdfm)}</strong></td>
+      <td class="num"><strong>${lcAno(m.hwWdfmToEos)}</strong></td>
+      <td></td>
+    </tr>` : '';
+
+  tbody.querySelectorAll('[data-lcedit]').forEach((b) =>
+    b.addEventListener('click', () => abrirLifecycle(items.find((x) => String(x._id) === b.dataset.lcedit))));
+}
+
+async function loadLifecycle() {
+  const r = await api('/admin/lifecycle');
+  lifecycleState.items = r.items || [];
+  lifecycleState.medias = r.medias || {};
+  lifecycleState.loaded = true;
+  renderLifecycle();
+}
+
+function abrirLifecycle(doc) {
+  lifecycleState.editando = doc || null;
+  $('modal-lifecycle-title').textContent = doc ? `${doc.type} ${doc.model || ''} · ${doc.family}`.trim() : 'Nova máquina';
+  LC_CAMPOS.forEach((c) => { $(`lc-${c}`).value = (doc && doc[c]) || ''; });
+  $('lc-error').classList.add('hidden');
+  $('btn-delete-lifecycle').style.display = doc ? '' : 'none';
+  openModal('modal-lifecycle');
+}
+
+async function salvarLifecycle() {
+  const body = {};
+  LC_CAMPOS.forEach((c) => { body[c] = $(`lc-${c}`).value.trim(); });
+  const err = $('lc-error');
+  try {
+    const editando = lifecycleState.editando;
+    await api(editando ? `/admin/lifecycle/${editando._id}` : '/admin/lifecycle', {
+      method: editando ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    closeModals();
+    toast(editando ? 'Máquina atualizada.' : 'Máquina cadastrada.');
+    await loadLifecycle();
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+async function excluirLifecycle() {
+  const d = lifecycleState.editando;
+  if (!d) return;
+  if (!confirm(`Excluir o registro de ${d.type} ${d.model || ''} (${d.family})?`)) return;
+  try {
+    await api(`/admin/lifecycle/${d._id}`, { method: 'DELETE' });
+    closeModals();
+    toast('Registro excluído.');
+    await loadLifecycle();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+$('btn-new-lifecycle').addEventListener('click', () => abrirLifecycle(null));
+$('btn-save-lifecycle').addEventListener('click', salvarLifecycle);
+$('btn-delete-lifecycle').addEventListener('click', excluirLifecycle);
 
 load().catch((e) => toast(`Falha ao carregar: ${e.message}`, 'error'));

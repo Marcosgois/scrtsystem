@@ -7,7 +7,7 @@
 
 const express = require('express');
 const mongoose = require('mongoose');
-const { User, ScrtReport, AuditLog } = require('./models');
+const { User, ScrtReport, AuditLog, MachineLifecycle } = require('./models');
 const auth = require('./auth');
 const log = require('./logger');
 const audit = require('./audit');
@@ -341,6 +341,117 @@ adminRouter.get('/audit.csv', asyncHandler(async (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="auditoria.csv"');
   res.send('﻿' + [head.join(','), ...linhas].join('\n'));
+}));
+
+/* ── Ciclo de vida das máquinas IBM Z (só admin) ──────────────────────────────
+ *
+ * Referência de mercado (a tabela "IBM Mainframe Life Cycle History"), não dado
+ * de cliente. Fica sob o adminRouter, então já nasce restrito a administrador —
+ * usuário comum nem enxerga. A ideia é cruzar depois com o parque do cliente
+ * para responder "esta máquina perde suporte quando?".
+ */
+const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CAMPOS_DATA = ['ann', 'ga', 'hwWdfm', 'licWdfm', 'coslEos'];
+
+/** Anos entre duas datas "AAAA-MM-DD", com 1 casa. null se faltar alguma. */
+function anosEntre(de, ate) {
+  if (!DATA_RE.test(de || '') || !DATA_RE.test(ate || '')) return null;
+  const dias = (Date.parse(`${ate}T00:00:00Z`) - Date.parse(`${de}T00:00:00Z`)) / 86400000;
+  return Math.round((dias / 365.25) * 10) / 10;
+}
+
+/** Acrescenta as colunas de anos da tabela original — derivadas, nunca gravadas. */
+function comAnos(d) {
+  return {
+    ...d,
+    annToGa: anosEntre(d.ann, d.ga),
+    gaToHwWdfm: anosEntre(d.ga, d.hwWdfm),
+    hwWdfmToEos: anosEntre(d.hwWdfm, d.coslEos),
+  };
+}
+
+function validarCiclo(b, { parcial = false } = {}) {
+  if (!parcial || b.type !== undefined) {
+    if (!String(b.type || '').trim()) return 'Informe o Type da máquina (ex.: 3931).';
+  }
+  if (!parcial || b.family !== undefined) {
+    if (!String(b.family || '').trim()) return 'Informe a Family (ex.: z16).';
+  }
+  for (const c of CAMPOS_DATA) {
+    const v = b[c];
+    if (v === undefined || v === null || v === '') continue;
+    if (!DATA_RE.test(String(v))) return `A data de ${c} precisa estar no formato AAAA-MM-DD.`;
+  }
+  // Coerência cronológica: a tabela da IBM sempre segue esta ordem.
+  const ordem = CAMPOS_DATA.filter((c) => DATA_RE.test(String(b[c] || '')));
+  for (let i = 0; i < ordem.length - 1; i++) {
+    if (String(b[ordem[i]]) > String(b[ordem[i + 1]])) {
+      return `As datas estão fora de ordem: ${ordem[i]} é depois de ${ordem[i + 1]}.`;
+    }
+  }
+  return null;
+}
+
+function limparCiclo(b) {
+  const set = {};
+  if (b.type !== undefined) set.type = String(b.type).trim();
+  if (b.model !== undefined) set.model = String(b.model || '').trim();
+  if (b.family !== undefined) set.family = String(b.family).trim();
+  for (const c of CAMPOS_DATA) {
+    if (b[c] !== undefined) set[c] = DATA_RE.test(String(b[c] || '')) ? String(b[c]) : null;
+  }
+  if (b.notes !== undefined) set.notes = String(b.notes || '');
+  return set;
+}
+
+adminRouter.get('/lifecycle', asyncHandler(async (req, res) => {
+  const itens = await MachineLifecycle.find().sort({ ann: -1, type: -1 }).lean();
+  const comAno = itens.map(comAnos);
+  // Médias do rodapé da tabela da IBM, sobre o que tem data.
+  const media = (campo) => {
+    const vals = comAno.map((d) => d[campo]).filter((v) => v != null);
+    return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+  };
+  res.json({
+    items: comAno,
+    medias: { annToGa: media('annToGa'), gaToHwWdfm: media('gaToHwWdfm'), hwWdfmToEos: media('hwWdfmToEos') },
+  });
+}));
+
+adminRouter.post('/lifecycle', asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const erro = validarCiclo(b);
+  if (erro) return res.status(400).json({ error: erro });
+  const set = limparCiclo(b);
+  const existe = await MachineLifecycle.findOne({ type: set.type, model: set.model || '' });
+  if (existe) return res.status(409).json({ error: `Já existe um registro para ${set.type} ${set.model || ''}.`.trim() });
+  res.status(201).json(comAnos((await MachineLifecycle.create(set)).toObject()));
+}));
+
+adminRouter.put('/lifecycle/:id', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const b = req.body || {};
+  const erro = validarCiclo(b, { parcial: true });
+  if (erro) return res.status(400).json({ error: erro });
+  const set = limparCiclo(b);
+  if (set.type || set.model !== undefined) {
+    const atual = await MachineLifecycle.findById(req.params.id).lean();
+    if (!atual) return res.status(404).json({ error: 'Registro não encontrado.' });
+    const type = set.type || atual.type;
+    const model = set.model !== undefined ? set.model : atual.model;
+    const outro = await MachineLifecycle.findOne({ type, model: model || '', _id: { $ne: req.params.id } });
+    if (outro) return res.status(409).json({ error: `Já existe um registro para ${type} ${model || ''}.`.trim() });
+  }
+  const doc = await MachineLifecycle.findByIdAndUpdate(req.params.id, { $set: set }, { new: true }).lean();
+  if (!doc) return res.status(404).json({ error: 'Registro não encontrado.' });
+  res.json(comAnos(doc));
+}));
+
+adminRouter.delete('/lifecycle/:id', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const doc = await MachineLifecycle.findByIdAndDelete(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Registro não encontrado.' });
+  res.json({ ok: true });
 }));
 
 module.exports = { attachUser, requireAuth, requireAdmin, clientAccessGuard, authRouter, adminRouter };

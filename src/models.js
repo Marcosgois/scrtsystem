@@ -114,6 +114,38 @@ const clientSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/*
+ * Ciclo de vida das máquinas IBM Z (a tabela "IBM Mainframe Life Cycle History").
+ *
+ * Referência de mercado, não dado de cliente: diz quando cada geração foi
+ * anunciada, ficou disponível, saiu de comercialização e perde suporte. Serve
+ * para cruzar com o parque do cliente (InfraMachine.model começa pelo type, ex.:
+ * "3931-7C6" -> type 3931) e responder "esta máquina perde suporte quando?".
+ *
+ * As colunas de anos da tabela original (ANN→GA, GA→HW WDFM, HW WDFM→EOS) NÃO
+ * ficam aqui: são derivadas das datas e calculadas na leitura, senão ficariam
+ * desatualizadas na primeira correção de data.
+ *
+ * Datas como texto "AAAA-MM-DD" de propósito: sem fuso para atrapalhar, ordena
+ * sozinho e segue o padrão dos períodos do resto do projeto.
+ */
+const machineLifecycleSchema = new mongoose.Schema(
+  {
+    type: { type: String, required: true, trim: true },    // "3931"
+    model: { type: String, default: '', trim: true },      // "A01", "Nnn", "R07/S07"
+    family: { type: String, required: true, trim: true },  // "z16", "z15 T02"
+    ann: { type: String, default: null },       // Announcement
+    ga: { type: String, default: null },        // General availability
+    hwWdfm: { type: String, default: null },    // Hardware withdrawal from marketing
+    licWdfm: { type: String, default: null },   // Licensed Internal Code withdrawal
+    coslEos: { type: String, default: null },   // Change of support level / End of service
+    notes: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+// 2064 aparece duas vezes na tabela (z900 G1 e G2), então a identidade é type+model.
+machineLifecycleSchema.index({ type: 1, model: 1 }, { unique: true });
+
 const machineSchema = new mongoose.Schema(
   {
     identifier: String,
@@ -595,8 +627,9 @@ const LsprModel = mongoose.model('LsprModel', lsprModelSchema);
 const Contract = mongoose.model('Contract', contractSchema);
 const MigrationEvent = mongoose.model('MigrationEvent', migrationEventSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
+const MachineLifecycle = mongoose.model('MachineLifecycle', machineLifecycleSchema);
 
 module.exports = {
   Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel,
-  Contract, MigrationEvent, AuditLog,
+  Contract, MigrationEvent, AuditLog, MachineLifecycle,
 };
