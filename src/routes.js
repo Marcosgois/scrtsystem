@@ -1329,27 +1329,38 @@ async function attachLspr(machines) {
 }
 
 /**
- * Anexa a GERAÇÃO de cada máquina em `m.generation` ("z17", "z16"…).
+ * Anexa a GERAÇÃO e o CICLO DE VIDA IBM de cada máquina.
  *
- * Serve à Visão geral, que precisa dizer o que a máquina é sem obrigar quem lê a
- * decorar que 3931 é z16. Vem do LSPR quando há vínculo; sem vínculo (5 das 32
- * em produção), cai no ciclo de vida IBM pelo type — que é justamente o caso em
- * que "3931" sozinho na tela não ajudava ninguém.
+ *   m.generation  "z17", "z16"…  — do LSPR quando há vínculo; sem vínculo, do
+ *                 ciclo de vida pelo type. Sem isso, metade das máquinas
+ *                 mostraria "3931" cru, que não diz nada a quem lê.
+ *   m.lifecycle   { ga, hwWdfm, coslEos, foraDeSuporte }
+ *
+ * `foraDeSuporte` é calculado AQUI, com a data do servidor, e não no navegador:
+ * a mesma tela aberta em máquinas com relógio diferente não pode discordar sobre
+ * uma máquina estar ou não fora de suporte.
  */
-async function attachGeneration(machines) {
-  const semLspr = machines.filter((m) => !(m.lspr && m.lspr.generation));
-  let porType = new Map();
-  if (semLspr.length) {
-    const tipos = [...new Set(semLspr.map(typeDaMaquina).filter(Boolean))];
-    const rows = tipos.length ? await MachineLifecycle.find({ type: { $in: tipos } }).select('type family').lean() : [];
-    // Um type pode ter mais de uma linha (2064 = z900 G1 e G2); para o rótulo
-    // basta a primeira, como no painel gerencial.
-    for (const r of rows) if (!porType.has(String(r.type))) porType.set(String(r.type), r.family);
-  }
+async function attachLifecycle(machines, { hoje = new Date().toISOString().slice(0, 10) } = {}) {
+  const tipos = [...new Set(machines.map(typeDaMaquina).filter(Boolean))];
+  const rows = tipos.length
+    ? await MachineLifecycle.find({ type: { $in: tipos } }).select('type family ga hwWdfm coslEos').lean()
+    : [];
+  // Um type pode ter mais de uma linha (2064 = z900 G1 e G2, 3932 = z16 AGZ/A02);
+  // para o rótulo e as datas basta a primeira, como no painel gerencial.
+  const porType = new Map();
+  for (const r of rows) if (!porType.has(String(r.type))) porType.set(String(r.type), r);
+
   for (const m of machines) {
-    if (m.lspr && m.lspr.generation) { m.generation = m.lspr.generation; continue; }
-    const t = typeDaMaquina(m);
-    m.generation = (t && porType.get(t)) || null;
+    const lc = porType.get(typeDaMaquina(m)) || null;
+    m.generation = (m.lspr && m.lspr.generation) || (lc && lc.family) || null;
+    m.lifecycle = lc
+      ? {
+        ga: lc.ga || null,
+        hwWdfm: lc.hwWdfm || null,
+        coslEos: lc.coslEos || null,
+        foraDeSuporte: !!(lc.coslEos && lc.coslEos < hoje),
+      }
+      : null;
   }
   return machines;
 }
@@ -2360,7 +2371,7 @@ router.get('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
   const bySerial = await scrtBySerialLatest(client);
   for (const m of machines) m.scrt = bySerial.get(String(m.serial || '').trim().toUpperCase()) || null;
   await attachLspr(machines);       // referência de capacidade LSPR (m.lspr)
-  await attachGeneration(machines); // z17 / z16 …, inclusive sem vínculo LSPR
+  await attachLifecycle(machines);  // geração + fim de serviço IBM (m.lifecycle)
   await attachContracts(machines);  // contrato vigente (m.contractRef)
   await attachMigrations(machines); // resumo de MO/MES (m.migrations)
   res.json(machines);

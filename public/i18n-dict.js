@@ -1224,3 +1224,28 @@ window.ZCD_PATTERNS.push(
   [/^(\d+) LPARs?$/, "$1 LPAR(s)", "$1 LPAR(s)"],
   [/^Ver detalhes de ([\s\S]*?)$/, "Ver detalles de $1", "See details for $1"]
 );
+
+/* Infra: card de triagem */
+Object.assign(window.ZCD_DICT, {
+  "capacidade não cadastrada": ["capacidad no registrada", "capacity not registered"],
+  "vínculo LSPR": ["vínculo LSPR", "LSPR link"],
+  "contrato": ["contrato", "contract"],
+  "memória": ["memoria", "memory"],
+  "dormente": ["dormida", "dormant"],
+  "substituída": ["sustituida", "replaced"],
+  "desativada": ["desactivada", "deactivated"],
+});
+window.ZCD_PATTERNS.push(
+  [/^(\S+) fora de suporte IBM desde (\d{2}\/\d{4})$/, "$1 fuera de soporte IBM desde $2", "$1 out of IBM support since $2"],
+  [/^fim de serviço IBM em (\d{2}\/\d{4})$/, "fin de servicio IBM en $1", "IBM end of service in $1"],
+  [/^dormente, mas consumiu em ([\s\S]*?)$/, "dormida, pero consumió en $1", "dormant, yet consumed in $1"],
+  [/^(\d+) MO\/MES em aberto$/, "$1 MO/MES abierto(s)", "$1 open MO/MES"],
+  [/^Faltam? ([\s\S]*?)$/, "Falta(n) $1", "Missing $1"],
+  [/^(\d+) a tratar$/, "$1 por tratar", "$1 to handle"],
+  [/^(\d+) de (\d+) máquina\(s\) exigem ação$/, "$1 de $2 máquina(s) exigen acción", "$1 of $2 machine(s) need attention"],
+  [/^(\d+) máquina\(s\) · nada pendente$/, "$1 máquina(s) · nada pendiente", "$1 machine(s) · nothing pending"],
+  [/^(\d+) crítico\(s\)$/, "$1 crítico(s)", "$1 critical"],
+  [/^(\d+) sem contrato$/, "$1 sin contrato", "$1 without a contract"],
+  [/^(\d+) sem memória$/, "$1 sin memoria", "$1 without memory"],
+  [/^([\d.]+) MSU nominais \((\d+)\/(\d+)\)$/, "$1 MSU nominales ($2/$3)", "$1 nominal MSU ($2/$3)"]
+);

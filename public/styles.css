@@ -1147,33 +1147,56 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 .site-block-nosite { border-top-color: var(--border-strong); border-top-style: dashed; }
 .site-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .site-block-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-/* Uma linha por máquina, em grade de 2 colunas: serial à esquerda e capacidade
-   à direita, na MESMA posição em todas as linhas. É isso que deixa o olho descer
-   a coluna e comparar sem ler número por número. */
-.imc-list { display: flex; flex-direction: column; }
-.imc-row {
-  display: grid; grid-template-columns: 1fr auto; gap: 0 10px;
-  width: 100%; text-align: left; padding: 7px 9px 7px 10px;
-  background: none; border: 0; border-left: 3px solid transparent;
-  border-bottom: 1px solid var(--border); cursor: pointer; font-family: var(--font);
+/* Card de triagem: um veredito por máquina, e a cor conta quanto ele pesa.
+   Vermelho é reservado a risco de verdade (fora de suporte pela IBM, dormente
+   consumindo). Cadastro incompleto é ocre — são 5 das 32 máquinas do parque, e
+   se elas pintassem de vermelho a cor perderia o sentido onde ele precisa
+   existir. Quem está em ordem não tem trilho, nem selo, nem borda forte. */
+.imc-list { display: block; }
+.imc {
+  position: relative; display: block; width: 100%; text-align: left;
+  font-family: var(--font); color: var(--ink); background: var(--surface-subtle);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 10px 8px 12px; margin-bottom: 6px; cursor: pointer; overflow: hidden;
 }
-.imc-list > .imc-row:last-child { border-bottom: 0; }
-.imc-row:hover { background: var(--surface-subtle); border-left-color: var(--primary); }
-.imc-row.dormant { opacity: 0.55; }
-/* Sem vínculo LSPR não é erro, é pendência: uma marca discreta na borda, não um
-   alerta vermelho — 5 das 32 máquinas estão assim e a coluna não pode virar
-   um mar de aviso. */
-.imc-row.sem-lspr { border-left-color: var(--border-strong); }
+.imc:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.imc:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.imc-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: transparent; }
+.imc.lvl-warn, .imc.lvl-crit { background: var(--surface); border-color: var(--border-strong); }
+.imc.lvl-warn .imc-rail { background: #8e6a00; }
+.imc.lvl-crit .imc-rail { background: var(--danger); }
+.imc.lvl-info .imc-rail { background: var(--primary); }
+.imc-off { opacity: .7; }
 
-.imc-serial { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.imc-msu { font-size: 13px; color: var(--ink); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.imc-msu i { font-style: normal; font-size: 10.5px; color: var(--ink-muted); margin-left: 3px; }
-.imc-msu em { font-style: normal; font-size: 11px; color: var(--ink-muted); }
-.imc-ficha { grid-column: 1 / -1; font-size: 11px; color: var(--ink-secondary); line-height: 1.35; margin-top: 1px; }
-.imc-lpars { grid-column: 1 / -1; font-size: 10.5px; color: var(--ink-muted); margin-top: 2px; }
-.lpar-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.lpar-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); }
-.os-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.imc-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+/* O serial lidera: é o identificador da máquina em todo o sistema, e é por ele
+   que o SCRT, a infra e o contrato se encontram. */
+.imc-serial-forte { font-size: 13px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.imc-gen { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-light);
+  border-radius: 3px; padding: 0 5px; }
+.imc-tm { font-size: 12px; color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+.imc-state { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-muted);
+  border: 1px solid var(--border-strong); border-radius: 2px; padding: 0 4px; }
+.imc-facts { margin-top: 3px; font-size: 12px; color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums; line-height: 1.4; }
+.imc-facts .nil { color: var(--ink-muted); font-style: italic; }
+.imc-scrt { margin-top: 1px; font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.imc-todo { margin-top: 6px; display: flex; gap: 6px; font-size: 11.5px; line-height: 1.35; color: #8e6a00; }
+.imc-todo::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor; margin-top: 5px; }
+.imc-todo b { font-weight: 600; }
+.imc-todo.crit { color: var(--danger); }
+.imc-todo.info { color: var(--primary); }
+
+.site-alarm { margin-left: auto; background: #fcf4d6; color: #8e6a00; border-radius: 20px;
+  padding: 2px 8px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.site-alarm.crit { background: var(--danger-light); color: var(--danger); }
+.site-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.site-foot-act { font-size: 12px; color: var(--ink); }
+.site-foot-act b { font-weight: 600; }
+.site-foot-act.zero { color: var(--ink-muted); }
+.site-foot-why { display: block; margin-top: 1px; font-size: 11px; color: #8e6a00; }
+.site-foot-tot { margin-top: 4px; font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 
 /* Aba Máquinas (tabela) */
 .infra-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -1713,7 +1736,11 @@ body:not(.is-manager) [data-requires-manager] { display: none !important; }
   border-radius: 4px; padding: 1px 5px; vertical-align: middle;
 }
 /* Ressalva do rodapé: o total de MSU não cobre quem não tem vínculo LSPR. */
-.imc-foot-pend { color: var(--ink-muted); border-left: 1px solid var(--border); margin-left: 6px; padding-left: 8px; }
+/* O rodapé conta o trabalho antes do inventário: com 6+ máquinas o número que
+   importa é quantas exigem ação, não quantos TB somam. */
+.site-foot-tri { font-size: 12px; font-weight: 600; color: #8e6a00; margin-bottom: 2px; }
+.site-foot-tri.critico { color: var(--danger); }
+.site-foot-tri.ok { font-weight: 400; color: var(--ink-muted); }
 
 /* O bloco "sem site" é o pior caso da tela: o Banco do Brasil tem 14 máquinas e
    nenhum site, e elas caíam todas numa coluna de 320px com o resto da linha em

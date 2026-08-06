@@ -184,51 +184,123 @@ function lparChip(l) {
     <span class="muted">${l.ifls ? l.ifls + ' IFL' : ''}</span></span>`;
 }
 
+const mesAno = (iso) => {
+  if (!iso) return '';
+  const [a, m] = String(iso).split('-');
+  return `${m}/${a}`;
+};
+
 /*
- * Uma LINHA por máquina, não um card.
+ * Triagem da máquina: UM veredito por card, e só um.
  *
- * O que saiu e por quê:
- *  - o quadrado escuro (.imc-mark) era gradiente cinza para IBM Z e azul para
- *    LinuxONE. Como quase todo o parque é IBM Z, ele era preto em tudo: 34px de
- *    altura por linha sem informar nada. No lugar vai a GERAÇÃO em texto (z17,
- *    z16), que é o que a cor tentava dizer — e funciona até sem vínculo LSPR,
- *    porque o servidor deduz pelo type no ciclo de vida IBM.
- *  - a faixa "sem LPARs" ocupava uma linha em TODO card. Não existe uma única
- *    LPAR cadastrada no sistema; ela só aparece agora quando existe de verdade.
- *  - o "147 proc" somava CP + zIIP + IFL + CF num número só. São motores
- *    diferentes, com preço e função diferentes: viram a ficha desdobrada, e cada
- *    tipo só aparece se a máquina tiver.
+ * A gravidade também ORDENA a coluna — o trabalho flutua para o topo e o site se
+ * autodenuncia sem ninguém varrer card por card.
  *
- * O que NÃO entrou: o consumo do SCRT. Ele é MSU ACUMULADO no mês; o MSU do LSPR
- * é instantâneo. Lado a lado eles convidam a uma divisão que não se sustenta —
- * e pior, a média mensal esconderia o pico de 4HRA, que é o que fatura. Consumo
- * continua no módulo de Consumo zOTC, onde a régua é a certa.
+ * Vermelho é reservado a risco de verdade: fora de suporte pela IBM, ou máquina
+ * marcada como dormente que apareceu consumindo no SCRT (contradição entre o que
+ * está cadastrado e o que a máquina fez). Cadastro incompleto é ocre, não alarme
+ * — são 5 das 32 máquinas do parque, e se elas pintassem de vermelho a cor
+ * perderia o sentido justamente onde ele precisa existir.
+ *
+ * Máquina substituída ou desativada não é cobrada de nada: ela já saiu do parque
+ * num MO, e cobrar cadastro dela seria dívida falsa.
+ */
+function triagem(m) {
+  if (triagemIgnora(m)) return null;
+  const lc = m.lifecycle;
+
+  if (lc && lc.foraDeSuporte) {
+    const g = m.generation ? `${m.generation} ` : '';
+    return { nivel: 'crit', peso: 0, texto: `${g}fora de suporte IBM desde ${mesAno(lc.coslEos)}` };
+  }
+  if (m.status === 'dormente' && m.scrt && m.scrt.msuConsumed) {
+    return { nivel: 'crit', peso: 1, texto: `dormente, mas consumiu em ${m.scrt.periodLabel || 'SCRT'}` };
+  }
+  if (m.migrations && m.migrations.pendentes) {
+    return { nivel: 'info', peso: 2, texto: `${fmt(m.migrations.pendentes)} MO/MES em aberto` };
+  }
+  // As pendências de cadastro viram UMA frase, com o nome do que falta — quem lê
+  // já sabe o que abrir. Três selos separados seriam três vezes o mesmo recado.
+  const falta = [];
+  if (!m.lspr) falta.push('vínculo LSPR');
+  if (!m.contract) falta.push('contrato');
+  if (!memoryOf(m)) falta.push('memória');
+  if (falta.length) {
+    const lista = falta.length > 1 ? `${falta.slice(0, -1).join(', ')} e ${falta[falta.length - 1]}` : falta[0];
+    return { nivel: 'warn', peso: 3, texto: `Falta${falta.length > 1 ? 'm' : ''} ${lista}`,
+      html: `Falta${falta.length > 1 ? 'm' : ''} <b>${esc(lista)}</b>` };
+  }
+  // Fim de serviço já anunciado, mas ainda no futuro: aviso, não alarme.
+  if (lc && lc.coslEos) return { nivel: 'warn', peso: 4, texto: `fim de serviço IBM em ${mesAno(lc.coslEos)}` };
+  return null;
+}
+
+/* Substituída/desativada já saiu do parque: não se cobra cadastro dela. */
+const triagemIgnora = (m) => m.status === 'substituida' || m.status === 'desativada';
+
+/*
+ * Card de triagem: o card não descreve a máquina, ele responde "isto precisa de
+ * mim hoje?".
+ *
+ * O que saiu do desenho antigo:
+ *  - o quadrado escuro (.imc-mark). Era gradiente cinza para IBM Z e azul para
+ *    LinuxONE; com o parque quase todo IBM Z ele era preto em tudo, 34px de
+ *    altura sem informar nada. A geração escrita ("z17") diz o que a cor tentava
+ *    dizer, e funciona até sem vínculo LSPR — o servidor deduz pelo type.
+ *  - a faixa "sem LPARs" em todo card. Não existe UMA LPAR cadastrada no
+ *    sistema; virou mais um fato, e só quando existe.
+ *  - o "147 proc", que somava CP + zIIP + IFL + CF num número só. São motores
+ *    com preço e função diferentes; cada um só aparece se a máquina tiver.
+ *
+ * O consumo entra como FATO ("Jun/2026 · 2.541.509 MSU consumidos"), nunca como
+ * percentual do nominal: são unidades diferentes — acumulado do mês contra
+ * rating instantâneo do modelo — e a divisão daria um número inventado.
  */
 function machineRow(m) {
   const lps = lparsOfMachine(m._id);
+  const tri = triagem(m);
   const nominal = m.lspr && m.lspr.msu ? m.lspr.msu : null;
-  const tipo = m.lsprModel || [m.model, m.featureModel].filter(Boolean).join('-') || '—';
+  const tipo = m.lsprModel || [m.model, m.featureModel].filter(Boolean).join('-') || '';
 
-  // Só os motores que a máquina tem. Zerado não vira "0 CP", vira ausência.
-  const motores = [];
-  if (m.cps) motores.push(`${fmt(m.cps)} CP`);
-  if (m.ziips) motores.push(`${fmt(m.ziips)} zIIP`);
-  if (m.iflsActive) motores.push(`${fmt(m.iflsActive)} IFL`);
-  if (m.icfs) motores.push(`${fmt(m.icfs)} CF`);
-  if (memoryOf(m)) motores.push(`${num1(memoryOf(m))} TB`);
+  // Fatos: só o que existe. Zero não vira "0 CP" — ausência é achado, não valor.
+  const fatos = [];
+  if (nominal) fatos.push(`${fmt(nominal)} MSU`);
+  if (m.cps) fatos.push(`${fmt(m.cps)} CP`);
+  if (m.ziips) fatos.push(`${fmt(m.ziips)} zIIP`);
+  if (m.iflsActive) fatos.push(`${fmt(m.iflsActive)} IFL`);
+  if (m.icfs) fatos.push(`${fmt(m.icfs)} CF`);
+  if (memoryOf(m)) fatos.push(`${num1(memoryOf(m))} TB`);
+  if (m.vfmTB) fatos.push(`${num1(m.vfmTB)} TB VFM`);
+  if (lps.length) fatos.push(`${lps.length} LPAR${lps.length > 1 ? 's' : ''}`);
 
-  // Uma pendência só, e a que dá para resolver: sem vínculo LSPR a máquina não
-  // tem capacidade de referência, e é isso que a coluna da direita mostra vazia.
-  const semLspr = !m.lspr;
-  const ficha = [m.generation || null, tipo, ...motores].filter(Boolean).join(' · ');
+  const scrt = m.scrt && m.scrt.msuConsumed
+    ? `<div class="imc-scrt">${esc(m.scrt.periodLabel || '')} · ${fmt(m.scrt.msuConsumed)} MSU consumidos</div>`
+    : '';
+  const estado = m.status && m.status !== 'ativa'
+    ? `<span class="imc-state">${esc({ dormente: 'dormente', substituida: 'substituída', desativada: 'desativada' }[m.status] || m.status)}</span>`
+    : '';
 
-  return `<button type="button" class="imc-row${semLspr ? ' sem-lspr' : ''}${m.status !== 'ativa' ? ' dormant' : ''}"
+  return `<button type="button" class="imc${tri ? ` lvl-${tri.nivel}` : ''}${m.status !== 'ativa' ? ' imc-off' : ''}"
           data-open-lpars="${m._id}" title="Ver detalhes de ${esc(m.serial || 'máquina')}">
-    <span class="imc-serial">${esc(m.serial || 's/ serial')}</span>
-    <span class="imc-msu">${nominal ? `${fmt(nominal)}<i>MSU</i>` : '<em title="Sem vínculo LSPR: capacidade de referência desconhecida">sem LSPR</em>'}</span>
-    <span class="imc-ficha">${esc(ficha)}</span>
-    ${lps.length ? `<span class="imc-lpars">${lps.length} LPAR${lps.length > 1 ? 's' : ''}</span>` : ''}
+    <span class="imc-rail" aria-hidden="true"></span>
+    <div class="imc-top">
+      <span class="imc-serial-forte">${esc(m.serial || 's/ serial')}</span>
+      ${m.generation ? `<span class="imc-gen">${esc(m.generation)}</span>` : ''}
+      ${tipo ? `<span class="imc-tm">${esc(tipo)}</span>` : ''}
+      ${estado}
+    </div>
+    <div class="imc-facts">${fatos.length ? esc(fatos.join(' · ')) : '<span class="nil">capacidade não cadastrada</span>'}</div>
+    ${scrt}
+    ${tri ? `<div class="imc-todo ${tri.nivel}">${tri.html || esc(tri.texto)}</div>` : ''}
   </button>`;
+}
+
+/* Ordena a coluna pela gravidade: o que exige ação sobe. Empate mantém a ordem
+   de chegada, para a lista não dançar a cada render. */
+function porGravidade(ms) {
+  return ms.map((m, i) => ({ m, i, t: triagem(m) }))
+    .sort((a, b) => ((a.t ? a.t.peso : 9) - (b.t ? b.t.peso : 9)) || (a.i - b.i))
+    .map((x) => x.m);
 }
 
 /* Rodapé do site: a linha de totais da mesma tabela. Só soma o que dá para
@@ -237,14 +309,41 @@ function siteFoot(ms) {
   const comLspr = ms.filter((m) => m.lspr && m.lspr.msu);
   const msu = comLspr.reduce((a, m) => a + m.lspr.msu, 0);
   const mem = ms.reduce((a, m) => a + memoryOf(m), 0);
-  const semLspr = ms.length - comLspr.length;
-  const partes = [`${ms.length} máquina(s)`];
-  if (msu) partes.push(`${fmt(msu)} MSU`);
-  if (mem) partes.push(`${num1(mem)} TB`);
-  // O total de MSU só cobre quem tem vínculo LSPR. Dizer QUANTAS faltam é mais
-  // útil que um "(de 1)" que obriga a fazer a subtração de cabeça.
-  const ressalva = semLspr ? ` <span class="imc-foot-pend">${semLspr} sem LSPR</span>` : '';
-  return `<div class="site-block-foot muted small">${partes.join(' · ')}${ressalva}</div>`;
+  const proc = ms.reduce((a, m) => a + engineTotal(m), 0);
+
+  const tris = ms.map(triagem).filter(Boolean);
+  const crit = tris.filter((t) => t.nivel === 'crit').length;
+  const sem = (campo) => ms.filter((m) => !triagemIgnora(m) && !campo(m)).length;
+  const motivos = [];
+  const semLspr = sem((m) => m.lspr); if (semLspr) motivos.push(`${semLspr} sem LSPR`);
+  const semCtr = sem((m) => m.contract); if (semCtr) motivos.push(`${semCtr} sem contrato`);
+  const semMem = sem((m) => memoryOf(m)); if (semMem) motivos.push(`${semMem} sem memória`);
+  if (crit) motivos.unshift(`${crit} crítico(s)`);
+
+  // O total de MSU só cobre quem tem vínculo LSPR — a fração vai impressa ao
+  // lado para o número nunca fingir estar completo.
+  const inv = [];
+  if (proc) inv.push(`${fmt(proc)} proc`);
+  if (mem) inv.push(`${num1(mem)} TB`);
+  if (msu) inv.push(`${fmt(msu)} MSU nominais (${comLspr.length}/${ms.length})`);
+
+  return `<div class="site-foot">
+    <div class="site-foot-act${tris.length ? '' : ' zero'}">${tris.length
+      ? `<b>${tris.length}</b> de ${ms.length} máquina(s) exigem ação`
+      : `${ms.length} máquina(s) · nada pendente`}
+      ${motivos.length ? `<span class="site-foot-why">${esc(motivos.join(' · '))}</span>` : ''}
+    </div>
+    ${inv.length ? `<div class="site-foot-tot">${esc(inv.join(' · '))}</div>` : ''}
+  </div>`;
+}
+
+/* Pílula no cabeçalho do site: com 6+ máquinas o rodapé cai abaixo da dobra, e o
+   topo da coluna precisa dizer sozinho se vale descer. */
+function sitePilula(ms) {
+  const tris = ms.map(triagem).filter(Boolean);
+  if (!tris.length) return '';
+  const crit = tris.some((t) => t.nivel === 'crit');
+  return `<span class="site-alarm${crit ? ' crit' : ''}">${tris.length} a tratar</span>`;
 }
 
 function renderOverview() {
@@ -268,15 +367,16 @@ function renderOverview() {
         <span class="badge" style="background:${r.color}1a;color:${r.color}">${esc(r.label)}</span>
         <strong>${esc(s.name)}</strong>${s.location ? ` <span class="muted small">${esc(s.location)}</span>` : ''}
         <button type="button" class="btn-link" data-edit-site="${s._id}">editar</button>
+        ${sitePilula(ms)}
       </div>
-      ${ms.length ? `<div class="imc-list">${ms.map(machineRow).join('')}</div>` : '<div class="empty-inline small">sem máquinas neste site</div>'}
+      ${ms.length ? `<div class="imc-list">${porGravidade(ms).map(machineRow).join('')}</div>` : '<div class="empty-inline small">sem máquinas neste site</div>'}
       ${siteFoot(ms)}
     </div>`;
   }).join('');
   const semSiteBlock = semSite.length
     ? `<div class="site-block site-block-nosite">
         <div class="site-block-head"><span class="badge badge-neutral">Sem site</span><strong>Máquinas sem site definido</strong></div>
-        <div class="imc-list">${semSite.map(machineRow).join('')}</div>
+        <div class="imc-list">${porGravidade(semSite).map(machineRow).join('')}</div>
         ${siteFoot(semSite)}
       </div>`
     : '';

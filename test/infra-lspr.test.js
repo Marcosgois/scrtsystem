@@ -157,6 +157,24 @@ async function main() {
     const semLspr = machines.filter((m) => !m.lspr);
     check('máquina SEM LSPR também traz a geração (vem do ciclo de vida pelo type)',
       !semLspr.length || semLspr.every((m) => m.generation), semLspr.map((m) => `${m.model}=${m.generation}`));
+
+    // O ciclo de vida chega junto: é dele que sai o "fora de suporte" da triagem.
+    // foraDeSuporte é calculado NO SERVIDOR, com a data de lá — a mesma tela
+    // aberta em máquinas com relógio diferente não pode discordar sobre isso.
+    const comCiclo = machines.filter((m) => m.lifecycle);
+    check('máquina traz o ciclo de vida IBM (m.lifecycle)', comCiclo.length > 0, machines.length);
+    check('o parque atual (z17) NÃO está fora de suporte',
+      comCiclo.every((m) => m.lifecycle.foraDeSuporte === false), comCiclo.map((m) => `${m.generation}=${m.lifecycle.foraDeSuporte}`));
+
+    // Uma z13 de verdade: fim de serviço 31/12/2024, já vencido.
+    r = await api(`/clients/${caixaId}/infra/machines`, { method: 'POST', json: { model: '2964', serial: 'ZZ-EOS1' } });
+    const eosId = r.body._id;
+    r = await api(`/clients/${caixaId}/infra/machines`);
+    const velha = r.body.find((m) => m._id === eosId);
+    check('z13 é marcada como FORA DE SUPORTE pelo ciclo de vida',
+      velha.lifecycle && velha.lifecycle.foraDeSuporte === true && velha.lifecycle.coslEos === '2024-12-31', velha.lifecycle);
+    check('z13 sem LSPR ainda assim recebe a geração', velha.generation === 'z13', velha.generation);
+    await api(`/clients/${caixaId}/infra/machines/${eosId}`, { method: 'DELETE' });
     const sample = withLspr[0];
     check('LSPR anexado tem MSU/MIPS/CPs', sample.lspr && sample.lspr.msu > 0 && sample.lspr.mips > 0, sample && sample.lspr);
     check('serial normalizado em maiúsculas', machines.every((m) => m.serial === m.serial.toUpperCase()), machines.map((m) => m.serial));
