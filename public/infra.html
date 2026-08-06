@@ -114,27 +114,41 @@
 <div class="modal-backdrop hidden" id="modal-machine">
   <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-machine-title">
     <h2 id="modal-machine-title">Máquina</h2>
+    <!-- Três blocos em vez de 15 campos soltos: o que identifica a máquina, o
+         que dá a capacidade dela, e a situação. Os numéricos são estreitos
+         porque guardam 1-3 dígitos — campo largo para "0" só ocupa a tela. -->
     <div class="machine-grid">
       <label class="field"><span>Modelo</span>
-        <input type="text" id="machine-model" list="model-suggestions" maxlength="80" placeholder="Ex.: LinuxONE Emperor 5">
+        <input type="text" id="machine-model" list="model-suggestions" maxlength="80" placeholder="Ex.: IBM z16">
         <datalist id="model-suggestions"></datalist>
       </label>
-      <label class="field"><span>Variante</span><input type="text" id="machine-variant" maxlength="60"></label>
-      <label class="field"><span>Feature model (capacidade)</span><input type="text" id="machine-feature" maxlength="40" placeholder="Ex.: Max32"></label>
       <label class="field"><span>Serial</span><input type="text" id="machine-serial" maxlength="60" placeholder="liga com o SCRT"></label>
+      <label class="field"><span>Variante</span><input type="text" id="machine-variant" maxlength="60" placeholder="Ex.: Produção"></label>
+      <label class="field"><span>Feature model</span><input type="text" id="machine-feature" maxlength="40" placeholder="Ex.: Max32"></label>
+      <label class="field"><span>Site</span><select id="machine-site"></select></label>
+      <label class="field"><span>Ano</span><input type="number" id="machine-year" min="1990" max="2100" placeholder="2024"></label>
+    </div>
+
+    <div class="machine-sec">
       <label class="field"><span>LSPR (referência de capacidade)</span>
         <input type="text" id="machine-lspr" list="lspr-suggestions" maxlength="20" placeholder="ex.: 3931-705" autocomplete="off">
         <datalist id="lspr-suggestions"></datalist>
       </label>
-      <label class="field"><span>Ano</span><input type="number" id="machine-year" min="1990" max="2100"></label>
-      <label class="field"><span>Site</span><select id="machine-site"></select></label>
-      <label class="field"><span>CPs</span><input type="number" id="machine-cps" min="0" step="any"></label>
-      <label class="field"><span>zIIPs</span><input type="number" id="machine-ziips" min="0" step="any"></label>
-      <label class="field"><span>IFLs ativos</span><input type="number" id="machine-ifls" min="0" step="any"></label>
-      <label class="field"><span>IFLs spare</span><input type="number" id="machine-ifls-spare" min="0" step="any"></label>
-      <label class="field"><span>ICFs (CF)</span><input type="number" id="machine-icfs" min="0" step="any"></label>
-      <label class="field"><span>Memória (TB)</span><input type="number" id="machine-memory" min="0" step="any"></label>
-      <label class="field"><span>Memória adicional (TB)</span><input type="number" id="machine-memory-add" min="0" step="any"></label>
+      <div class="lspr-info hidden" id="machine-lspr-info"></div>
+
+      <div class="machine-nums">
+        <label class="field num-field"><span>CPs</span><input type="number" id="machine-cps" min="0" step="any"></label>
+        <label class="field num-field"><span>zIIPs</span><input type="number" id="machine-ziips" min="0" step="any"></label>
+        <label class="field num-field"><span>IFLs</span><input type="number" id="machine-ifls" min="0" step="any"></label>
+        <label class="field num-field"><span>Memória (TB)</span><input type="number" id="machine-memory" min="0" step="any"></label>
+        <label class="field num-field"><span>VFM (TB)</span><input type="number" id="machine-vfm" min="0" step="any"></label>
+      </div>
+      <!-- Uma legenda para o bloco todo, em vez de uma dica embaixo de cada
+           campo estreito (que quebrava em duas linhas e engordava a tela). -->
+      <p class="muted small machine-nums-note">CPs vem do modelo LSPR · VFM é Virtual Flash Memory, que é flash e não entra no total de memória</p>
+    </div>
+
+    <div class="machine-grid">
       <label class="field"><span>Situação</span><select id="machine-status">
         <option value="ativa">Ativa</option>
         <option value="dormente">Dormente (fora de produção)</option>
@@ -143,7 +157,6 @@
       </select></label>
       <label class="field"><span>Contrato</span><select id="machine-contract"></select></label>
     </div>
-    <div class="lspr-info hidden" id="machine-lspr-info"></div>
     <label class="field"><span>Notas</span><input type="text" id="machine-notes" maxlength="240"></label>
     <p class="form-error hidden" id="machine-error"></p>
     <div class="modal-actions">

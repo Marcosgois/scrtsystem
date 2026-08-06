@@ -59,8 +59,10 @@ const lsprCache = new Map(); // model LSPR -> linha (cache do combobox de refer�
 let lsprTimer = null;
 
 // Processadores e memória da máquina.
-const engineTotal = (m) => (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0) + (m.icfs || 0);
-const memoryOf = (m) => (m.memoryTB || 0) + (m.memoryAddTB || 0);
+const engineTotal = (m) => (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0);
+// VFM (Virtual Flash Memory) NÃO entra no total de memória: é flash, não
+// memória principal. Somar os dois daria um número que não existe na máquina.
+const memoryOf = (m) => (m.memoryTB || 0);
 // Detalhe "6 CP · 2 zIIP · 4 IFL · 1 CF" (sempre os quatro tipos).
 const MACHINE_STATUS = { ativa: '', dormente: 'dormente', substituida: 'substituída', desativada: 'desativada' };
 function statusBadge(m) {
@@ -68,8 +70,7 @@ function statusBadge(m) {
   return label ? ` <span class="badge badge-neutral">${label}</span>` : '';
 }
 function engineBreakdown(m) {
-  const ifl = `${fmt(m.iflsActive || 0)} IFL${m.iflsSpare ? ` (+${m.iflsSpare})` : ''}`;
-  return `${fmt(m.cps || 0)} CP · ${fmt(m.ziips || 0)} zIIP · ${ifl} · ${fmt(m.icfs || 0)} CF`;
+  return `${fmt(m.cps || 0)} CP · ${fmt(m.ziips || 0)} zIIP · ${fmt(m.iflsActive || 0)} IFL`;
 }
 
 function showView(which) {
@@ -135,8 +136,8 @@ function renderStats() {
   const ativas = noParque.filter((m) => m.status === 'ativa');
   const substituidas = state.machines.length - noParque.length;
   const sum = (k) => noParque.reduce((a, m) => a + (m[k] || 0), 0);
-  const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive'); const icfs = sum('icfs');
-  const engines = cps + ziips + ifls + icfs;
+  const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive');
+  const engines = cps + ziips + ifls;
   const mem = noParque.reduce((a, m) => a + memoryOf(m), 0);
   // MIPS/MSU vêm do capacity marker (LSPR) da máquina. Máquina sem LSPR não soma
   // nada, então a legenda avisa — senão o total pareceria completo sem ser.
@@ -154,7 +155,7 @@ function renderStats() {
     { h: 'Sites', v: fmt(state.sites.length) },
     { h: 'Máquinas ativas', v: fmt(ativas.length), s: legenda },
     { h: 'Total de MIPS', v: fmt(mips), s: legendaMips },
-    { h: 'Processadores', v: fmt(engines), s: `${fmt(cps)} CP · ${fmt(ziips)} zIIP · ${fmt(ifls)} IFL · ${fmt(icfs)} CF` },
+    { h: 'Processadores', v: fmt(engines), s: `${fmt(cps)} CP · ${fmt(ziips)} zIIP · ${fmt(ifls)} IFL` },
     { h: 'Memória total', v: `${num1(mem)} TB` },
     { h: 'Disponibilidade', v: `<span style="color:${dr.color};font-weight:600">${esc(dr.label)}</span>`, raw: true },
   ];
@@ -420,15 +421,15 @@ function openMachineModal(machineId) {
   set('machine-serial', m ? m.serial : '');
   set('machine-lspr', m ? m.lsprModel : '');
   if (m && m.lspr) lsprCache.set(m.lspr.model, m.lspr);
-  renderLsprInfo(m ? m.lspr : null);
   set('machine-year', m ? m.year : '');
   set('machine-cps', m ? m.cps : '');
+  // O card do LSPR só depois dos campos: é ele que preenche o CPs vazio, e antes
+  // o `set` logo abaixo apagava o valor recém-colocado.
+  renderLsprInfo(m ? m.lspr : null);
   set('machine-ziips', m ? m.ziips : '');
   set('machine-ifls', m ? m.iflsActive : '');
-  set('machine-ifls-spare', m ? m.iflsSpare : '');
-  set('machine-icfs', m ? m.icfs : '');
   set('machine-memory', m ? m.memoryTB : '');
-  set('machine-memory-add', m ? m.memoryAddTB : '');
+  set('machine-vfm', m ? m.vfmTB : '');
   set('machine-notes', m ? m.notes : '');
   $('machine-status').value = (m && m.status) || 'ativa';
   $('machine-contract').innerHTML = ['<option value="">(sem contrato)</option>']
@@ -454,10 +455,8 @@ async function saveMachine() {
     cps: numv('machine-cps'),
     ziips: numv('machine-ziips'),
     iflsActive: numv('machine-ifls'),
-    iflsSpare: numv('machine-ifls-spare'),
-    icfs: numv('machine-icfs'),
     memoryTB: numv('machine-memory'),
-    memoryAddTB: numv('machine-memory-add'),
+    vfmTB: numv('machine-vfm'),
     status: $('machine-status').value,
     contract: $('machine-contract').value || null,
     notes: $('machine-notes').value.trim(),
@@ -479,6 +478,13 @@ function renderLsprInfo(lspr) {
   const el = $('machine-lspr-info');
   if (!el) return;
   if (!lspr) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+
+  // CPs vem do modelo de capacidade — 9175-760 É a definição de "60 CPs". Só
+  // preenche o campo vazio: se a pessoa digitou um número diferente do modelo,
+  // ela tinha um motivo e sobrescrever isso seria apagar o trabalho dela.
+  const cps = $('machine-cps');
+  if (cps && !String(cps.value).trim() && Number.isFinite(lspr.cps)) cps.value = lspr.cps;
+
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="lspr-info-head"><strong>${esc(lspr.family || lspr.model)}</strong> <span class="mono small">${esc(lspr.model)}</span></div>

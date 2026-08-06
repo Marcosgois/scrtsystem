@@ -468,8 +468,8 @@ async function openDetail(id) {
           <td>${esc(m.model || '—')}${m.status === 'substituida' ? ' <span class="badge badge-neutral">substituída</span>' : ''}</td>
           <td class="mono">${esc(m.serial || '—')}</td>
           <td class="small">${m.site ? esc(m.site.name) : '—'}</td>
-          <td class="small">${fmt((m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0) + (m.icfs || 0))} <span class="muted">(${fmt(m.cps)} CP · ${fmt(m.ziips)} zIIP · ${fmt(m.iflsActive)} IFL · ${fmt(m.icfs)} CF)</span></td>
-          <td class="num">${num1((m.memoryTB || 0) + (m.memoryAddTB || 0))} TB</td>
+          <td class="small">${fmt((m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0))} <span class="muted">(${fmt(m.cps)} CP · ${fmt(m.ziips)} zIIP · ${fmt(m.iflsActive)} IFL)</span></td>
+          <td class="num">${num1(m.memoryTB || 0)} TB</td>
           <td class="infra-actions"><button class="row-action danger" data-requires-edit data-unlinkm="${m._id}" title="Desvincular">${iconUnlink()}</button></td>
         </tr>`).join('')}</tbody></table></div>` : '<div class="empty-inline small">Nenhuma máquina vinculada.</div>'}
       <button class="btn btn-ghost btn-sm" data-requires-edit id="cd-link-machines" style="margin-top:10px">+ Vincular máquinas</button>

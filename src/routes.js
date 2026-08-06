@@ -1388,7 +1388,7 @@ function machineUpdate(body) {
   if (body.lsprModel !== undefined) set.lsprModel = String(body.lsprModel || '').trim();
   if (body.serial !== undefined) set.serial = String(body.serial || '').trim().toUpperCase();
   if (body.year !== undefined) set.year = body.year === '' || body.year === null ? null : numOf(body.year);
-  ['cps', 'ziips', 'iflsActive', 'iflsSpare', 'icfs', 'memoryTB', 'memoryAddTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
+  ['cps', 'ziips', 'iflsActive', 'memoryTB', 'vfmTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
   if (body.status !== undefined && MACHINE_STATUS.includes(body.status)) set.status = body.status;
   // Compatibilidade: clientes antigos ainda mandam o booleano `dormant`.
   else if (body.dormant !== undefined) set.status = body.dormant ? 'dormente' : 'ativa';
@@ -1583,7 +1583,7 @@ router.get('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
   if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
   const [machines, events, inventory, amendments, parent] = await Promise.all([
     InfraMachine.find({ client: req.params.id, contract: contract._id })
-      .select('model serial status lsprModel cps ziips iflsActive icfs memoryTB memoryAddTB site')
+      .select('model serial status lsprModel cps ziips iflsActive memoryTB vfmTB site')
       .populate('site', 'name role').sort({ model: 1, serial: 1 }).lean(),
     MigrationEvent.find({ client: req.params.id, contract: contract._id })
       .select('kind status title fromMachine toMachine plannedDate executedAt value currency')
@@ -1822,7 +1822,7 @@ router.get('/clients/:id/inventory/records', asyncHandler(async (req, res) => {
    que altera documentos de máquina.
    ══════════════════════════════════════════════════════════════════════════ */
 
-const CONFIG_FIELDS = ['model', 'variant', 'featureModel', 'lsprModel', 'cps', 'ziips', 'iflsActive', 'iflsSpare', 'icfs', 'memoryTB', 'memoryAddTB'];
+const CONFIG_FIELDS = ['model', 'variant', 'featureModel', 'lsprModel', 'cps', 'ziips', 'iflsActive', 'memoryTB', 'vfmTB'];
 const upperSerial = (s) => String(s || '').trim().toUpperCase();
 
 /** Foto da configuração de uma máquina, com o LSPR congelado. */

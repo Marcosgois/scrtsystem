@@ -349,10 +349,12 @@ const infraMachineSchema = new mongoose.Schema(
     cps: { type: Number, default: 0 },        // CPs / GPs (processadores de propósito geral)
     ziips: { type: Number, default: 0 },      // zIIPs
     iflsActive: { type: Number, default: 0 }, // IFLs ativos
-    iflsSpare: { type: Number, default: 0 },  // IFLs spare
-    icfs: { type: Number, default: 0 },       // ICFs (Coupling Facility / CF)
+
     memoryTB: { type: Number, default: 0 },       // memória (antigo storageTB)
-    memoryAddTB: { type: Number, default: 0 },    // memória adicional (antigo storageAddTB)
+    // VFM (Virtual Flash Memory): flash, NÃO memória principal — por isso não
+    // entra no total de memória em lugar nenhum. Antes este campo era "memória
+    // adicional" (memoryAddTB), que ninguém chegou a preencher.
+    vfmTB: { type: Number, default: 0 },
     // Situação da máquina no parque (substituiu o antigo booleano `dormant`):
     // ativa · dormente (ligada, fora de produção) · substituida (saiu num MO) · desativada
     status: { type: String, enum: ['ativa', 'dormente', 'substituida', 'desativada'], default: 'ativa', index: true },
@@ -522,10 +524,9 @@ const machineConfigSchema = new mongoose.Schema(
     cps: { type: Number, default: 0 },
     ziips: { type: Number, default: 0 },
     iflsActive: { type: Number, default: 0 },
-    iflsSpare: { type: Number, default: 0 },
-    icfs: { type: Number, default: 0 },
+
     memoryTB: { type: Number, default: 0 },
-    memoryAddTB: { type: Number, default: 0 },
+    vfmTB: { type: Number, default: 0 },
     // LSPR congelado: a tabela de referência é reimportável, o delta tem de ficar estável.
     msu: { type: Number, default: null },
     mips: { type: Number, default: null },

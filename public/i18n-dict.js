@@ -1201,3 +1201,13 @@ Object.assign(window.ZCD_DICT, {
 Object.assign(window.ZCD_DICT, {
   "serial": ["serial", "serial"],
 });
+
+/* Infra: modal de máquina simplificado */
+Object.assign(window.ZCD_DICT, {
+  "Feature model": ["Feature model", "Feature model"],
+  "VFM (TB)": ["VFM (TB)", "VFM (TB)"],
+  "IFLs": ["IFLs", "IFLs"],
+  "CPs vem do modelo LSPR · VFM é Virtual Flash Memory, que é flash e não entra no total de memória":
+    ["CPs viene del modelo LSPR · VFM es Virtual Flash Memory, que es flash y no entra en el total de memoria",
+     "CPs comes from the LSPR model · VFM is Virtual Flash Memory — it is flash and does not count toward total memory"],
+});

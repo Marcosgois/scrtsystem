@@ -77,6 +77,34 @@ async function renameStorageToMemory(connection) {
   }
 }
 
+/*
+ * "Memória adicional" virou VFM (Virtual Flash Memory), e os campos que não se
+ * usavam saem do documento.
+ *
+ * A troca de nome é segura porque o campo estava zerado em TODAS as máquinas dos
+ * dois bancos quando foi feita (ago/2026) — ninguém chegou a preencher "memória
+ * adicional", então nada é reinterpretado como VFM. Se houvesse valor, renomear
+ * mudaria o significado do dado: memória adicional é RAM, VFM é flash.
+ */
+async function migrarCamposDeMaquina(connection) {
+  const coll = connection.db.collection('inframachines');
+  try {
+    const ren = await coll.updateMany(
+      { memoryAddTB: { $exists: true } },
+      { $rename: { memoryAddTB: 'vfmTB' } }
+    );
+    if (ren.modifiedCount) console.log(`[MongoDB] ${ren.modifiedCount} máquina(s): memória adicional → VFM.`);
+    const rem = await coll.updateMany(
+      { $or: [{ iflsSpare: { $exists: true } }, { icfs: { $exists: true } }] },
+      { $unset: { iflsSpare: '', icfs: '' } }
+    );
+    if (rem.modifiedCount) console.log(`[MongoDB] ${rem.modifiedCount} máquina(s): IFLs spare e ICF removidos.`);
+  } catch (err) {
+    if (err.codeName === 'NamespaceNotFound' || err.code === 26) return;
+    console.warn(`[MongoDB] migração de campos da máquina: ${err.message}`);
+  }
+}
+
 /**
  * Troca o booleano `dormant` das máquinas pelo enum `status`.
  * A ordem importa: marcar as dormentes primeiro, depois o resto como ativa, e só
@@ -162,6 +190,7 @@ async function connectDb(uri) {
   await dropObsoleteIndexes(mongoose.connection);
   await backfillSourceKeys(mongoose.connection);
   await renameStorageToMemory(mongoose.connection);
+  await migrarCamposDeMaquina(mongoose.connection);
   await backfillMachineStatus(mongoose.connection);
   await migrateContractPeriods(mongoose.connection);
 

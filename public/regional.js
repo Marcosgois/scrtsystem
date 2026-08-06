@@ -143,8 +143,7 @@ function celulaMips(r) {
 // ("esse cliente não tem IFL"); sem parque nenhum é "—" (não se sabe).
 function celulaIfls(r) {
   if (!r.maquinas) return '<span class="muted">—</span>';
-  const spare = r.iflsSpare ? ` <span class="muted small">+${r.iflsSpare} spare</span>` : '';
-  return `${nf.format(r.ifls || 0)}${spare}`;
+  return nf.format(r.ifls || 0);
 }
 
 function render(d) {

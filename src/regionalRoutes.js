@@ -78,7 +78,7 @@ router.get('/overview', asyncHandler(async (req, res) => {
     // Os campos de processador entram porque a capacidade instalada por cliente
     // (MIPS/IFLs no ranking) sai daqui — IFLs do cadastro, MIPS do LSPR.
     InfraMachine.find({ client: { $in: ids } })
-      .select('client model lsprModel status cps ziips iflsActive iflsSpare').lean(),
+      .select('client model lsprModel status cps ziips iflsActive').lean(),
     MachineLifecycle.find().lean(),
   ]);
 

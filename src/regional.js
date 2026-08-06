@@ -145,7 +145,7 @@ function agregarParque(machines, lifecycles, { hoje = new Date().toISOString().s
  *  - MIPS vem da linha LSPR do modelo da máquina ("3931-7C9"), que é a
  *    capacidade nominal daquele modelo. É o único jeito: MIPS não aparece no
  *    SCRT nem é digitado à mão.
- *  - IFLs vem do CADASTRO da máquina (iflsActive/iflsSpare), não do LSPR. O
+ *  - IFLs vem do CADASTRO da máquina (iflsActive), não do LSPR. O
  *    campo `ifls` da tabela LSPR é o MÁXIMO que o modelo comporta — usar ele
  *    diria que todo cliente tem 200 IFLs, o que seria uma mentira grande.
  *
@@ -158,14 +158,13 @@ function agregarCapacidade(machines, lsprModels) {
     if (m.status === 'substituida' || m.status === 'desativada') continue;
     const k = id(m.client);
     if (!porCliente.has(k)) {
-      porCliente.set(k, { maquinas: 0, mips: 0, cps: 0, ziips: 0, iflsAtivos: 0, iflsSpare: 0, semLspr: 0 });
+      porCliente.set(k, { maquinas: 0, mips: 0, cps: 0, ziips: 0, iflsAtivos: 0, semLspr: 0 });
     }
     const c = porCliente.get(k);
     c.maquinas += 1;
     c.cps += Number(m.cps) || 0;
     c.ziips += Number(m.ziips) || 0;
     c.iflsAtivos += Number(m.iflsActive) || 0;
-    c.iflsSpare += Number(m.iflsSpare) || 0;
     const l = porModelo.get(String(m.lsprModel || ''));
     if (l && Number.isFinite(l.mips)) c.mips += l.mips;
     else c.semLspr += 1;                 // sem vínculo LSPR não dá para somar MIPS
@@ -186,7 +185,6 @@ function anexarCapacidade(ranking, porCliente) {
       maquinas: c ? c.maquinas : 0,
       mips: c && c.mips ? c.mips : null,
       ifls: c ? c.iflsAtivos : null,
-      iflsSpare: c ? c.iflsSpare : null,
       mipsParcial: !!(c && c.semLspr),   // parte das máquinas sem vínculo LSPR
     };
   });
