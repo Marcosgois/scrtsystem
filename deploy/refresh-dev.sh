@@ -43,8 +43,14 @@ D=$(mktemp -d)
 echo "  · dump de prod (usuário zcd_app, só leitura efetiva aqui)…"
 mongodump --uri="$PROD_URI" --out "$D" --quiet
 
+# ARMADILHA: a URI do dev traz /tfpsystem_dev no caminho, e isso põe o
+# mongorestore em modo BANCO ÚNICO. Nesse modo ele espera os .bson soltos no
+# diretório e ignora a subpasta do dump — "don't know what to do with
+# subdirectory tfpsystem, skipping" — restaurando ZERO documento e saindo com
+# status 0. Com --quiet a mensagem sumia e o script mentia sucesso. Por isso
+# apontamos direto para "$D/tfpsystem" e conferimos a contagem no fim.
 echo "  · restaurando em tfpsystem_dev (usuário zcd_dev)…"
-mongorestore --uri="$DEV_URI" --nsFrom 'tfpsystem.*' --nsTo 'tfpsystem_dev.*' --drop "$D" --quiet
+mongorestore --uri="$DEV_URI" --drop "$D/tfpsystem" 2>&1 | tail -1
 rm -rf "$D"
 
 echo "  · copiando os arquivos binários…"
@@ -56,5 +62,20 @@ echo "  · reiniciando o dev…"
 systemctl restart zcontroldesk-dev
 sleep 4
 systemctl is-active zcontroldesk-dev
+
+# Conferência de verdade: um restore vazio não pode voltar a passar por sucesso.
+echo "  · conferindo…"
+cd /opt/zcontroldesk-dev
+set -a; . /etc/zcontroldesk-dev.env; set +a
+node -e '
+const mongoose = require("mongoose");
+(async () => {
+  const c = await mongoose.createConnection(process.env.MONGODB_URI).asPromise();
+  const n = {};
+  for (const k of ["clients", "scrtreports", "inframachines", "users"]) n[k] = await c.collection(k).countDocuments();
+  await c.close();
+  console.log("    " + Object.entries(n).map(([k, v]) => k + "=" + v).join(" · "));
+  if (!n.clients || !n.scrtreports) { console.error("    ✗ dev ficou vazio — o restore não funcionou."); process.exit(1); }
+})();'
 REMOTO
 echo "✓ dev atualizado a partir de prod."
