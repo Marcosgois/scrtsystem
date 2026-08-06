@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="IBM Z Control Desk">
+  <!--
+    Ícone da aba: o mesmo "Z" da marca no topo da aplicação, no azul para roxo do
+    IBM Carbon (as variáveis primary #0f62fe e accent #6929c4 do styles.css).
+
+    Cuidado ao editar este comentário: dois hífens seguidos são ilegais dentro de
+    comentário XML e derrubam o arquivo inteiro — o ícone some sem erro no console.
+
+    O Z é PATH, não texto: favicon com <text> depende da fonte que o sistema
+    tiver, e a letra sai diferente (ou some) em cada máquina.
+
+    scripts/gerar-favicon.js gera o .png e o .ico a partir da MESMA geometria
+    daqui, para os três nunca divergirem.
+  -->
+  <defs>
+    <linearGradient id="z" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f62fe"/>
+      <stop offset="1" stop-color="#6929c4"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="url(#z)"/>
+  <path d="M9 9 H23 V12.4 L13.8 19.6 H23 V23 H9 V19.6 L18.2 12.4 H9 Z" fill="#fff"/>
+</svg>
