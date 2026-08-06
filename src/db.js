@@ -165,8 +165,8 @@ async function connectDb(uri) {
   await backfillMachineStatus(mongoose.connection);
   await migrateContractPeriods(mongoose.connection);
 
-  const { Client, ScrtReport, Inventory, Contract, MigrationEvent, AuditLog, MachineLifecycle, Region } = require('./models');
-  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init(), AuditLog.init(), MachineLifecycle.init(), Region.init()]);
+  const { Client, ScrtReport, Inventory, Contract, MigrationEvent, AuditLog, MachineLifecycle, Region, AppMeta } = require('./models');
+  await Promise.all([Client.init(), ScrtReport.init(), Inventory.init(), Contract.init(), MigrationEvent.init(), AuditLog.init(), MachineLifecycle.init(), Region.init(), AppMeta.init()]);
 
   // Ciclo de vida das máquinas IBM Z: referência pública que o app assume existir.
   // Fica AQUI (e não no server.js) porque existem vários caminhos de boot — app,

@@ -79,7 +79,29 @@ async function main() {
     check('reimportação nunca deixa a tabela vazia', vazioEmAlgumMomento === false);
     check('reimportação mantém o total', (await LsprModel.countDocuments()) === cheio);
 
-    // 3. A tabela publicada conhece o z17 ME2 (type 9176), que entrou no zPCR em
+    // 3. Contagem não basta como assinatura: uma revisão de VALOR pela IBM (um MSU
+    //    corrigido, mesma quantidade de modelos) mudaria o arquivo sem mudar o
+    //    total, e o banco ficaria com o número velho para sempre. Por isso a
+    //    assinatura é o CONTEÚDO do arquivo, e ela tem de enxergar essa mudança.
+    const { digital, CHAVE_META } = require('../src/lsprSeed');
+    const base = [{ model: '3931-705', mips: 10129, msu: 1232, cps: 5, machineType: '3931', generation: 'z16', family: 'IBM Z z16/700' }];
+    const revisado = [{ ...base[0], msu: 1233 }];
+    check('digital muda quando um VALOR muda (mesma quantidade de modelos)',
+      digital(base) !== digital(revisado));
+    check('digital é estável para o mesmo conteúdo', digital(base) === digital(base.map((m) => ({ ...m }))));
+
+    // 4. Ponta a ponta: é assim que um deploy com arquivo revisado se comporta —
+    //    a digital gravada não bate com a do arquivo, então a carga refaz sozinha.
+    const { AppMeta } = require('../src/models');
+    await AppMeta.updateOne({ key: CHAVE_META }, { $set: { value: 'digital-de-uma-versão-anterior' } }, { upsert: true });
+    const revisao = await seedLspr({ log: () => {} });
+    check('arquivo revisado (digital diferente) reconcilia sozinho no start',
+      revisao.seeded === true && revisao.count === cheio, revisao);
+    check('depois de reconciliar, volta a ser no-op', (await seedLspr({ log: () => {} })).seeded === false);
+    check('valor de referência intacto após tudo isso',
+      (await LsprModel.findOne({ model: '3931-705' }).lean()).msu === 1232);
+
+    // 5. A tabela publicada conhece o z17 ME2 (type 9176), que entrou no zPCR em
     //    ago/2026 — é o caso concreto que motivou trocar o guard.
     const t9176 = await LsprModel.countDocuments({ machineType: '9176' });
     check('referência inclui o type 9176 (z17 ME2 / Rockhopper 5)', t9176 > 0, t9176);

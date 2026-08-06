@@ -263,11 +263,14 @@ node scripts/parse-lspr-cheatsheet.js ~/Downloads/CheatSheet*.html --write  # gr
 
 Sem `--write` ele só imprime o diff (modelos novos, sumidos e com número diferente) — é assim
 que se confere se o banco está atualizado. Com `--write` ele regrava `src/data/lspr.json`; daí é
-commitar e publicar. **Não precisa mexer no banco à mão**: a carga (`src/lsprSeed.js`) compara a
-contagem do banco com a do arquivo a cada start e reconcilia sozinha, por *upsert* — nunca apaga
-a coleção antes de inserir, porque a janela com a tabela vazia congelaria MSU/MIPS nulos no
-snapshot de qualquer contrato ou MO/MES criado naquele instante. `npm run import:lspr` continua
-existindo para forçar a reconciliação quando um VALOR mudou sem mudar a quantidade de modelos.
+commitar e publicar. **Não precisa mexer no banco à mão**: a carga (`src/lsprSeed.js`) guarda a
+impressão digital do arquivo carregado e, a cada start, reconcilia sozinha se ela não bater — o
+que cobre tanto modelo novo quanto revisão de valor pela IBM que não mude a quantidade. A
+reconciliação é por *upsert*: nunca apaga a coleção antes de inserir, porque a janela com a
+tabela vazia congelaria MSU/MIPS nulos no snapshot de qualquer contrato ou MO/MES criado naquele
+instante. `npm run import:lspr` continua existindo para forçar a carga — útil se alguém editar a
+coleção à mão, único caso que a digital do arquivo não enxerga. Rodado no Mac ele atualiza só a
+cópia local (`./data/mongodb`); quem atualiza o servidor é o deploy.
 
 O parser é estrito de propósito: se o formato do zPCR mudar (outro número de colunas, linha de
 total, modelo fora do padrão `NNNN-XXX`), ele **para** em vez de gravar dado pela metade —

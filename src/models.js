@@ -597,6 +597,19 @@ const lsprModelSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ── Metadados internos da aplicação (chave -> valor) ──
+// Hoje guarda só a impressão digital da tabela LSPR carregada: contagem não basta
+// para saber se o banco está com a versão do arquivo, porque uma revisão de VALOR
+// pela IBM (MSU corrigido, mesma quantidade de modelos) passaria despercebida.
+// Não é dado de cliente e não entra na auditoria.
+const appMetaSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true, index: true },
+    value: { type: mongoose.Schema.Types.Mixed, default: null },
+  },
+  { timestamps: true }
+);
+
 /* ──────────────────────────────────────────────────────────────────────────
    Trilha de auditoria — quem fez o quê, em qual cliente, quando, com o "antes →
    depois" de cada mudança. É SÓ-APPEND: o app nunca edita nem apaga uma entrada
@@ -654,8 +667,9 @@ const MigrationEvent = mongoose.model('MigrationEvent', migrationEventSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 const MachineLifecycle = mongoose.model('MachineLifecycle', machineLifecycleSchema);
 const Region = mongoose.model('Region', regionSchema);
+const AppMeta = mongoose.model('AppMeta', appMetaSchema);
 
 module.exports = {
-  Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel,
+  Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel, AppMeta,
   Contract, MigrationEvent, AuditLog, MachineLifecycle, Region,
 };
