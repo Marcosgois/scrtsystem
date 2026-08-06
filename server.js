@@ -97,13 +97,16 @@ app.use('/api', apiRoutes);                          // rotas existentes dos mó
  * e todo cache do caminho é obrigado a buscar de novo. O HTML em si nunca é
  * cacheado (no-store), então o carimbo novo chega na primeira visita.
  *
- * A versão é o commit publicado (deploy.sh grava .deployed-commit). Sem ele —
- * rodando da árvore de trabalho — usa o mtime mais recente dos estáticos, para
- * o desenvolvimento também não pegar cache velho.
+ * A versão é o commit publicado, que o deploy.sh grava em .asset-version ANTES de
+ * reiniciar. Não serve ler o .deployed-commit: aquele só é escrito depois do
+ * health check (é o que a trava dev-first consulta), então no start ainda seria o
+ * commit anterior e a tela nova subiria carimbada com a versão velha. Sem nenhum
+ * dos dois — rodando da árvore de trabalho — usa o mtime mais recente dos
+ * estáticos, para o desenvolvimento também não pegar cache velho.
  */
 const ASSET_VERSION = (() => {
   try {
-    const c = fs.readFileSync(path.join(__dirname, '.deployed-commit'), 'utf8').trim();
+    const c = fs.readFileSync(path.join(__dirname, '.asset-version'), 'utf8').trim();
     if (c) return c.slice(0, 12);
   } catch (e) { /* não publicado por deploy */ }
   try {

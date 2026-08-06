@@ -88,6 +88,13 @@ git archive --format=tar HEAD -- src public server.js package.json package-lock.
 echo "→ npm ci (sem baixar o mongod, que não tem binário s390x)…"
 "${SSH[@]}" "cd $APP_DIR && MONGOMS_DISABLE_POSTINSTALL=1 npm ci --omit=dev >/dev/null 2>&1 && echo '  ok'"
 
+# Versão dos estáticos (styles.css?v=…), lida pelo server.js NO START — por isso
+# tem de ser gravada ANTES do restart, senão a tela nova sobe carimbada com o
+# commit anterior. É um arquivo separado do .deployed-commit de propósito: aquele
+# só pode ser gravado depois do health check, porque é ele que a trava dev-first
+# de prod consulta, e um commit que nem subiu não pode virar candidato a prod.
+"${SSH[@]}" "printf '%s' '$COMMIT' > $APP_DIR/.asset-version" 2>/dev/null || true
+
 echo "→ reiniciando o serviço…"
 "${SSH[@]}" "sudo systemctl restart $SERVICO"
 
