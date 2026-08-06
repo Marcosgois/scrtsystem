@@ -4,7 +4,10 @@
    de bater com a soma das telas individuais — ou seja, respeitar a tag de máquina
    ignorada de CADA cliente antes de somar. */
 
-const { agregarConsumo, agregarParque, agregarContratos, agregarCapacidade, anexarCapacidade, serieDoCliente, typeDaMaquina } = require('../src/regional');
+const {
+  agregarConsumo, agregarParque, agregarContratos, agregarCapacidade, anexarCapacidade,
+  serieDoCliente, typeDaMaquina, indexarCicloDeVida, cicloDaMaquina,
+} = require('../src/regional');
 const { mergeByMonth, tagContextOf } = require('../src/routes');
 
 const helpers = { mergeByMonth, tagContextOf };
@@ -110,6 +113,46 @@ check('modelo em texto livre entra pelo lsprModel e agrupa com o código puro',
   z16m && z16m.quantidade === 2, pm.geracoes);
 check('4 dígitos no meio do texto não vira type', typeDaMaquina({ model: 'IBM z16 2022' }) === null);
 check('lsprModel tem prioridade sobre o modelo', typeDaMaquina({ model: '8561', lsprModel: '3931-7C9' }) === '3931');
+
+// ── um type com MAIS DE UMA linha de ciclo de vida ──
+// 9176 é z17 MER (rack mount) e z17 ME2, 3932 é z16 AGZ e z16 A02, 2064 é z900
+// G1 e G2. Na ordem da semente (a mesma que o banco devolve), a primeira linha do
+// type é a que vale quando nada decide.
+const lcAmbiguos = [
+  { type: '9176', model: 'MER', family: 'z17 MER', hwWdfm: null, coslEos: null },
+  { type: '9176', model: 'ME2', family: 'z17 ME2', hwWdfm: null, coslEos: null },
+  { type: '3932', model: 'AGZ', family: 'z16 AGZ', hwWdfm: '2027-03-31', coslEos: null },
+  { type: '3932', model: 'A02', family: 'z16 A02', hwWdfm: '2027-03-31', coslEos: null },
+  { type: '2064', model: '2nn', family: 'z900 G2', hwWdfm: '2006-06-30', coslEos: '2014-12-31' },
+  { type: '2064', model: '1nn', family: 'z900 G1', hwWdfm: '2006-06-30', coslEos: '2014-12-31' },
+];
+const idxAmbiguos = indexarCicloDeVida(lcAmbiguos);
+const ambiguas = [
+  { model: 'IBM z17 ME2', lsprModel: '9176-Z06', status: 'ativa' },                          // modelo escrito à mão
+  { model: 'IBM Z z17/Z00', featureModel: 'MER', lsprModel: '9176-Z06', status: 'ativa' },   // veio do SCRT, o feature diz o modelo
+  { model: 'IBM Z z17/Y00', lsprModel: '9176-Y03', status: 'ativa' },                        // nada decide -> primeira linha
+  { model: '2064-116', status: 'ativa' },                                                    // 1nn -> G1
+  { model: '2064-216', status: 'ativa' },                                                    // 2nn -> G2
+  { model: 'IBM Z z16/A00', lsprModel: '3932-A02', status: 'ativa' },                        // A02 aqui é CAPACIDADE, não modelo
+];
+const pa = agregarParque(ambiguas, lcAmbiguos, { hoje: '2026-08-05' });
+const fam = (f) => pa.geracoes.find((g) => g.family === f);
+check('9176 com "ME2" no modelo vira z17 ME2 (não o MER da primeira linha)',
+  fam('z17 ME2') && fam('z17 ME2').quantidade === 1, pa.geracoes);
+check('9176 com "MER" no feature entra no z17 MER, junto com a indecidível',
+  fam('z17 MER') && fam('z17 MER').quantidade === 2, pa.geracoes);
+check('2064 separa G1 e G2 pelo padrão 1nn/2nn do modelo',
+  fam('z900 G1') && fam('z900 G1').quantidade === 1 && fam('z900 G2') && fam('z900 G2').quantidade === 1, pa.geracoes);
+// O identificador de capacidade do zPCR ("3932-A02" = A02) não é o modelo da
+// máquina: usá-lo rotularia de "z16 A02" uma máquina que pode ser AGZ.
+check('capacidade do lsprModel NÃO decide o modelo (cai na primeira linha do type)',
+  fam('z16 AGZ') && fam('z16 AGZ').quantidade === 1 && !fam('z16 A02'), pa.geracoes);
+check('type com uma linha só continua casando direto',
+  cicloDaMaquina({ model: '3931-7C6' }, indexarCicloDeVida(lifecycles)).family === 'z16');
+check('type sem ciclo de vida continua sem linha',
+  cicloDaMaquina({ model: '9999-XXX' }, idxAmbiguos) === null);
+check('dois códigos casando com linhas diferentes não decidem (volta à primeira)',
+  cicloDaMaquina({ model: '2064-116', variant: '216' }, idxAmbiguos).family === 'z900 G2');
 
 // ── capacidade instalada por cliente (MIPS do LSPR, IFLs do cadastro) ──
 const lsprs = [

@@ -92,6 +92,71 @@ function typeDaMaquina(m) {
 }
 
 /**
+ * Códigos de modelo que a máquina carrega escritos: os candidatos a casar com o
+ * `model` da linha de ciclo de vida ("ME2", "AGZ", "116").
+ *
+ * De propósito NÃO olha o `lsprModel`: o que vem depois do traço ali é o
+ * identificador de CAPACIDADE do zPCR ("9176-Z06" = 6 CPs no nível Z), não o
+ * modelo da máquina — e nos types novos os dois espaços se cruzam. "3932-A02" é
+ * capacidade A02 e casaria por acidente com o modelo A02 (z16 single frame) de
+ * uma máquina que pode perfeitamente ser uma AGZ (rack mount). Só vale o que uma
+ * pessoa escreveu nos campos livres.
+ */
+function codigosDeModelo(m) {
+  return [m.model, m.variant, m.featureModel]
+    .map((v) => String(v || ''))
+    .join(' ')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((t) => t.toUpperCase());
+}
+
+/**
+ * O `model` do ciclo de vida é um PADRÃO, do jeito que a IBM publica a tabela:
+ * literal quando é o modelo inteiro ("ME2", "AGZ", "E10"), `n` minúsculo para
+ * qualquer dígito ("Nnn" = N30, N63; "1nn" = 101, 116) e `/` separando
+ * alternativas ("R07/S07"). Vazio não decide nada.
+ */
+function casaModeloDeCicloDeVida(codigo, padrao) {
+  return String(padrao || '').split('/').map((s) => s.trim()).filter(Boolean).some((alt) => {
+    const re = [...alt].map((c) => (c === 'n' ? '\\d' : c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).join('');
+    return new RegExp(`^${re}$`, 'i').test(codigo);
+  });
+}
+
+/** Linhas de ciclo de vida agrupadas por type (um type pode ter várias). */
+function indexarCicloDeVida(lifecycles) {
+  const porType = new Map();
+  for (const l of lifecycles || []) {
+    const t = String(l.type);
+    if (!porType.has(t)) porType.set(t, []);
+    porType.get(t).push(l);
+  }
+  return porType;
+}
+
+/**
+ * A linha de ciclo de vida da máquina.
+ *
+ * Vários types têm mais de uma linha, e elas não são a mesma coisa: 9176 é z17
+ * MER (rack mount) e z17 ME2, 3932 é z16 AGZ e z16 A02, 2064 é z900 G1 e G2.
+ * Quando a máquina diz qual é o modelo — alguém escreveu "ME2" no modelo ou no
+ * feature, ou o modelo veio do SCRT como "2064-116" — e esse código casa com UMA
+ * linha só, é ela. Quando não dá para decidir (o caso das máquinas importadas do
+ * SCRT, cujo modelo virou a família do LSPR e não guarda o empacotamento), vale o
+ * que valia antes: a primeira linha do type, que ao menos acerta a geração.
+ */
+function cicloDaMaquina(m, porType) {
+  const type = typeDaMaquina(m);
+  const linhas = (type && porType.get(type)) || [];
+  if (linhas.length <= 1) return linhas[0] || null;
+
+  const codigos = codigosDeModelo(m);
+  const casadas = linhas.filter((l) => codigos.some((c) => casaModeloDeCicloDeVida(c, l.model)));
+  return casadas.length === 1 ? casadas[0] : linhas[0];
+}
+
+/**
  * Parque instalado por geração, cruzando o type da máquina com a tabela de
  * ciclo de vida IBM.
  *
@@ -99,18 +164,13 @@ function typeDaMaquina(m) {
  * fixar a data e não ficar dependendo do dia em que roda.
  */
 function agregarParque(machines, lifecycles, { hoje = new Date().toISOString().slice(0, 10) } = {}) {
-  const porType = new Map();
-  for (const l of lifecycles || []) {
-    // Um type pode ter mais de um model (2064 = z900 G1 e G2). Para o parque
-    // interessa a geração, então basta o primeiro que casar.
-    if (!porType.has(String(l.type))) porType.set(String(l.type), l);
-  }
+  const porType = indexarCicloDeVida(lifecycles);
 
   const grupos = new Map();
   for (const m of machines || []) {
     if (m.status === 'substituida' || m.status === 'desativada') continue;   // fora do parque vivo
     const type = typeDaMaquina(m);
-    const lc = type ? (porType.get(type) || null) : null;
+    const lc = cicloDaMaquina(m, porType);
     const chave = lc ? lc.family : (String(m.model || '').trim() || type || 'desconhecido');
     if (!grupos.has(chave)) {
       grupos.set(chave, {
@@ -217,4 +277,7 @@ function agregarContratos(clients) {
   return { comContrato, semContrato: clients.length - comContrato, baselineMensalTotal, porCliente };
 }
 
-module.exports = { agregarConsumo, agregarParque, agregarContratos, agregarCapacidade, anexarCapacidade, serieDoCliente, typeDaMaquina };
+module.exports = {
+  agregarConsumo, agregarParque, agregarContratos, agregarCapacidade, anexarCapacidade,
+  serieDoCliente, typeDaMaquina, indexarCicloDeVida, cicloDaMaquina,
+};
