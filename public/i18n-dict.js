@@ -1117,3 +1117,16 @@ window.ZCD_PATTERNS.push(
   [/^Falha ao carregar: ([\s\S]*?)$/, "Error al cargar: $1", "Failed to load: $1"],
   [/^Essa região tem (\d+) região\(ões\) dentro dela\. Mova ou exclua antes\.$/, "Esa región tiene $1 región(es) dentro de ella. Muévalas o elimínelas antes.", "That region has $1 region(s) inside it. Move or delete them first."]
 );
+
+/* Painel gerencial: ranking completo e renomear região */
+Object.assign(window.ZCD_DICT, {
+  "Ver só o top 5": ["Ver solo el top 5", "Show only the top 5"],
+  "Região renomeada.": ["Región renombrada.", "Region renamed."],
+  "Nome da região": ["Nombre de la región", "Region name"],
+  "O nome não pode ficar vazio.": ["El nombre no puede quedar vacío.", "The name cannot be empty."],
+});
+window.ZCD_PATTERNS.push(
+  [/^Ver todos \((\d+)\)$/, "Ver todos ($1)", "Show all ($1)"],
+  [/^Clientes por consumo \((\d+)\)$/, "Clientes por consumo ($1)", "Clients by consumption ($1)"],
+  [/^Já existe a região "([\s\S]*?)"\.$/, "Ya existe la región \"$1\".", "The region \"$1\" already exists."]
+);

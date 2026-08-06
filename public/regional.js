@@ -14,7 +14,8 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-const state = { modo: 'region', regionId: null, selecionados: new Set(), arvore: [], regions: [], clients: [], chart: null };
+const state = { modo: 'region', regionId: null, selecionados: new Set(), arvore: [], regions: [], clients: [], chart: null,
+  rankingCompleto: false, ultimoConsumo: null };
 
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, opts);
@@ -94,6 +95,34 @@ function renderChart(evolucao) {
   });
 }
 
+/*
+ * Ranking de clientes. O top 5 é o padrão porque é o que responde "quem pesa
+ * mais"; o ranking COMPLETO já vem na mesma resposta da API, então "ver todos"
+ * só troca quantas linhas são desenhadas — nenhuma ida nova ao servidor.
+ */
+function renderRanking(c) {
+  const todos = c.ranking || c.top5 || [];
+  const lista = state.rankingCompleto ? todos : (c.top5 || []);
+  const temMais = todos.length > (c.top5 || []).length;
+
+  $('rg-top-title').textContent = state.rankingCompleto
+    ? `Clientes por consumo (${todos.length})`
+    : 'Top 5 clientes';
+
+  const botao = $('rg-top-toggle');
+  botao.classList.toggle('hidden', !temMais);
+  botao.textContent = state.rankingCompleto ? 'Ver só o top 5' : `Ver todos (${todos.length})`;
+  $('rg-top-wrap').classList.toggle('expandido', state.rankingCompleto);
+
+  $('rg-top-body').innerHTML = lista.length ? lista.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong data-no-i18n>${esc(r.name)}</strong></td>
+      <td class="num">${fmtMsu(r.totalMsuConsumed)}</td>
+      <td class="num">${r.pctDoTotal.toFixed(1)}%</td>
+    </tr>`).join('') : '<tr><td colspan="4" class="muted">Nenhum SCRT no período.</td></tr>';
+}
+
 function render(d) {
   const temCliente = d.clients.length > 0;
   $('rg-empty').classList.toggle('hidden', temCliente);
@@ -122,13 +151,8 @@ function render(d) {
 
   renderChart(c.evolucao);
 
-  $('rg-top-body').innerHTML = c.top5.length ? c.top5.map((r, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td><strong data-no-i18n>${esc(r.name)}</strong></td>
-      <td class="num">${fmtMsu(r.totalMsuConsumed)}</td>
-      <td class="num">${r.pctDoTotal.toFixed(1)}%</td>
-    </tr>`).join('') : '<tr><td colspan="4" class="muted">Nenhum SCRT no período.</td></tr>';
+  state.ultimoConsumo = c;
+  renderRanking(c);
 
   $('rg-park-body').innerHTML = d.parque.geracoes.length ? d.parque.geracoes.map((g) => `
     <tr>
@@ -180,10 +204,13 @@ function renderModalRegioes() {
   const contagem = new Map();
   for (const c of state.clients) if (c.region) contagem.set(String(c.region), (contagem.get(String(c.region)) || 0) + 1);
 
+  // O nome é um input, não um <strong>: erro de digitação na criação da região se
+  // conserta aqui mesmo, sem ter de excluir e recriar (o que exigiria mover os
+  // clientes e as filhas antes).
   $('rg-regions-body').innerHTML = state.regions.map((r) => `
     <tr>
-      <td><strong data-no-i18n>${esc(r.name)}</strong></td>
-      <td><select data-parent="${esc(r._id)}">${opcoesRegiao(r.parent, r._id)}</select></td>
+      <td><input type="text" class="cell-rename" data-rename="${esc(r._id)}" value="${esc(r.name)}" maxlength="60" aria-label="Nome da região" data-no-i18n></td>
+      <td><select class="cell-select" data-parent="${esc(r._id)}">${opcoesRegiao(r.parent, r._id)}</select></td>
       <td class="num">${contagem.get(String(r._id)) || 0}</td>
       <td class="col-actions"><button class="row-action danger" data-del="${esc(r._id)}" title="Excluir">✕</button></td>
     </tr>`).join('') || '<tr><td colspan="4" class="muted">Nenhuma região ainda.</td></tr>';
@@ -191,15 +218,38 @@ function renderModalRegioes() {
   $('rg-client-region-body').innerHTML = state.clients.map((c) => `
     <tr>
       <td data-no-i18n>${esc(c.name)}</td>
-      <td><select data-client="${esc(c._id)}">${opcoesRegiao(c.region, null)}</select></td>
+      <td><select class="cell-select" data-client="${esc(c._id)}">${opcoesRegiao(c.region, null)}</select></td>
     </tr>`).join('');
 
   const erro = (e) => { $('rg-error').textContent = e; $('rg-error').classList.remove('hidden'); };
   $('rg-error').classList.add('hidden');
 
+  // Renomear: grava ao sair do campo ou no Enter, e só se o nome mudou de verdade.
+  // Esc devolve o valor anterior. Nome duplicado volta 409 da API e a linha é
+  // recarregada com o nome original, para a tela não mentir sobre o que foi salvo.
+  $('rg-regions-body').querySelectorAll('[data-rename]').forEach((i) => {
+    const original = i.value;
+    const salvar = async () => {
+      const novo = i.value.trim();
+      if (novo === original) { i.value = original; return; }
+      if (!novo) { i.value = original; return erro('O nome não pode ficar vazio.'); }
+      try { await api(`/admin/regions/${i.dataset.rename}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: novo }) }); await recarregarRegioes(); toast('Região renomeada.'); }
+      catch (e) { i.value = original; erro(e.message); }
+    };
+    i.addEventListener('blur', salvar);
+    i.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); i.blur(); }
+      if (ev.key === 'Escape') { i.value = original; i.blur(); }
+    });
+  });
+
   $('rg-regions-body').querySelectorAll('[data-parent]').forEach((s) => s.addEventListener('change', async () => {
     try { await api(`/admin/regions/${s.dataset.parent}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent: s.value || null }) }); await recarregarRegioes(); toast('Região movida.'); }
-    catch (e) { erro(e.message); await recarregarRegioes(); }
+    // Recarrega ANTES de mostrar o erro: o re-render limpa a mensagem, então na
+    // ordem inversa o aviso do ciclo ("não pode ficar dentro de quem já está
+    // dentro dela") aparecia e sumia no mesmo instante, e o select só voltava
+    // sozinho sem explicação.
+    catch (e) { await recarregarRegioes(); erro(e.message); }
   }));
   $('rg-regions-body').querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     try { await api(`/admin/regions/${b.dataset.del}`, { method: 'DELETE' }); await recarregarRegioes(); toast('Região excluída.'); }
@@ -227,6 +277,10 @@ document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('clic
   if (state.modo === 'region') carregar();
 }));
 $('rg-apply').addEventListener('click', carregar);
+$('rg-top-toggle').addEventListener('click', () => {
+  state.rankingCompleto = !state.rankingCompleto;
+  if (state.ultimoConsumo) renderRanking(state.ultimoConsumo);   // redesenha com o que já veio
+});
 $('rg-all').addEventListener('click', () => { state.clients.forEach((c) => state.selecionados.add(String(c._id))); renderClientes(); });
 $('rg-none').addEventListener('click', () => { state.selecionados.clear(); renderClientes(); });
 

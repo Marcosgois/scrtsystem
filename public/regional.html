@@ -132,11 +132,16 @@
     <div class="two-col">
       <!-- Top clientes -->
       <div class="card reveal">
-        <div class="card-header"><div>
-          <h2>Top 5 clientes</h2>
-          <p class="muted" id="rg-top-sub">por consumo no período</p>
-        </div></div>
-        <div class="table-responsive">
+        <div class="card-header">
+          <div>
+            <h2 id="rg-top-title">Top 5 clientes</h2>
+            <p class="muted" id="rg-top-sub">por consumo no período</p>
+          </div>
+          <!-- O ranking completo já vem na mesma resposta da API; o botão só troca
+               quantas linhas são desenhadas, sem ida nova ao servidor. -->
+          <button class="btn btn-ghost btn-sm hidden" id="rg-top-toggle">Ver todos</button>
+        </div>
+        <div class="table-responsive" id="rg-top-wrap">
           <table class="infra-table">
             <thead><tr><th>#</th><th>Cliente</th><th class="num">MSU</th><th class="num">% do total</th></tr></thead>
             <tbody id="rg-top-body"></tbody>
