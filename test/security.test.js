@@ -36,7 +36,13 @@ function session() {
     });
     return res.status;
   };
-  return { req, page };
+  const pageFull = async (pathname) => {
+    const res = await fetch(`http://127.0.0.1:${PORT}${pathname}`, {
+      headers: cookie ? { Cookie: cookie } : {}, redirect: 'manual',
+    });
+    return { status: res.status, headers: res.headers, body: await res.text() };
+  };
+  return { req, page, pageFull };
 }
 
 async function main() {
@@ -58,6 +64,25 @@ async function main() {
   const csp = st.headers.get('content-security-policy');
   check('CSP presente no cabeçalho', !!csp && /default-src 'self'/.test(csp), csp);
   check('X-Powered-By não exposto', !st.headers.get('x-powered-by'), st.headers.get('x-powered-by'));
+
+  // ── Cache dos estáticos: tela nova com CSS velho ──
+  // Sem carimbo na URL, o navegador (e o Cloudflare na frente) continuam servindo
+  // o styles.css anterior depois de um deploy, e a tela sobe sem estilo. Já
+  // aconteceu duas vezes; estas asserções são o que impede a terceira.
+  const login = await admin.pageFull('/login');
+  check('HTML nunca é cacheado (no-store)', /no-store/.test(login.headers.get('cache-control') || ''), login.headers.get('cache-control'));
+  const assets = [...new Set([...login.body.matchAll(/(?:href|src)="([^"]+\.(?:css|js)[^"]*)"/g)].map((m) => m[1]))]
+    .filter((u) => !/^(https?:)?\/\//.test(u));
+  check('a página referencia estáticos locais', assets.length > 0, assets);
+  check('todo estático local vai carimbado com ?v=', assets.every((u) => /\?v=[^"]+$/.test(u)), assets);
+  const css = assets.find((u) => u.endsWith('.css') || u.includes('.css?'));
+  const carimbado = await admin.pageFull(css.startsWith('/') ? css : `/${css}`);
+  check('estático carimbado responde 200', carimbado.status === 200, carimbado.status);
+  check('estático carimbado pode ser guardado para sempre (immutable)',
+    /immutable/.test(carimbado.headers.get('cache-control') || ''), carimbado.headers.get('cache-control'));
+  const semCarimbo = await admin.pageFull('/styles.css');
+  check('estático SEM carimbo continua revalidando (max-age=0)',
+    /max-age=0/.test(semCarimbo.headers.get('cache-control') || ''), semCarimbo.headers.get('cache-control'));
 
   // ── Mínimo de senha (10) ──
   const curta = await admin.req('/admin/users', { method: 'POST', json: { name: 'Curto', email: 'curto@x.com', password: '123456789', role: 'user', access: [] } });

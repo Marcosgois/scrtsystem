@@ -1,6 +1,7 @@
 'use strict';
 
 require('dotenv').config();
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const { connectDb } = require('./src/db');
@@ -84,7 +85,63 @@ app.use('/api', clientAccessGuard);                 // acesso por cliente (view/
 app.use('/api', apiRoutes);                          // rotas existentes dos módulos
 
 // ── Páginas ──
-const sendPage = (file) => (req, res) => res.sendFile(path.join(__dirname, 'public', file));
+/*
+ * Versão dos arquivos estáticos.
+ *
+ * O problema que isso resolve: styles.css e os .js têm URL fixa, então o
+ * navegador (e o Cloudflare na frente) continuam servindo a cópia antiga depois
+ * de um deploy — a tela sobe com HTML novo e CSS velho, e o que a pessoa vê é
+ * "o botão ficou sem estilo". Já aconteceu duas vezes.
+ *
+ * A saída é carimbar a URL: styles.css?v=<versão>. Muda a versão, muda a URL,
+ * e todo cache do caminho é obrigado a buscar de novo. O HTML em si nunca é
+ * cacheado (no-store), então o carimbo novo chega na primeira visita.
+ *
+ * A versão é o commit publicado, que o deploy.sh grava em .asset-version ANTES de
+ * reiniciar. Não serve ler o .deployed-commit: aquele só é escrito depois do
+ * health check (é o que a trava dev-first consulta), então no start ainda seria o
+ * commit anterior e a tela nova subiria carimbada com a versão velha. Sem nenhum
+ * dos dois — rodando da árvore de trabalho — usa o mtime mais recente dos
+ * estáticos, para o desenvolvimento também não pegar cache velho.
+ */
+const ASSET_VERSION = (() => {
+  try {
+    const c = fs.readFileSync(path.join(__dirname, '.asset-version'), 'utf8').trim();
+    if (c) return c.slice(0, 12);
+  } catch (e) { /* não publicado por deploy */ }
+  try {
+    const dir = path.join(__dirname, 'public');
+    const recente = fs.readdirSync(dir)
+      .filter((f) => /\.(css|js)$/.test(f))
+      .reduce((max, f) => Math.max(max, fs.statSync(path.join(dir, f)).mtimeMs), 0);
+    if (recente) return String(Math.round(recente)).slice(-10);
+  } catch (e) { /* segue para o fallback */ }
+  return String(Date.now());
+})();
+
+// Carimba os estáticos LOCAIS do HTML. Só mexe em href/src que apontam para um
+// .css/.js do próprio app: URL absoluta, protocolo-relativa ou que já tenha
+// query fica intocada.
+const CARIMBA = /\b(href|src)="(?!https?:|\/\/)([^"?#]+\.(?:css|js))"/g;
+const paginas = new Map();   // arquivo -> { mtimeMs, html }
+
+const sendPage = (file) => (req, res) => {
+  const full = path.join(__dirname, 'public', file);
+  let cache = paginas.get(file);
+  try {
+    const { mtimeMs } = fs.statSync(full);
+    if (!cache || cache.mtimeMs !== mtimeMs) {
+      const html = fs.readFileSync(full, 'utf8').replace(CARIMBA, `$1="$2?v=${ASSET_VERSION}"`);
+      cache = { mtimeMs, html };
+      paginas.set(file, cache);
+    }
+  } catch (e) {
+    return res.sendFile(full);   // sumiu do disco? deixa o express responder o erro
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(cache.html);
+};
 const pageGuard = (req, res, next) => (sessionUserId(req) ? next() : res.redirect('/login'));
 const adminPageGuard = async (req, res, next) => {
   const uid = sessionUserId(req);
@@ -132,7 +189,17 @@ app.use((req, res, next) => {
   if (PROTECTED_HTML.has(req.path) && !sessionUserId(req)) return res.redirect('/login');
   next();
 });
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+// Estático. Quem chega carimbado (?v=<versão>) pode ser guardado para sempre: a
+// URL muda a cada deploy, então cache velho nunca é servido. Sem carimbo (link
+// direto, favicon, tudo que não passa pelo sendPage) segue revalidando.
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false,
+  setHeaders: (res, arquivo, stat) => {
+    if (res.req.query && res.req.query.v) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
 
 // Erros da API respondem JSON; erros de entrada do cliente viram 4xx, não 500.
 app.use((err, req, res, next) => {

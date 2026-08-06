@@ -10,9 +10,9 @@
 
 const express = require('express');
 const mongoose = require('mongoose');
-const { Client, ScrtReport, InfraMachine, Region, MachineLifecycle } = require('./models');
+const { Client, ScrtReport, InfraMachine, Region, MachineLifecycle, LsprModel } = require('./models');
 const regioes = require('./regions');
-const { agregarConsumo, agregarParque, agregarContratos } = require('./regional');
+const { agregarConsumo, agregarParque, agregarContratos, agregarCapacidade, anexarCapacidade } = require('./regional');
 const { mergeByMonth, tagContextOf } = require('./routes');
 
 const router = express.Router();
@@ -77,9 +77,17 @@ router.get('/overview', asyncHandler(async (req, res) => {
     // cliente gravou o modelo em texto livre ("IBM Z z16/700"); variant e
     // featureModel, porque é neles que aparece o modelo que separa duas linhas de
     // ciclo de vida do mesmo type ("ME2" x "MER" no 9176).
-    InfraMachine.find({ client: { $in: ids } }).select('client model variant featureModel lsprModel status').lean(),
+    // Os campos de processador entram porque a capacidade instalada por cliente
+    // (MIPS/IFLs no ranking) sai daqui — IFLs do cadastro, MIPS do LSPR.
+    InfraMachine.find({ client: { $in: ids } })
+      .select('client model variant featureModel lsprModel status cps ziips iflsActive iflsSpare').lean(),
     MachineLifecycle.find().lean(),
   ]);
+
+  // Só as linhas LSPR dos modelos que aparecem no recorte — a tabela inteira são
+  // 3.190 documentos e o painel precisa de algumas dezenas.
+  const modelos = [...new Set(machines.map((m) => m.lsprModel).filter(Boolean))];
+  const lsprs = modelos.length ? await LsprModel.find({ model: { $in: modelos } }).select('model mips').lean() : [];
 
   const reportsByClient = new Map();
   for (const r of reports) {
@@ -88,10 +96,18 @@ router.get('/overview', asyncHandler(async (req, res) => {
     reportsByClient.get(k).push(r);
   }
 
+  // O ranking sai do consumo e ganha a capacidade instalada de cada cliente —
+  // são grandezas de origens diferentes (SCRT x cadastro/LSPR) na mesma linha,
+  // por isso a tela precisa rotular qual é qual.
+  const consumo = agregarConsumo(clients, reportsByClient, { mergeByMonth, tagContextOf });
+  const capacidade = agregarCapacidade(machines, lsprs);
+  consumo.ranking = anexarCapacidade(consumo.ranking, capacidade);
+  consumo.top5 = consumo.ranking.slice(0, 5);
+
   res.json({
     recorte,
     clients: clients.map((c) => ({ _id: c._id, name: c.name, region: c.region })),
-    consumo: agregarConsumo(clients, reportsByClient, { mergeByMonth, tagContextOf }),
+    consumo,
     parque: agregarParque(machines, lifecycles),
     contratos: agregarContratos(clients),
   });

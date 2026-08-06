@@ -1585,3 +1585,88 @@ body:not(.is-manager) [data-requires-manager] { display: none !important; }
 .region-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .region-count { font-size: 11px; color: var(--ink-secondary); flex: none; }
 .region-node.active .region-count { color: var(--primary); }
+
+/* ── Selects ─────────────────────────────────────────────────────────────── */
+/* O .field estilizava só input[type=text|number], então todo <select> de
+   formulário saía com a aparência nativa do sistema e destoava do campo ao lado.
+   Aqui ele passa a ter o MESMO tratamento do input de texto: mesma altura, mesma
+   borda, mesmo fundo — com a seta desenhada por nós, já que appearance:none tira
+   a nativa. Vale para as telas todas, não só para o painel gerencial. */
+.select-chevron,
+.field select,
+.field input[type="date"],
+.field input[type="search"] {
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' stroke='%236f6f6f' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+.field input[type="date"], .field input[type="search"] { background-image: none; padding-right: 11px; }
+
+.field select {
+  width: 100%;
+  padding: 9px 30px 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 13.5px;
+  color: var(--ink);
+  background-color: var(--surface-subtle);
+  cursor: pointer;
+}
+.field input[type="date"],
+.field input[type="search"] {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 13.5px;
+  background-color: var(--surface-subtle);
+}
+.field select:focus,
+.field input[type="date"]:focus,
+.field input[type="search"]:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+.field select:disabled { color: var(--ink-muted); cursor: not-allowed; }
+
+/* Select dentro de célula de tabela: mesma linguagem, porém compacto. */
+.cell-select {
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' stroke='%236f6f6f' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-color: var(--surface);
+  padding: 6px 26px 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  min-width: 150px;
+}
+.cell-select:hover { border-color: var(--ink-muted); }
+.cell-select:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
+
+/* Nome da região editável direto na linha: parece texto até receber o foco. */
+.cell-rename {
+  width: 100%; max-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  background: none;
+}
+.cell-rename:hover { border-color: var(--border); background: var(--surface-subtle); }
+.cell-rename:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; background: var(--surface); font-weight: 400; }
+
+/* Top 5 expandido: a lista completa não pode empurrar o resto da página. */
+#rg-top-wrap.expandido { max-height: 420px; overflow-y: auto; }
