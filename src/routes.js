@@ -204,6 +204,10 @@ function mergeMonth(reports, tagCtx) {
   const lpars = [];
   const containers = [];
   const warnings = [];
+  const productsMsu = [];
+  const productsUnit = [];
+  const productsMax = [];
+  const productFootnotes = [];
 
   for (const r of reports) {
     const origem = r.siteLabel || r.sourceFileName || '';
@@ -214,6 +218,14 @@ function mergeMonth(reports, tagCtx) {
     }
     for (const l of r.lpars || []) lpars.push({ ...l, source: origem });
     for (const c of r.containers || []) containers.push({ ...c, source: origem });
+    // Produtos (==E5 / ==P5). Cada origem traz os seus, e a origem fica na linha:
+    // no BRB o mesmo produto aparece em SCN e SIG com números diferentes, e somar
+    // os dois seria inventar um número que não está em SCRT nenhum.
+    const pr = r.products || {};
+    for (const x of pr.msuBased || []) productsMsu.push({ ...x, source: origem });
+    for (const x of pr.unitBased || []) productsUnit.push({ ...x, source: origem });
+    for (const x of pr.maxContributors || []) productsMax.push({ ...x, source: origem });
+    for (const n of pr.footnotes || []) if (!productFootnotes.includes(n)) productFootnotes.push(n);
     for (const w of r.warnings || []) warnings.push(reports.length > 1 && origem ? `[${origem}] ${w}` : w);
   }
 
@@ -255,6 +267,12 @@ function mergeMonth(reports, tagCtx) {
     machines,
     lpars,
     containers,
+    products: {
+      msuBased: productsMsu,
+      unitBased: productsUnit,
+      maxContributors: productsMax,
+      footnotes: productFootnotes,
+    },
     totalMsuConsumed,
     totalMsuAllMachines,
     ignoredMsuConsumed,
@@ -590,6 +608,7 @@ router.post('/clients/:id/reports', upload.single('file'), asyncHandler(async (r
     machines: parsed.machines,
     containers: parsed.containers,
     lpars: parsed.lpars,
+    products: parsed.products || { msuBased: [], unitBased: [], footnotes: [], maxContributors: [] },
     totalMsuConsumed: parsed.totalMsuConsumed,
     containersTotalMsu: parsed.containersTotalMsu,
     warnings,

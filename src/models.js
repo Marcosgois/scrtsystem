@@ -229,6 +229,16 @@ const scrtReportSchema = new mongoose.Schema(
     machines: [machineSchema],
     containers: [containerSchema],
     lpars: [lparSchema],
+    // Seções de produto do SCRT (==E5 PRODUCT SUMMARY, ==P5 PRODUCT MAX
+    // CONTRIBUTORS). Só o formato Sub-Capacity/MVM as traz; no Enterprise TFP
+    // (multiplex) vêm vazias. Mixed porque as colunas variam entre a sub-tabela
+    // de MSU e a de unidades, e não vale a pena um schema por sub-tabela.
+    products: {
+      msuBased: { type: [mongoose.Schema.Types.Mixed], default: [] },
+      unitBased: { type: [mongoose.Schema.Types.Mixed], default: [] },
+      footnotes: { type: [String], default: [] },
+      maxContributors: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    },
     // Consumo mensal oficial do sistema: soma de "Machine MSU Consumed".
     totalMsuConsumed: { type: Number, required: true },
     containersTotalMsu: Number,

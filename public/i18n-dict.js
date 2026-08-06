@@ -1169,3 +1169,30 @@ window.ZCD_PATTERNS.push(
   [/^mostrando (\d+) de ([\d.]+) modelo\(s\)$/, "mostrando $1 de $2 modelo(s)", "showing $1 of $2 model(s)"],
   [/^Falha ao consultar o LSPR: ([\s\S]*?)$/, "Error al consultar el LSPR: $1", "Failed to query LSPR: $1"]
 );
+
+/* Consumo zOTC: abas de produto do SCRT (seções E5 e P5) */
+Object.assign(window.ZCD_DICT, {
+  "Produtos (E5)": ["Productos (E5)", "Products (E5)"],
+  "Picos por produto (P5)": ["Picos por producto (P5)", "Peaks by product (P5)"],
+  "Seção E5 (PRODUCT SUMMARY INFORMATION) — produtos IPLA por MSU e por unidade":
+    ["Sección E5 (PRODUCT SUMMARY INFORMATION) — productos IPLA por MSU y por unidad",
+     "Section E5 (PRODUCT SUMMARY INFORMATION) — IPLA products by MSU and by unit"],
+  "Seção P5 (PRODUCT MAX CONTRIBUTORS) — pico de cada produto e a redução Mobile":
+    ["Sección P5 (PRODUCT MAX CONTRIBUTORS) — pico de cada producto y la reducción Mobile",
+     "Section P5 (PRODUCT MAX CONTRIBUTORS) — each product's peak and the Mobile reduction"],
+  "Produto": ["Producto", "Product"],
+  "Medida": ["Medida", "Measure"],
+  "Relatado pela ferramenta": ["Reportado por la herramienta", "Reported by the tool"],
+  "Informado pelo cliente": ["Informado por el cliente", "Reported by the customer"],
+  "Origem": ["Origen", "Source"],
+  "Notas": ["Notas", "Notes"],
+  "unidades": ["unidades", "units"],
+  "Maior (MSU)": ["Mayor (MSU)", "Highest (MSU)"],
+  "Redução Mobile (MSU)": ["Reducción Mobile (MSU)", "Mobile reduction (MSU)"],
+  "O SCRT deste mês não traz a seção ==E5 (PRODUCT SUMMARY INFORMATION). Ela só existe no formato Sub-Capacity/MVM — no Enterprise TFP (multiplex) a IBM não a emite.":
+    ["El SCRT de este mes no trae la sección ==E5 (PRODUCT SUMMARY INFORMATION). Solo existe en el formato Sub-Capacity/MVM — en Enterprise TFP (multiplex) IBM no la emite.",
+     "This month's SCRT has no ==E5 section (PRODUCT SUMMARY INFORMATION). It only exists in the Sub-Capacity/MVM format — IBM does not emit it for Enterprise TFP (multiplex)."],
+  "O SCRT deste mês não traz linhas na seção ==P5 (PRODUCT MAX CONTRIBUTORS). A IBM emite a seção vazia quando nenhum produto IPLA teve pico a reportar.":
+    ["El SCRT de este mes no trae líneas en la sección ==P5 (PRODUCT MAX CONTRIBUTORS). IBM emite la sección vacía cuando ningún producto IPLA tuvo pico que reportar.",
+     "This month's SCRT has no rows in the ==P5 section (PRODUCT MAX CONTRIBUTORS). IBM emits it empty when no IPLA product had a peak to report."],
+});

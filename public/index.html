@@ -225,16 +225,18 @@
             <span id="lpar-title">Consumo por LPAR</span>
             <button type="button" class="machine-chip hidden" id="lpar-machine-chip" title="Remover filtro de máquina"></button>
           </h2>
-          <p class="muted">Seção N7 (Total MSU Consumed por LPAR) e seção N5 (picos de 4HRA)</p>
+          <p class="muted" id="lpar-subtitle">Seção N7 (Total MSU Consumed por LPAR) e seção N5 (picos de 4HRA)</p>
         </div>
         <div class="lpar-controls">
-          <div class="segmented" role="group" aria-label="Visão das LPARs">
+          <div class="segmented" id="lpar-view-seg" role="group" aria-label="Visão das LPARs">
             <button type="button" class="seg-btn active" data-lpar-view="exploded">Explodida</button>
             <button type="button" class="seg-btn" data-lpar-view="grouped">Agrupada</button>
           </div>
           <div class="segmented" role="group" aria-label="Seção do SCRT">
             <button type="button" class="seg-btn active" data-lpar-tab="n7">Uso (N7)</button>
             <button type="button" class="seg-btn" data-lpar-tab="n5">Picos 4HRA (N5)</button>
+            <button type="button" class="seg-btn" data-lpar-tab="e5">Produtos (E5)</button>
+            <button type="button" class="seg-btn" data-lpar-tab="p5">Picos por produto (P5)</button>
           </div>
           <button type="button" class="btn btn-ghost btn-sm" data-requires-edit id="btn-manage-groups" title="Criar e editar grupos de LPARs">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="5.5" cy="4" r="1.8" fill="currentColor"/><circle cx="10.5" cy="8" r="1.8" fill="currentColor"/><circle cx="6.5" cy="12" r="1.8" fill="currentColor"/></svg>
@@ -254,6 +256,7 @@
       <p class="muted small hidden" id="lpar-groups-hint" style="padding-top: 10px;">
         Nenhum grupo definido ainda — use <strong>Grupos</strong> para agrupar LPARs (ex.: P0, P4, PC…).
       </p>
+      <p class="muted small hidden" id="lpar-footnotes" style="padding-top: 10px;"></p>
     </div>
 
   </div>

@@ -194,6 +194,75 @@ function parseLparSections(rows, machineIds) {
 }
 
 /**
+ * Seções de PRODUTO do SCRT:
+ *   ==E5  PRODUCT SUMMARY INFORMATION  -> IPLA por produto (MSU e não-MSU/unidades)
+ *   ==P5  PRODUCT MAX CONTRIBUTORS     -> pico de cada produto e a redução Mobile
+ *
+ * Só o formato Sub-Capacity/MVM (máquina única) traz essas seções; no Enterprise
+ * TFP (multiplex) elas não existem — daí devolver listas vazias sem reclamar.
+ *
+ * A E5 tem DUAS sub-tabelas separadas pelos próprios cabeçalhos: a de MSU e a de
+ * "non-MSU based" (unidades). O cabeçalho é o que marca a virada de uma para a
+ * outra, então ele não pode ser simplesmente descartado como ruído.
+ */
+function parseProductSections(rows) {
+  const msuBased = [];
+  const unitBased = [];
+  const footnotes = [];
+  const maxContributors = [];
+
+  let secao = null;
+  let sub = 'msu';
+  let emNotas = false;
+
+  for (const row of rows) {
+    const marker = sectionMarker(row);
+    if (marker) {
+      secao = (marker === 'E5' || marker === 'P5') ? marker : null;
+      sub = 'msu';
+      emNotas = false;
+      continue;
+    }
+    if (!secao) continue;
+
+    const c0 = String(row[0] || '').trim();
+    if (!c0) continue;
+    if (/^PRODUCT (SUMMARY INFORMATION|MAX CONTRIBUTORS)$/i.test(c0)) continue;
+
+    if (secao === 'E5') {
+      if (/^Footnotes:?$/i.test(c0)) { emNotas = true; continue; }
+      if (emNotas) { footnotes.push(c0); continue; }
+      // Cabeçalho: além de ser descartado, é ele que diz qual sub-tabela começa.
+      if (/^IPLA Product Name/i.test(c0)) { sub = /non-MSU/i.test(c0) ? 'unit' : 'msu'; continue; }
+      const reg = {
+        name: c0,
+        productId: String(row[1] || '').trim() || null,
+        toolValue: toNumber(row[2]),
+        customerValue: toNumber(row[3]),
+        comments: String(row[4] || '').trim() || null,
+        footnotes: String(row[5] || '').trim() || null,
+      };
+      // Linha sem nenhum número dos dois lados é resto de cabeçalho, não produto.
+      if (reg.toolValue === null && reg.customerValue === null) continue;
+      (sub === 'unit' ? unitBased : msuBased).push(reg);
+    } else {
+      if (/^Product Name$/i.test(c0)) continue;
+      const reg = {
+        name: c0,
+        productId: String(row[1] || '').trim() || null,
+        highestMsu: toNumber(row[2]),
+        highestAt: String(row[3] || '').trim() || null,
+        mobileMsuReduction: toNumber(row[6]),
+      };
+      if (reg.highestMsu === null && reg.mobileMsuReduction === null) continue;
+      maxContributors.push(reg);
+    }
+  }
+
+  return { msuBased, unitBased, footnotes, maxContributors };
+}
+
+/**
  * Faz o parse do buffer de um arquivo SCRT CSV.
  * @returns {object} dados estruturados do relatório
  * @throws {Error} se o arquivo não for reconhecido como SCRT
@@ -360,6 +429,8 @@ function parseScrt(buffer) {
 
   // ── LPARs (seções ==N5 e ==N7, uma ocorrência por máquina) ────────────────
   const { lpars, cpcChecks } = parseLparSections(rows, machineIds);
+  // ── Produtos (seções ==E5 e ==P5, só no formato Sub-Capacity) ─────────────
+  const produtos = parseProductSections(rows);
   for (const check of cpcChecks) {
     const machine = machines.find((m) => m.identifier === check.machine);
     if (machine && machine.msuConsumed != null && check.totalMsu != null && check.totalMsu !== machine.msuConsumed) {
@@ -403,6 +474,7 @@ function parseScrt(buffer) {
     machines,
     containers,
     lpars,
+    products: produtos,
     totalMsuConsumed,
     containersTotalMsu: containers.length > 0 ? containersTotalMsu : null,
     warnings,
@@ -457,4 +529,4 @@ function combineReports(list) {
   };
 }
 
-module.exports = { parseScrt, parseCsvLine, parseReportingPeriod, decodeBuffer, parseLparSections, combineReports };
+module.exports = { parseScrt, parseCsvLine, parseReportingPeriod, decodeBuffer, parseLparSections, parseProductSections, combineReports };

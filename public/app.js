@@ -1414,6 +1414,74 @@ function lparToGroupMap() {
 
 const groupBadge = '<span class="tag tag-group">grupo</span> ';
 
+/*
+ * Abas de PRODUTO do mesmo card (seções ==E5 e ==P5 do SCRT).
+ *
+ * Elas não são por LPAR, são por produto — então "Explodida/Agrupada" e "Grupos"
+ * não fazem sentido aqui e somem. A origem (SCN/SIG…) fica em cada linha porque
+ * o mesmo produto vem com número diferente em cada SCRT do mês, e somar os dois
+ * seria inventar um valor que não está em relatório nenhum.
+ *
+ * Só o formato Sub-Capacity/MVM traz essas seções; no Enterprise TFP (multiplex,
+ * como BB e CAIXA) elas não existem, e a mensagem de vazio diz isso.
+ */
+function renderProdutosTab(report) {
+  const pr = report.products || {};
+  const varias = (report.sources || []).length > 1;
+  const thead = $('lpar-thead');
+  const tbody = $('lpar-tbody');
+  const emptyEl = $('lpar-empty');
+  const notasEl = $('lpar-footnotes');
+  const col = (t, extra = '') => `<th${extra}>${t}</th>`;
+
+  let linhas = [];
+  if (state.lparTab === 'e5') {
+    $('lpar-subtitle').textContent = 'Seção E5 (PRODUCT SUMMARY INFORMATION) — produtos IPLA por MSU e por unidade';
+    thead.innerHTML = `<tr>
+      ${col('Produto')}${col('PID')}${col('Medida')}
+      ${col('Relatado pela ferramenta', ' class="num"')}${col('Informado pelo cliente', ' class="num"')}
+      ${varias ? col('Origem') : ''}${col('Notas')}
+    </tr>`;
+    const linha = (x, medida) => `
+      <tr>
+        <td><strong>${esc(x.name)}</strong></td>
+        <td>${esc(x.productId || '–')}</td>
+        <td><span class="tag">${medida}</span></td>
+        <td class="num"><strong>${fmt(x.toolValue)}</strong></td>
+        <td class="num">${x.customerValue == null ? '<span class="muted">–</span>' : fmt(x.customerValue)}</td>
+        ${varias ? `<td class="small muted">${esc(x.source || '–')}</td>` : ''}
+        <td class="small muted">${esc(x.footnotes || x.comments || '')}</td>
+      </tr>`;
+    linhas = (pr.msuBased || []).map((x) => linha(x, 'MSU'))
+      .concat((pr.unitBased || []).map((x) => linha(x, 'unidades')));
+    notasEl.innerHTML = (pr.footnotes || []).map(esc).join('<br>');
+    notasEl.classList.toggle('hidden', !(pr.footnotes || []).length);
+  } else {
+    $('lpar-subtitle').textContent = 'Seção P5 (PRODUCT MAX CONTRIBUTORS) — pico de cada produto e a redução Mobile';
+    thead.innerHTML = `<tr>
+      ${col('Produto')}${col('PID')}${col('Maior (MSU)', ' class="num"')}${col('Quando')}
+      ${col('Redução Mobile (MSU)', ' class="num"')}${varias ? col('Origem') : ''}
+    </tr>`;
+    linhas = (pr.maxContributors || []).map((x) => `
+      <tr>
+        <td><strong>${esc(x.name)}</strong></td>
+        <td>${esc(x.productId || '–')}</td>
+        <td class="num"><strong>${fmt(x.highestMsu)}</strong></td>
+        <td class="small muted">${esc(x.highestAt || '–')}</td>
+        <td class="num">${x.mobileMsuReduction == null ? '<span class="muted">–</span>' : fmt(x.mobileMsuReduction)}</td>
+        ${varias ? `<td class="small muted">${esc(x.source || '–')}</td>` : ''}
+      </tr>`);
+    notasEl.classList.add('hidden');
+  }
+
+  tbody.innerHTML = linhas.join('');
+  emptyEl.classList.toggle('hidden', linhas.length > 0);
+  emptyEl.textContent = state.lparTab === 'e5'
+    ? 'O SCRT deste mês não traz a seção ==E5 (PRODUCT SUMMARY INFORMATION). Ela só existe no formato Sub-Capacity/MVM — no Enterprise TFP (multiplex) a IBM não a emite.'
+    : 'O SCRT deste mês não traz linhas na seção ==P5 (PRODUCT MAX CONTRIBUTORS). A IBM emite a seção vazia quando nenhum produto IPLA teve pico a reportar.';
+  $('lpar-groups-hint').classList.add('hidden');
+}
+
 function renderLparCard() {
   const report = state.reportDetail;
   if (!report) return;
@@ -1424,6 +1492,15 @@ function renderLparCard() {
   const chip = $('lpar-machine-chip');
   chip.classList.toggle('hidden', !filter);
   if (filter) chip.innerHTML = `Máquina ${esc(filter)}${ICON_CLOSE}`;
+
+  // Explodida/Agrupada e Grupos são conceitos de LPAR: somem nas abas de produto.
+  const ehProduto = state.lparTab === 'e5' || state.lparTab === 'p5';
+  $('lpar-view-seg').classList.toggle('hidden', ehProduto);
+  const btnGrupos = $('btn-manage-groups');
+  if (btnGrupos) btnGrupos.classList.toggle('hidden', ehProduto);
+  if (ehProduto) return renderProdutosTab(report);
+  $('lpar-subtitle').textContent = 'Seção N7 (Total MSU Consumed por LPAR) e seção N5 (picos de 4HRA)';
+  $('lpar-footnotes').classList.add('hidden');
 
   const byMachine = (l) => !filter || l.machine === filter;
   // Ordem padrão: maior consumo/pico primeiro; o clique no cabeçalho sobrepõe.

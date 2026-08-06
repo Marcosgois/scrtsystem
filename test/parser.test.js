@@ -252,5 +252,80 @@ check('divergência entre containers e máquinas gera warning', () => {
   assert.ok(p.warnings[0].includes('difere'));
 });
 
+/* ── Seções de produto (==E5 / ==P5) ───────────────────────────────────────
+   Só o formato Sub-Capacity/MVM as traz. O que precisa ficar travado: a E5 tem
+   DUAS sub-tabelas (MSU e unidades) separadas pelos próprios cabeçalhos — ler o
+   cabeçalho como produto, ou ignorá-lo, joga as unidades na tabela de MSU e o
+   número vira mentira. */
+const { parseProductSections } = require('../src/scrtParser');
+const linhasE5P5 = [
+  '"==E5==============================================================="',
+  '"PRODUCT SUMMARY INFORMATION"',
+  '""',
+  '"IPLA Product Name","IPLA Product ID","Tool MSUs","Customer MSUs","Customer Comments (255 chars max)","Footnotes"',
+  '""',
+  '"z/OS Unreduced","(All)",1343',
+  '""',
+  '"IPLA Product Name - non-MSU based","IPLA Product ID","Tool Units","Customer Units","Customer Comments (255 chars max)","Footnotes"',
+  '""',
+  '"IBM Container Hosting Foundation for z/OS","5655-HZ1",1,"","","(n2)"',
+  '""',
+  '"Footnotes:"',
+  '"(n2) Product is enabled on this CPC"',
+  '"==P5==============================================================="',
+  '"PRODUCT MAX CONTRIBUTORS"',
+  '"","","","","","","Mobile MSU"',
+  '"Product Name","Product ID","Highest","Date/Time","","","Reduction"',
+  '"IBM CICS TS","5655-YA1",412,"06 Jul 2026 - 17:00","","",25',
+  '"==Q5==============================================================="',
+  '"PRODUCT GRID SNAPSHOT"',
+  '"Product Name","Product ID","","",""',
+].map((l) => parseCsvLine(l, ','));
+
+check('E5: separa produtos por MSU dos por unidade (o cabeçalho é quem vira a chave)', () => {
+  const r = parseProductSections(linhasE5P5);
+  assert.strictEqual(r.msuBased.length, 1);
+  assert.strictEqual(r.msuBased[0].name, 'z/OS Unreduced');
+  assert.strictEqual(r.msuBased[0].toolValue, 1343);
+  assert.strictEqual(r.unitBased.length, 1);
+  assert.strictEqual(r.unitBased[0].productId, '5655-HZ1');
+  assert.strictEqual(r.unitBased[0].toolValue, 1);
+  assert.strictEqual(r.unitBased[0].footnotes, '(n2)');
+});
+
+check('E5: notas de rodapé saem da tabela de produtos', () => {
+  const r = parseProductSections(linhasE5P5);
+  assert.deepStrictEqual(r.footnotes, ['(n2) Product is enabled on this CPC']);
+});
+
+check('P5: lê o pico e a redução Mobile, e a seção seguinte não vaza', () => {
+  const r = parseProductSections(linhasE5P5);
+  assert.strictEqual(r.maxContributors.length, 1);
+  assert.strictEqual(r.maxContributors[0].highestMsu, 412);
+  assert.strictEqual(r.maxContributors[0].mobileMsuReduction, 25);
+  assert.ok(!r.maxContributors.some((x) => /GRID|Product Name/i.test(x.name)));
+});
+
+check('SCRT sem E5/P5 (multiplex) devolve listas vazias, sem estourar', () => {
+  const r = parseProductSections(['"==N7===="', '"P0",100,50,"x","z/OS"'].map((l) => parseCsvLine(l, ',')));
+  assert.deepStrictEqual(r.msuBased, []);
+  assert.deepStrictEqual(r.maxContributors, []);
+});
+
+check('BRB real: o parse do arquivo inteiro traz a E5 preenchida e a P5 vazia', () => {
+  const r = parseScrt(fs.readFileSync(BRB_SAMPLE));
+  assert.strictEqual(r.products.msuBased.length, 1);
+  assert.strictEqual(r.products.msuBased[0].name, 'z/OS Unreduced');
+  assert.ok(r.products.msuBased[0].toolValue > 0);
+  assert.strictEqual(r.products.unitBased.length, 1);
+  assert.deepStrictEqual(r.products.maxContributors, []);   // a IBM emite a P5 vazia
+});
+
+check('BB real (multiplex): não tem as seções de produto', () => {
+  const r = parseScrt(fs.readFileSync(BB_SAMPLE));
+  assert.deepStrictEqual(r.products.msuBased, []);
+  assert.deepStrictEqual(r.products.unitBased, []);
+});
+
 console.log(failures === 0 ? '\nTODOS OS TESTES DO PARSER PASSARAM' : `\n${failures} TESTE(S) FALHARAM`);
 process.exit(failures === 0 ? 0 : 1);
