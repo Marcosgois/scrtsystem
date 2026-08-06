@@ -7,7 +7,8 @@
 
 const express = require('express');
 const mongoose = require('mongoose');
-const { User, ScrtReport, AuditLog, MachineLifecycle } = require('./models');
+const { User, ScrtReport, AuditLog, MachineLifecycle, Region, Client } = require('./models');
+const regioes = require('./regions');
 const auth = require('./auth');
 const log = require('./logger');
 const audit = require('./audit');
@@ -60,6 +61,17 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
+/* Painel gerencial: gerente OU admin. Usuário comum não entra — a visão por
+   região agrega clientes de vários donos e é coisa de gestão. */
+function requireManager(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Faça login para continuar.' });
+  if (!['admin', 'manager'].includes(req.user.role)) {
+    log.auth.negado(req, 'exige gerente ou administrador');
+    return res.status(403).json({ error: 'Apenas gerentes e administradores.' });
+  }
+  next();
+}
+
 const deny = (res, req, motivo) => {
   if (req) {
     log.auth.negado(req, motivo || 'sem acesso ao cliente');
@@ -463,4 +475,64 @@ adminRouter.delete('/lifecycle/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-module.exports = { attachUser, requireAuth, requireAdmin, clientAccessGuard, authRouter, adminRouter };
+/* ── Regiões (só admin cadastra; o painel em si é gerente+admin) ────────────── */
+adminRouter.get('/regions', asyncHandler(async (req, res) => {
+  const [regions, clients] = await Promise.all([
+    Region.find().sort({ name: 1 }).lean(),
+    Client.find().select('name region').sort({ name: 1 }).lean(),
+  ]);
+  res.json({ regions, arvore: regioes.montarArvore(regions, clients), clients });
+}));
+
+adminRouter.post('/regions', asyncHandler(async (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim();
+  if (!name) return res.status(400).json({ error: 'Informe o nome da região.' });
+  const parent = req.body.parent && isValidId(req.body.parent) ? req.body.parent : null;
+  if (parent && !(await Region.exists({ _id: parent }))) return res.status(422).json({ error: 'Região pai inexistente.' });
+  if (await Region.findOne({ name })) return res.status(409).json({ error: `Já existe a região "${name}".` });
+  res.status(201).json(await Region.create({ name, parent, notes: String(req.body.notes || '') }));
+}));
+
+adminRouter.put('/regions/:id', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const set = {};
+  const b = req.body || {};
+  if (b.name !== undefined) {
+    const name = String(b.name).trim();
+    if (!name) return res.status(400).json({ error: 'O nome não pode ficar vazio.' });
+    const outro = await Region.findOne({ name, _id: { $ne: req.params.id } });
+    if (outro) return res.status(409).json({ error: `Já existe a região "${name}".` });
+    set.name = name;
+  }
+  if (b.parent !== undefined) {
+    const parent = b.parent && isValidId(b.parent) ? String(b.parent) : null;
+    if (parent && !(await Region.exists({ _id: parent }))) return res.status(422).json({ error: 'Região pai inexistente.' });
+    // Recusa o ciclo ANTES de gravar: com pai circular, todo percurso da
+    // hierarquia teria de aparar o laço em vez de simplesmente funcionar.
+    const todas = await Region.find().lean();
+    const erro = regioes.validarPai(todas, req.params.id, parent);
+    if (erro) return res.status(422).json({ error: erro });
+    set.parent = parent;
+  }
+  if (b.notes !== undefined) set.notes = String(b.notes || '');
+  const doc = await Region.findByIdAndUpdate(req.params.id, { $set: set }, { new: true }).lean();
+  if (!doc) return res.status(404).json({ error: 'Região não encontrada.' });
+  res.json(doc);
+}));
+
+adminRouter.delete('/regions/:id', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  // Recusa em vez de apagar em cascata: excluir uma região não pode silenciosamente
+  // desagrupar clientes nem órfãos as filhas.
+  const [filhas, clientes] = await Promise.all([
+    Region.countDocuments({ parent: req.params.id }),
+    Client.countDocuments({ region: req.params.id }),
+  ]);
+  if (filhas) return res.status(422).json({ error: `Essa região tem ${filhas} região(ões) dentro dela. Mova ou exclua antes.` });
+  if (clientes) return res.status(422).json({ error: `Essa região tem ${clientes} cliente(s). Mova-os para outra região antes.` });
+  const doc = await Region.findByIdAndDelete(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Região não encontrada.' });
+  res.json({ ok: true });
+}));
+
+module.exports = { attachUser, requireAuth, requireAdmin, requireManager, clientAccessGuard, authRouter, adminRouter };

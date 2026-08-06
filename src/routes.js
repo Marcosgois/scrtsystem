@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, LsprModel,
-  Contract, MigrationEvent,
+  Contract, MigrationEvent, Region,
 } = require('./models');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
@@ -389,6 +389,16 @@ router.patch('/clients/:id', asyncHandler(async (req, res) => {
     const name = String(req.body.name).trim();
     if (!name) return res.status(400).json({ error: 'Nome não pode ser vazio.' });
     update.name = name;
+  }
+  // Região do cliente (no máximo uma — ver regionSchema). Vazio desagrupa.
+  if (req.body.region !== undefined) {
+    const r = req.body.region;
+    if (!r) update.region = null;
+    else if (!isValidId(r)) return res.status(400).json({ error: 'Região inválida.' });
+    else {
+      if (!(await Region.exists({ _id: r }))) return res.status(422).json({ error: 'Região inexistente.' });
+      update.region = r;
+    }
   }
   if (req.body.monthlyBaselineMsu !== undefined) {
     const baseline = parseBaseline(req.body.monthlyBaselineMsu);
@@ -2435,3 +2445,12 @@ router.delete('/clients/:id/infra/lpars/:lparId', asyncHandler(async (req, res) 
 }));
 
 module.exports = router;
+/*
+ * Reaproveitados pelo painel gerencial (src/regional.js). São exportados em vez
+ * de copiados de propósito: o consumo faturável de um recorte de clientes TEM de
+ * ser calculado exatamente como na tela individual — mesma fusão mensal e mesma
+ * regra de tag ignorada. Uma segunda implementação divergiria, e o painel perderia
+ * a credibilidade na primeira conferência.
+ */
+module.exports.mergeByMonth = mergeByMonth;
+module.exports.tagContextOf = tagContextOf;

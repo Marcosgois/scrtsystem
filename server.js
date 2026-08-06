@@ -6,7 +6,7 @@ const express = require('express');
 const { connectDb } = require('./src/db');
 const { startLocalMongo, stopLocalMongo } = require('./src/localDb');
 const apiRoutes = require('./src/routes');
-const { attachUser, requireAuth, requireAdmin, clientAccessGuard, authRouter, adminRouter } = require('./src/authRoutes');
+const { attachUser, requireAuth, requireAdmin, requireManager, clientAccessGuard, authRouter, adminRouter } = require('./src/authRoutes');
 const { sessionUserId } = require('./src/auth');
 const { User } = require('./src/models');
 
@@ -79,6 +79,7 @@ app.use('/api/auth', authRouter);                   // público: status/setup/lo
 app.use('/api', requireAuth);                       // o resto exige login
 app.use('/api', require('./src/audit').middleware); // trilha de auditoria das mutações
 app.use('/api/admin', requireAdmin, adminRouter);   // administração de usuários
+app.use('/api/regional', requireManager, require('./src/regionalRoutes')); // painel gerencial
 app.use('/api', clientAccessGuard);                 // acesso por cliente (view/edit)
 app.use('/api', apiRoutes);                          // rotas existentes dos módulos
 
