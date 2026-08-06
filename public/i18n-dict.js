@@ -1196,3 +1196,8 @@ Object.assign(window.ZCD_DICT, {
     ["El SCRT de este mes no trae líneas en la sección ==P5 (PRODUCT MAX CONTRIBUTORS). IBM emite la sección vacía cuando ningún producto IPLA tuvo pico que reportar.",
      "This month's SCRT has no rows in the ==P5 section (PRODUCT MAX CONTRIBUTORS). IBM emits it empty when no IPLA product had a peak to report."],
 });
+
+/* zOTC: a identidade da máquina na tela é o serial */
+Object.assign(window.ZCD_DICT, {
+  "serial": ["serial", "serial"],
+});

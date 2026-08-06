@@ -453,7 +453,7 @@
           </div>
 
           ${d.scrtMachine ? `<div class="card"><div class="card-header"><h2>No SCRT · ${esc(d.scrtPeriodLabel || '')}</h2>
-            <p class="muted small">identificador ${esc(d.scrtMachine.identifier)} · type-model ${esc(d.scrtMachine.typeModel || '—')}</p></div>
+            <p class="muted small">serial ${esc(d.scrtMachine.serialNumber || d.scrtMachine.identifier)} · type-model ${esc(d.scrtMachine.typeModel || '—')}</p></div>
             <div class="cap-delta">
               <span>Consumido: <b>${fmt(d.scrtMachine.msuConsumed)} MSU</b></span>
               <span>Capacidade nominal: <b>${fmt(d.scrtMachine.ratedCapacityMsus)} MSU</b></span>

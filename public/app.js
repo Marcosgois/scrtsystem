@@ -579,6 +579,36 @@ function renderUploadResult(results, clientName) {
   wireUploadTagging();
 }
 
+/*
+ * Identidade da máquina NA TELA é o SERIAL (ex.: 82-C5DC8), igual em todos os
+ * clientes.
+ *
+ * O `identifier` continua sendo a chave interna — é ele que liga LPAR -> máquina,
+ * está no data-machine das linhas e vem gravado assim no histórico. Acontece que
+ * no Enterprise TFP (CAIXA, BB) o identifier é o código do multiplex ("M1C1"),
+ * que não diz nada para quem lê o relatório; no Sub-Capacity (BRB, SANTANDER) os
+ * dois já são a mesma coisa. Trocar só a exibição resolve para todos os meses já
+ * carregados, sem migrar nada nem mexer na regra de merge por serial.
+ */
+function machineLabel(m) {
+  return (m && (m.serialNumber || m.identifier)) || '–';
+}
+
+/** identifier -> serial, para as tabelas que só têm o identifier (LPARs). */
+function machineSerials(report) {
+  const map = new Map();
+  for (const m of ((report && report.machines) || [])) {
+    map.set(m.identifier, m.serialNumber || m.identifier);
+  }
+  return map;
+}
+
+/** Serial de uma máquina a partir do identifier, dada a lista de máquinas. */
+function serialDaMaquina(machines, id) {
+  const m = (machines || []).find((x) => x.identifier === id);
+  return (m && (m.serialNumber || m.identifier)) || id || '–';
+}
+
 // Máquinas distintas (por serial) dos SCRTs recém-enviados.
 function uploadMachines(results) {
   const seen = new Map();
@@ -605,7 +635,7 @@ function uploadTaggingHtml(results) {
       .concat(defs.map((d) => `<option value="${esc(d.name)}"${cur === d.name ? ' selected' : ''}>${esc(d.name)}${d.ignored ? ' · ignora' : ''}</option>`))
       .join('');
     return `<div class="upload-tag-row">
-      <span><strong>${esc(m.identifier)}</strong> <span class="muted small">${esc(m.serial)}</span></span>
+      <span><strong>${esc(m.serial)}</strong>${m.identifier && m.identifier !== m.serial ? ` <span class="muted small">${esc(m.identifier)}</span>` : ''}</span>
       <select class="tag-select upload-tag-select" data-serial="${esc(m.serial)}">${options}</select>
     </div>`;
   }).join('');
@@ -1264,12 +1294,12 @@ function renderMachines() {
       .join('');
     return `
       <tr data-machine="${esc(m.identifier)}" class="${selected ? 'selected' : ''}${m.ignored ? ' machine-ignored' : ''}"
-          title="${selected ? `Remover filtro da máquina ${esc(m.identifier)}` : `Filtrar LPARs da máquina ${esc(m.identifier)}`}">
-        <td><strong>${esc(m.identifier)}</strong>${m.serialNumber ? `<div class="small muted">${esc(m.serialNumber)}</div>` : ''}</td>
+          title="${selected ? `Remover filtro da máquina ${esc(machineLabel(m))}` : `Filtrar LPARs da máquina ${esc(machineLabel(m))}`}">
+        <td><strong>${esc(machineLabel(m))}</strong>${m.serialNumber && m.serialNumber !== m.identifier ? `<div class="small muted">${esc(m.identifier)}</div>` : ''}</td>
         <td>${esc(m.typeModel || '–')}</td>
         <td class="tag-cell">
           <select class="tag-select${ignored.has(m.tag) ? ' ignored' : ''}" data-serial="${esc(m.serialNumber || m.identifier)}"
-                  aria-label="Tag da máquina ${esc(m.identifier)}">${options}</select>
+                  aria-label="Tag da máquina ${esc(machineLabel(m))}">${options}</select>
         </td>
         <td class="num">${fmt(m.ratedCapacityMsus)}</td>
         <td class="num">${fmt(m.peakUtilizationMsus)}</td>
@@ -1486,12 +1516,15 @@ function renderLparCard() {
   const report = state.reportDetail;
   if (!report) return;
   const lpars = report.lpars || [];
+  // A LPAR guarda o identifier da máquina; na tela mostramos o serial.
+  const serialDe = machineSerials(report);
+  const rotuloMaquina = (id) => serialDe.get(id) || id || '–';
   const filter = state.machineFilter;
   $('lpar-title').textContent = `Consumo por LPAR · ${report.periodLabel}`;
 
   const chip = $('lpar-machine-chip');
   chip.classList.toggle('hidden', !filter);
-  if (filter) chip.innerHTML = `Máquina ${esc(filter)}${ICON_CLOSE}`;
+  if (filter) chip.innerHTML = `Máquina ${esc(rotuloMaquina(filter))}${ICON_CLOSE}`;
 
   // Explodida/Agrupada e Grupos são conceitos de LPAR: somem nas abas de produto.
   const ehProduto = state.lparTab === 'e5' || state.lparTab === 'p5';
@@ -1531,7 +1564,7 @@ function renderLparCard() {
   const emptyEl = $('lpar-empty');
   emptyEl.classList.toggle('hidden', rows.length > 0);
   emptyEl.textContent = filter && lpars.length > 0
-    ? `A máquina ${filter} não tem LPARs com dados nesta seção do SCRT.`
+    ? `A máquina ${rotuloMaquina(filter)} não tem LPARs com dados nesta seção do SCRT.`
     : 'O SCRT deste mês não traz as seções de LPAR (N5/N7).';
   $('lpar-groups-hint').classList.toggle('hidden', !(grouped && groups.length === 0 && rows.length > 0));
 
@@ -1560,7 +1593,7 @@ function renderLparCard() {
     const lparRow = (l, cls = '') => `
       <tr${cls ? ` class="${cls}"` : ''}>
         <td><strong>${esc(l.name)}</strong></td>
-        <td>${esc(l.machine || '–')}</td>
+        <td>${esc(rotuloMaquina(l.machine))}</td>
         <td>${esc(l.os || '–')}</td>
         <td class="num"><strong>${fmt(l.msuConsumed)}</strong></td>
         <td class="num">${pctCell(l.msuConsumed)}</td>
@@ -1576,7 +1609,7 @@ function renderLparCard() {
         if (!members.length) return null;
         const sum = members.reduce((a, l) => a + l.msuConsumed, 0);
         const topPeak = members.reduce((best, l) => (l.peakHourMsu > (best?.peakHourMsu ?? -1) ? l : best), null);
-        const machines = [...new Set(members.map((m) => m.machine))];
+        const machines = [...new Set(members.map((m) => rotuloMaquina(m.machine)))];
         const oses = [...new Set(members.map((m) => m.os).filter(Boolean))];
         const open = state.expandedGroups.has(g.name);
         return {
@@ -1617,7 +1650,7 @@ function renderLparCard() {
     const lparRow = (l, cls = '') => `
       <tr${cls ? ` class="${cls}"` : ''}>
         <td><strong>${esc(l.name)}</strong></td>
-        <td>${esc(l.machine || '–')}</td>
+        <td>${esc(rotuloMaquina(l.machine))}</td>
         <td class="num"><strong>${fmt(l.peak4hraMsu)}</strong></td>
         <td class="small muted">${esc(l.peak4hraAt || '–')}</td>
         <td class="num">${fmt(l.secondPeak4hraMsu)}</td>
@@ -1639,7 +1672,7 @@ function renderLparCard() {
           html: `
           <tr class="group-row" data-group="${esc(g.name)}" title="Clique para ${open ? 'recolher' : 'ver'} as LPARs do grupo">
             <td><span class="chev ${open ? 'open' : ''}">${ICON_CHEVRON}</span>${groupBadge}<strong>${esc(g.name)}</strong> <span class="muted small">(${members.length} LPARs)</span></td>
-            <td>${esc([...new Set(members.map((m) => m.machine))].length === 1 ? members[0].machine : `${[...new Set(members.map((m) => m.machine))].length} máquinas`)}</td>
+            <td>${esc([...new Set(members.map((m) => m.machine))].length === 1 ? rotuloMaquina(members[0].machine) : `${[...new Set(members.map((m) => m.machine))].length} máquinas`)}</td>
             <td class="num"><strong>${fmt(first.peak4hraMsu)}</strong> <span class="muted small">(${esc(first.name)})</span></td>
             <td class="small muted">${esc(first.peak4hraAt || '–')}</td>
             <td class="num">${second ? `${fmt(second.peak4hraMsu)} <span class="muted small">(${esc(second.name)})</span>` : '–'}</td>
@@ -1936,8 +1969,8 @@ function renderCompare() {
   const maxAbs = Math.max(1, ...c.machines.map((m) => Math.abs(m.delta)));
   $('compare-machines-tbody').innerHTML = sortRows('compareMachines', c.machines).map((m) => `
     <tr data-machine="${esc(m.identifier)}" class="${state.compareMachine === m.identifier ? 'selected' : ''}"
-        title="Ver as LPARs da máquina ${esc(m.identifier)}">
-      <td><strong>${esc(m.identifier)}</strong>${statusTag(m.status)}
+        title="Ver as LPARs da máquina ${esc(machineLabel(m))}">
+      <td><strong>${esc(machineLabel(m))}</strong>${statusTag(m.status)}
         ${m.typeModel ? `<div class="small muted">${esc(m.typeModel)}</div>` : ''}</td>
       <td class="num">${fmt(m.baseMsu)}</td>
       <td class="num">${fmt(m.targetMsu)}</td>
@@ -1982,12 +2015,13 @@ function contribCell(contribPct) {
 function renderCompareLpars() {
   const c = state.compare;
   const filter = state.compareMachine;
+  const rotuloMaquina = (id) => serialDaMaquina(c && c.machines, id);
 
   const chip = $('compare-machine-chip');
   chip.classList.toggle('hidden', !filter);
-  if (filter) chip.innerHTML = `Máquina ${esc(filter)}${ICON_CLOSE}`;
+  if (filter) chip.innerHTML = `Máquina ${esc(rotuloMaquina(filter))}${ICON_CLOSE}`;
   $('compare-lpar-title').textContent = filter
-    ? `Por LPAR · máquina ${filter}`
+    ? `Por LPAR · máquina ${rotuloMaquina(filter)}`
     : 'Por LPAR · todas as máquinas';
 
   $('compare-lpar-unavailable').classList.toggle('hidden', c.lparDetailAvailable);
@@ -1999,7 +2033,7 @@ function renderCompareLpars() {
   $('compare-lpars-tbody').innerHTML = rows.map((l) => `
     <tr>
       <td><strong>${esc(l.name)}</strong>${statusTag(l.status)}</td>
-      <td>${esc(l.machine || '–')}</td>
+      <td>${esc(rotuloMaquina(l.machine))}</td>
       <td class="num">${fmt(l.baseMsu)}</td>
       <td class="num">${fmt(l.targetMsu)}</td>
       <td class="num">${deltaCell(l.delta, l.deltaPct, maxAbs)}</td>
