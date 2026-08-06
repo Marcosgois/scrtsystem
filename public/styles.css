@@ -1566,3 +1566,22 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
   .af-actions { margin-left: 0; width: 100%; }
   .af-actions .btn { flex: 1; }
 }
+
+/* ── Painel gerencial: árvore de regiões ─────────────────────────────────── */
+/* O item da nav só aparece para gerente/admin (auth-client marca is-manager).
+   O servidor também barra a página e a API — isto é só para não mostrar caminho
+   que a pessoa não pode seguir. */
+body:not(.is-manager) [data-requires-manager] { display: none !important; }
+
+.region-tree { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+.region-node {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px; border: 1px solid transparent; border-radius: var(--radius);
+  background: none; font-family: var(--font); font-size: 13px; color: var(--ink);
+  cursor: pointer; text-align: left; width: 100%; transition: background .12s ease, border-color .12s ease;
+}
+.region-node:hover { background: var(--surface-hover); }
+.region-node.active { background: var(--primary-light); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.region-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.region-count { font-size: 11px; color: var(--ink-secondary); flex: none; }
+.region-node.active .region-count { color: var(--primary); }

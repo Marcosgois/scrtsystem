@@ -28,7 +28,15 @@ function session() {
     let body = null; try { body = JSON.parse(text); } catch { body = text; }
     return { status: res.status, body, headers: res.headers };
   };
-  return { req };
+  // Página HTML (fora do /api do BASE). `redirect: 'manual'` é o ponto: sem ele o
+  // fetch seguiria o 302 e devolveria 200 da tela de login, escondendo o bloqueio.
+  const page = async (pathname) => {
+    const res = await fetch(`http://127.0.0.1:${PORT}${pathname}`, {
+      headers: cookie ? { Cookie: cookie } : {}, redirect: 'manual',
+    });
+    return res.status;
+  };
+  return { req, page };
 }
 
 async function main() {
@@ -125,6 +133,24 @@ async function main() {
   await gerenteEdit.req('/auth/login', { method: 'POST', json: { email: 'gui@x.com', password: 'gui12345678' } });
   const editOk = await gerenteEdit.req(`/clients/${novo._id}`, { method: 'PATCH', json: { monthlyBaselineMsu: 7 } });
   check('gerente COM concessão de edição consegue editar', editOk.status === 200, editOk.status);
+
+  // ── Páginas com restrição de PAPEL: o caminho .html não pode furar o guarda ──
+  // O painel gerencial e a administração são as duas telas que dependem do papel.
+  // Servir /regional.html direto do estático entregaria a casca da tela para
+  // qualquer pessoa logada.
+  await admin.req('/admin/users', { method: 'POST', json: { name: 'Comum', email: 'comum@x.com', password: 'comum1234567', role: 'user', access: [] } });
+  const comum = session();
+  await comum.req('/auth/login', { method: 'POST', json: { email: 'comum@x.com', password: 'comum1234567' } });
+
+  check('usuário comum é barrado em /regional.html (302)', (await comum.page('/regional.html')) === 302);
+  check('usuário comum é barrado em /admin.html (302)', (await comum.page('/admin.html')) === 302);
+  check('gerente abre /regional.html (200)', (await gerente.page('/regional.html')) === 200);
+  check('gerente NÃO abre /admin.html (302)', (await gerente.page('/admin.html')) === 302);
+  check('admin abre as duas', (await admin.page('/regional.html')) === 200 && (await admin.page('/admin.html')) === 200);
+  const gerenteApi = await gerente.req('/regional/regions');
+  check('gerente lê a API do painel (200)', gerenteApi.status === 200, gerenteApi.status);
+  const comumApi = await comum.req('/regional/regions');
+  check('usuário comum NÃO lê a API do painel (403)', comumApi.status === 403, comumApi.status);
 
   // Rebaixar o último admin para gerente não pode passar (deixaria o sistema sem admin).
   const eu = (await admin.req('/auth/me')).body;

@@ -155,6 +155,9 @@
     await loadMe();
     if (!me) return; // o page-guard do servidor já redireciona; nada a montar
     document.body.classList.toggle('is-admin', me.role === 'admin');
+    // Gerente E admin veem o painel gerencial; o CSS esconde [data-requires-manager]
+    // de quem não é. O servidor também barra a página e a API — isto é só a nav.
+    document.body.classList.toggle('is-manager', ['admin', 'manager'].includes(me.role));
     renderMenu();
     await loadLevels();
     applyViewOnly();

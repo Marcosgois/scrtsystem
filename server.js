@@ -93,6 +93,14 @@ const adminPageGuard = async (req, res, next) => {
   if (u.role !== 'admin') return res.redirect('/consumo');
   next();
 };
+// Painel gerencial: gerente OU admin.
+const managerPageGuard = async (req, res, next) => {
+  const uid = sessionUserId(req);
+  const u = uid ? await User.findById(uid).select('role').lean().catch(() => null) : null;
+  if (!u) return res.redirect('/login');
+  if (!['admin', 'manager'].includes(u.role)) return res.redirect('/consumo');
+  next();
+};
 
 // Configuração que o front precisa conhecer, vinda do ambiente. Sem cache: mudar a
 // variável no servidor e reiniciar já vale no próximo carregamento.
@@ -109,10 +117,17 @@ app.get('/mlc', pageGuard, sendPage('mlc.html'));
 app.get('/inventario', pageGuard, sendPage('inventario.html'));
 app.get('/infra', pageGuard, sendPage('infra.html'));
 app.get('/contratos', pageGuard, sendPage('contratos.html'));
+app.get('/regional', managerPageGuard, sendPage('regional.html'));
 app.get('/admin', adminPageGuard, sendPage('admin.html'));
 
-// Bloqueia acesso direto aos HTMLs protegidos pelo estático.
-const PROTECTED_HTML = new Set(['/index.html', '/mlc.html', '/inventario.html', '/infra.html', '/contratos.html', '/admin.html']);
+// As duas páginas com restrição de PAPEL precisam do mesmo guarda no caminho
+// .html: sem isso, /regional.html e /admin.html entregam a casca da tela para
+// qualquer pessoa logada (a API barra os dados, mas a tela não deveria abrir).
+app.get('/regional.html', managerPageGuard, sendPage('regional.html'));
+app.get('/admin.html', adminPageGuard, sendPage('admin.html'));
+
+// Bloqueia acesso direto aos demais HTMLs protegidos pelo estático.
+const PROTECTED_HTML = new Set(['/index.html', '/mlc.html', '/inventario.html', '/infra.html', '/contratos.html', '/admin.html', '/regional.html']);
 app.use((req, res, next) => {
   if (PROTECTED_HTML.has(req.path) && !sessionUserId(req)) return res.redirect('/login');
   next();

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IBM Z Control Desk — Painel gerencial</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="/i18n-dict.js"></script>
+  <script src="/i18n.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">Z</div>
+      <div>
+        <h1>IBM Z Control Desk</h1>
+        <p>Visão por região · consumo agregado</p>
+      </div>
+      <nav class="module-nav" aria-label="Módulos">
+        <a href="/consumo">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4m4 9.5V7m4 6.5V2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo zOTC
+        </a>
+        <a href="/mlc">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 11.5 6 7l3 3 5-6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Consumo MLC
+        </a>
+        <a href="/inventario">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 5.2 8 8.4l6-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          Inventário
+        </a>
+        <a href="/infra">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9.5" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Infraestrutura
+        </a>
+        <a href="/contratos">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9.5 1.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.5 1.5V5H13" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Contratos
+        </a>
+        <a href="/regional" class="active" aria-current="page" data-requires-manager>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M2 8h12M8 2c1.8 2 1.8 10 0 12M8 2C6.2 4 6.2 12 8 14" stroke="currentColor" stroke-width="1.3"/></svg>
+          Painel gerencial
+        </a>
+      </nav>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" id="btn-manage-regions" data-requires-admin title="Criar e organizar regiões">Regiões</button>
+    </div>
+  </div>
+</header>
+
+<main class="container" id="main">
+
+  <div class="client-header">
+    <div>
+      <!-- O título vira o nome da região, que é DADO digitado pelo usuário: o JS
+           liga/desliga o data-no-i18n para uma região chamada "Brasil" não virar
+           "Brazil" no inglês. O caminho fica num span próprio pelo mesmo motivo. -->
+      <h2 id="rg-title">Painel gerencial</h2>
+      <p class="muted" id="rg-sub"><span id="rg-sub-path" data-no-i18n></span><span id="rg-sub-count">Escolha uma região para ver o consumo agregado.</span></p>
+    </div>
+  </div>
+
+  <!-- Recorte -->
+  <div class="card reveal" style="margin-bottom:18px">
+    <div class="card-header">
+      <div>
+        <h2>Recorte</h2>
+        <p class="muted">Uma região traz os clientes dela e de todas as regiões dentro dela.</p>
+      </div>
+      <div class="segmented" role="group" aria-label="Tipo de recorte">
+        <button type="button" class="seg-btn active" data-mode="region">Por região</button>
+        <button type="button" class="seg-btn" data-mode="clients">Escolher clientes</button>
+      </div>
+    </div>
+    <div id="rg-picker-region"><div class="region-tree" id="rg-tree"></div></div>
+    <div id="rg-picker-clients" class="hidden">
+      <div class="access-bulk" style="margin-bottom:8px">
+        <button type="button" class="btn-link" id="rg-all">Marcar todos</button>
+        <button type="button" class="btn-link" id="rg-none">Limpar</button>
+      </div>
+      <div class="lpar-checks" id="rg-clients"></div>
+      <button class="btn btn-primary btn-sm" id="rg-apply" style="margin-top:10px">Ver consumo</button>
+    </div>
+  </div>
+
+  <div class="empty-inline hidden" id="rg-empty">Nenhum cliente neste recorte.</div>
+
+  <div id="rg-body" class="hidden">
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card reveal">
+        <h3 id="rg-kpi-mes-title">Consumo do mês</h3>
+        <div class="value" id="rg-kpi-mes">–</div>
+        <div class="subtitle" id="rg-kpi-mes-sub">soma dos clientes do recorte</div>
+      </div>
+      <div class="kpi-card reveal">
+        <h3>Clientes</h3>
+        <div class="value" id="rg-kpi-clientes">–</div>
+        <div class="subtitle" id="rg-kpi-clientes-sub">no recorte</div>
+      </div>
+      <div class="kpi-card reveal">
+        <h3>Máquinas instaladas</h3>
+        <div class="value" id="rg-kpi-maquinas">–</div>
+        <div class="subtitle" id="rg-kpi-maquinas-sub">parque ativo</div>
+      </div>
+      <div class="kpi-card reveal">
+        <h3>Fora de suporte</h3>
+        <div class="value" id="rg-kpi-eos">–</div>
+        <div class="subtitle">máquinas com fim de serviço vencido</div>
+      </div>
+      <div class="kpi-card reveal">
+        <h3>Baseline somado</h3>
+        <div class="value" id="rg-kpi-baseline">–</div>
+        <div class="subtitle" id="rg-kpi-contratos-sub">–</div>
+      </div>
+    </div>
+
+    <!-- Evolução -->
+    <div class="card reveal">
+      <div class="card-header">
+        <div>
+          <h2>Evolução mensal do consumo (MSUs)</h2>
+          <p class="muted">Soma do consumo faturável de cada cliente — mesma regra da tela individual.</p>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="rg-chart" height="90" aria-label="Consumo mensal agregado"></canvas></div>
+    </div>
+
+    <div class="two-col">
+      <!-- Top clientes -->
+      <div class="card reveal">
+        <div class="card-header"><div>
+          <h2>Top 5 clientes</h2>
+          <p class="muted" id="rg-top-sub">por consumo no período</p>
+        </div></div>
+        <div class="table-responsive">
+          <table class="infra-table">
+            <thead><tr><th>#</th><th>Cliente</th><th class="num">MSU</th><th class="num">% do total</th></tr></thead>
+            <tbody id="rg-top-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Parque por geração -->
+      <div class="card reveal">
+        <div class="card-header"><div>
+          <h2>Parque por geração</h2>
+          <p class="muted">Deduzido do modelo da máquina e cruzado com o ciclo de vida IBM.</p>
+        </div></div>
+        <div class="table-responsive">
+          <table class="infra-table">
+            <thead><tr><th>Geração</th><th class="num">Máquinas</th><th>Fim de serviço</th><th>Situação</th></tr></thead>
+            <tbody id="rg-park-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contratos -->
+    <div class="card reveal">
+      <div class="card-header"><div>
+        <h2>Contratos do recorte</h2>
+        <p class="muted">Contrato vigente de cada cliente e o baseline mensal.</p>
+      </div></div>
+      <div class="table-responsive">
+        <table class="infra-table">
+          <thead><tr><th>Cliente</th><th>Contrato</th><th>Início</th><th>Fim</th><th class="num">Anos</th><th class="num">Baseline mensal</th></tr></thead>
+          <tbody id="rg-contracts-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Modal: regiões -->
+<div class="modal-backdrop hidden" id="modal-regions">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-regions-title">
+    <h2 id="modal-regions-title">Regiões</h2>
+    <p class="muted small">Uma região pode ficar dentro de outra (LA contém Brasil). Cada cliente pertence a no máximo uma região.</p>
+
+    <!-- O botão fica FORA do grid: um terceiro .field com rótulo vazio quebra a
+         linha e deixa um buraco entre os campos e o "Criar". -->
+    <div class="user-form-grid" style="margin-top:12px">
+      <label class="field"><span>Nova região</span><input type="text" id="rg-new-name" maxlength="60" placeholder="Brasil"></label>
+      <label class="field"><span>Dentro de</span><select id="rg-new-parent"></select></label>
+    </div>
+    <div style="margin-top:10px"><button class="btn btn-primary btn-sm" id="rg-new-add">+ Criar região</button></div>
+
+    <div class="table-responsive" style="margin-top:14px">
+      <table class="infra-table">
+        <thead><tr><th>Região</th><th>Dentro de</th><th class="num">Clientes</th><th class="col-actions"></th></tr></thead>
+        <tbody id="rg-regions-body"></tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:20px; font-size:14px">Região de cada cliente</h3>
+    <div class="table-responsive">
+      <table class="infra-table">
+        <thead><tr><th>Cliente</th><th>Região</th></tr></thead>
+        <tbody id="rg-client-region-body"></tbody>
+      </table>
+    </div>
+
+    <p class="form-error hidden" id="rg-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script src="vendor/chart.umd.js"></script>
+<script src="auth-client.js"></script>
+<script src="regional.js"></script>
+</body>
+</html>

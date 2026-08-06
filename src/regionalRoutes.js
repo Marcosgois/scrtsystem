@@ -73,7 +73,9 @@ router.get('/overview', asyncHandler(async (req, res) => {
     ScrtReport.find({ client: { $in: ids } })
       .select('client periodKey periodLabel totalMsuConsumed containersTotalMsu processorsInMultiplex machines lpars containers')
       .lean(),
-    InfraMachine.find({ client: { $in: ids } }).select('client model status').lean(),
+    // lsprModel entra porque é dele que sai o type ("3931-7C9" -> 3931) quando o
+    // cliente gravou o modelo em texto livre ("IBM Z z16/700").
+    InfraMachine.find({ client: { $in: ids } }).select('client model lsprModel status').lean(),
     MachineLifecycle.find().lean(),
   ]);
 

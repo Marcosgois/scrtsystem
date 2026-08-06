@@ -74,8 +74,26 @@ function agregarConsumo(clients, reportsByClient, helpers, { meses = 12 } = {}) 
 }
 
 /**
- * Parque instalado por geração. O type da máquina é o prefixo do modelo
- * ("3931-7C6" -> "3931"), que é a chave da tabela de ciclo de vida.
+ * Type (código de 4 dígitos) da máquina — a chave da tabela de ciclo de vida.
+ *
+ * `model` é texto livre e cada cliente preencheu de um jeito: o BB gravou
+ * "IBM Z z16/700" e a CAIXA gravou "3931". Quem tem o código sempre é o
+ * `lsprModel` ("3931-7C9"), então ele vem primeiro; sem ele, aceita-se o modelo
+ * quando ele COMEÇA com o código ("3931", "3931-7C6"). Um 4 dígitos no meio do
+ * texto não serve: "IBM z16 2022" traria 2022, que é o type do z900. Sem nenhum
+ * dos dois não dá para cruzar com o ciclo de vida — devolve null e a máquina cai
+ * no grupo "sem ciclo de vida" com o texto que o cliente digitou.
+ */
+function typeDaMaquina(m) {
+  const doLspr = String(m.lsprModel || '').trim().split('-')[0].trim();
+  if (/^\d{4}$/.test(doLspr)) return doLspr;
+  const doModel = String(m.model || '').trim().match(/^(\d{4})\b/);
+  return doModel ? doModel[1] : null;
+}
+
+/**
+ * Parque instalado por geração, cruzando o type da máquina com a tabela de
+ * ciclo de vida IBM.
  *
  * `hoje` entra por parâmetro (e não Date.now() aqui dentro) para o teste poder
  * fixar a data e não ficar dependendo do dia em que roda.
@@ -91,9 +109,9 @@ function agregarParque(machines, lifecycles, { hoje = new Date().toISOString().s
   const grupos = new Map();
   for (const m of machines || []) {
     if (m.status === 'substituida' || m.status === 'desativada') continue;   // fora do parque vivo
-    const type = String(m.model || '').trim().split('-')[0].toUpperCase();
-    const lc = porType.get(type) || null;
-    const chave = lc ? lc.family : (type || 'desconhecido');
+    const type = typeDaMaquina(m);
+    const lc = type ? (porType.get(type) || null) : null;
+    const chave = lc ? lc.family : (String(m.model || '').trim() || type || 'desconhecido');
     if (!grupos.has(chave)) {
       grupos.set(chave, {
         family: chave,
@@ -145,4 +163,4 @@ function agregarContratos(clients) {
   return { comContrato, semContrato: clients.length - comContrato, baselineMensalTotal, porCliente };
 }
 
-module.exports = { agregarConsumo, agregarParque, agregarContratos, serieDoCliente };
+module.exports = { agregarConsumo, agregarParque, agregarContratos, serieDoCliente, typeDaMaquina };

@@ -4,7 +4,7 @@
    de bater com a soma das telas individuais — ou seja, respeitar a tag de máquina
    ignorada de CADA cliente antes de somar. */
 
-const { agregarConsumo, agregarParque, agregarContratos, serieDoCliente } = require('../src/regional');
+const { agregarConsumo, agregarParque, agregarContratos, serieDoCliente, typeDaMaquina } = require('../src/regional');
 const { mergeByMonth, tagContextOf } = require('../src/routes');
 
 const helpers = { mergeByMonth, tagContextOf };
@@ -95,6 +95,21 @@ check('z16 não está fora de suporte (sem EOS anunciado)', z16.foraDeSuporte ==
 check('modelo sem ciclo de vida aparece separado', parque.geracoes.some((g) => g.semCicloDeVida), parque.geracoes.map((g) => g.family));
 check('total do parque ignora substituída/desativada', parque.totalMaquinas === 4, parque.totalMaquinas);
 check('conta as máquinas fora de suporte', parque.maquinasForaDeSuporte === 1, parque.maquinasForaDeSuporte);
+
+// Cada cliente preenche o modelo do seu jeito: o BB gravou "IBM Z z16/700" (texto
+// livre, sem o type) e a CAIXA gravou "3931". As duas são z16 e têm de cair no
+// MESMO grupo — senão o parque aparece fatiado e sem o ciclo de vida.
+const mistas = [
+  { model: 'IBM Z z16/700', lsprModel: '3931-7C9', status: 'ativa' },   // BB
+  { model: '3931', lsprModel: '', status: 'ativa' },                    // CAIXA
+  { model: 'IBM z16 2022', lsprModel: '', status: 'ativa' },            // 2022 é o type do z900: NÃO vale
+];
+const pm = agregarParque(mistas, lifecycles, { hoje: '2026-08-05' });
+const z16m = pm.geracoes.find((g) => g.family === 'z16');
+check('modelo em texto livre entra pelo lsprModel e agrupa com o código puro',
+  z16m && z16m.quantidade === 2, pm.geracoes);
+check('4 dígitos no meio do texto não vira type', typeDaMaquina({ model: 'IBM z16 2022' }) === null);
+check('lsprModel tem prioridade sobre o modelo', typeDaMaquina({ model: '8561', lsprModel: '3931-7C9' }) === '3931');
 
 // ── contratos ──
 const ct = agregarContratos([caixa, brb]);
