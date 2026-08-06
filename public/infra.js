@@ -59,10 +59,11 @@ const lsprCache = new Map(); // model LSPR -> linha (cache do combobox de refer�
 let lsprTimer = null;
 
 // Processadores e memória da máquina.
-const engineTotal = (m) => (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0);
-// VFM (Virtual Flash Memory) NÃO entra no total de memória: é flash, não
-// memória principal. Somar os dois daria um número que não existe na máquina.
-const memoryOf = (m) => (m.memoryTB || 0);
+// ICF e memória adicional saíram do FORMULÁRIO, não das contas: em produção há
+// máquina com 18 ICFs e com 1 TB adicional, e zerar isso na tela mudaria a
+// capacidade instalada que a pessoa vê. VFM é flash e nunca entra na memória.
+const engineTotal = (m) => (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0) + (m.icfs || 0);
+const memoryOf = (m) => (m.memoryTB || 0) + (m.memoryAddTB || 0);
 // Detalhe "6 CP · 2 zIIP · 4 IFL · 1 CF" (sempre os quatro tipos).
 const MACHINE_STATUS = { ativa: '', dormente: 'dormente', substituida: 'substituída', desativada: 'desativada' };
 function statusBadge(m) {
@@ -70,7 +71,8 @@ function statusBadge(m) {
   return label ? ` <span class="badge badge-neutral">${label}</span>` : '';
 }
 function engineBreakdown(m) {
-  return `${fmt(m.cps || 0)} CP · ${fmt(m.ziips || 0)} zIIP · ${fmt(m.iflsActive || 0)} IFL`;
+  const ifl = `${fmt(m.iflsActive || 0)} IFL${m.iflsSpare ? ` (+${m.iflsSpare})` : ''}`;
+  return `${fmt(m.cps || 0)} CP · ${fmt(m.ziips || 0)} zIIP · ${ifl}${m.icfs ? ` · ${fmt(m.icfs)} CF` : ''}`;
 }
 
 function showView(which) {
@@ -136,8 +138,8 @@ function renderStats() {
   const ativas = noParque.filter((m) => m.status === 'ativa');
   const substituidas = state.machines.length - noParque.length;
   const sum = (k) => noParque.reduce((a, m) => a + (m[k] || 0), 0);
-  const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive');
-  const engines = cps + ziips + ifls;
+  const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive'); const icfs = sum('icfs');
+  const engines = cps + ziips + ifls + icfs;
   const mem = noParque.reduce((a, m) => a + memoryOf(m), 0);
   // MIPS/MSU vêm do capacity marker (LSPR) da máquina. Máquina sem LSPR não soma
   // nada, então a legenda avisa — senão o total pareceria completo sem ser.
@@ -155,7 +157,7 @@ function renderStats() {
     { h: 'Sites', v: fmt(state.sites.length) },
     { h: 'Máquinas ativas', v: fmt(ativas.length), s: legenda },
     { h: 'Total de MIPS', v: fmt(mips), s: legendaMips },
-    { h: 'Processadores', v: fmt(engines), s: `${fmt(cps)} CP · ${fmt(ziips)} zIIP · ${fmt(ifls)} IFL` },
+    { h: 'Processadores', v: fmt(engines), s: `${fmt(cps)} CP · ${fmt(ziips)} zIIP · ${fmt(ifls)} IFL${icfs ? ` · ${fmt(icfs)} CF` : ''}` },
     { h: 'Memória total', v: `${num1(mem)} TB` },
     { h: 'Disponibilidade', v: `<span style="color:${dr.color};font-weight:600">${esc(dr.label)}</span>`, raw: true },
   ];

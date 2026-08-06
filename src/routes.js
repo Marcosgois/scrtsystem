@@ -1388,6 +1388,8 @@ function machineUpdate(body) {
   if (body.lsprModel !== undefined) set.lsprModel = String(body.lsprModel || '').trim();
   if (body.serial !== undefined) set.serial = String(body.serial || '').trim().toUpperCase();
   if (body.year !== undefined) set.year = body.year === '' || body.year === null ? null : numOf(body.year);
+  // iflsSpare/icfs/memoryAddTB ficam DE FORA: saíram do formulário e não podem
+  // ser alterados por requisição direta — o valor de produção é preservado.
   ['cps', 'ziips', 'iflsActive', 'memoryTB', 'vfmTB'].forEach((k) => { if (body[k] !== undefined) set[k] = numOf(body[k]); });
   if (body.status !== undefined && MACHINE_STATUS.includes(body.status)) set.status = body.status;
   // Compatibilidade: clientes antigos ainda mandam o booleano `dormant`.
@@ -1583,7 +1585,7 @@ router.get('/clients/:id/contracts/:cid', asyncHandler(async (req, res) => {
   if (!contract) return res.status(404).json({ error: 'Contrato não encontrado.' });
   const [machines, events, inventory, amendments, parent] = await Promise.all([
     InfraMachine.find({ client: req.params.id, contract: contract._id })
-      .select('model serial status lsprModel cps ziips iflsActive memoryTB vfmTB site')
+      .select('model serial status lsprModel cps ziips iflsActive memoryTB vfmTB iflsSpare icfs memoryAddTB site')
       .populate('site', 'name role').sort({ model: 1, serial: 1 }).lean(),
     MigrationEvent.find({ client: req.params.id, contract: contract._id })
       .select('kind status title fromMachine toMachine plannedDate executedAt value currency')
@@ -1822,7 +1824,7 @@ router.get('/clients/:id/inventory/records', asyncHandler(async (req, res) => {
    que altera documentos de máquina.
    ══════════════════════════════════════════════════════════════════════════ */
 
-const CONFIG_FIELDS = ['model', 'variant', 'featureModel', 'lsprModel', 'cps', 'ziips', 'iflsActive', 'memoryTB', 'vfmTB'];
+const CONFIG_FIELDS = ['model', 'variant', 'featureModel', 'lsprModel', 'cps', 'ziips', 'iflsActive', 'memoryTB', 'vfmTB', 'iflsSpare', 'icfs', 'memoryAddTB'];
 const upperSerial = (s) => String(s || '').trim().toUpperCase();
 
 /** Foto da configuração de uma máquina, com o LSPR congelado. */

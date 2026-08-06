@@ -168,10 +168,14 @@ async function main() {
     check('GET máquina reflete o novo LSPR (3931-705)', r.body.lspr && r.body.lspr.msu === 1232, r.body && r.body.lspr);
 
     // ── Processadores (CP/zIIP/IFL/CF) e memória ──
-    r = await api(`/clients/${caixaId}/infra/machines/${mId}`, { method: 'PUT', json: { cps: 6, ziips: 2, iflsActive: 4, memoryTB: 8, vfmTB: 2 } });
+    r = await api(`/clients/${caixaId}/infra/machines/${mId}`, { method: 'PUT', json: { cps: 6, ziips: 2, iflsActive: 4, memoryTB: 8, vfmTB: 2, icfs: 99 } });
     check('PUT grava CP/zIIP/IFL, memória e VFM',
       r.status === 200 && r.body.cps === 6 && r.body.ziips === 2 && r.body.iflsActive === 4 && r.body.memoryTB === 8 && r.body.vfmTB === 2,
       r.body);
+    // O ICF saiu do formulário mas o VALOR de produção é preservado: uma
+    // requisição direta não pode alterá-lo (14 máquinas têm ICF lá).
+    check('campo legado (icfs) NÃO é alterado por requisição direta',
+      (r.body.icfs || 0) !== 99, r.body.icfs);
 
     // ── Cliente sem SCRT ──
     r = await api('/clients', { method: 'POST', json: { name: 'VAZIO' } });

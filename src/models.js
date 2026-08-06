@@ -352,9 +352,16 @@ const infraMachineSchema = new mongoose.Schema(
 
     memoryTB: { type: Number, default: 0 },       // memória (antigo storageTB)
     // VFM (Virtual Flash Memory): flash, NÃO memória principal — por isso não
-    // entra no total de memória em lugar nenhum. Antes este campo era "memória
-    // adicional" (memoryAddTB), que ninguém chegou a preencher.
+    // entra no total de memória em lugar nenhum.
     vfmTB: { type: Number, default: 0 },
+    /* LEGADO — saíram do formulário (ago/2026) porque ninguém os mantinha, mas
+       CONTINUAM no banco e nas somas: em produção há 14 máquinas com ICF (as z17
+       da CAIXA têm 18 cada), 2 com IFLs spare e 2 com memória adicional. Apagar
+       ou renomear isso mudaria número de capacidade real. Não são editáveis:
+       ficaram fora da whitelist de machineUpdate. */
+    iflsSpare: { type: Number, default: 0 },
+    icfs: { type: Number, default: 0 },
+    memoryAddTB: { type: Number, default: 0 },
     // Situação da máquina no parque (substituiu o antigo booleano `dormant`):
     // ativa · dormente (ligada, fora de produção) · substituida (saiu num MO) · desativada
     status: { type: String, enum: ['ativa', 'dormente', 'substituida', 'desativada'], default: 'ativa', index: true },
@@ -524,9 +531,12 @@ const machineConfigSchema = new mongoose.Schema(
     cps: { type: Number, default: 0 },
     ziips: { type: Number, default: 0 },
     iflsActive: { type: Number, default: 0 },
-
     memoryTB: { type: Number, default: 0 },
     vfmTB: { type: Number, default: 0 },
+    // Legado: não editáveis, mas entram na foto para ela ficar completa.
+    iflsSpare: { type: Number, default: 0 },
+    icfs: { type: Number, default: 0 },
+    memoryAddTB: { type: Number, default: 0 },
     // LSPR congelado: a tabela de referência é reimportável, o delta tem de ficar estável.
     msu: { type: Number, default: null },
     mips: { type: Number, default: null },

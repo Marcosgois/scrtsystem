@@ -411,8 +411,8 @@
     catch (e) { toast(e.message, 'error'); return; }
     const m = d.machine;
     const lspr = m.lspr || null;
-    const procTotal = (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0);
-    const memTotal = (m.memoryTB || 0);
+    const procTotal = (m.cps || 0) + (m.ziips || 0) + (m.iflsActive || 0) + (m.icfs || 0);
+    const memTotal = (m.memoryTB || 0) + (m.memoryAddTB || 0);
 
     const kpi = (h, v, s) => `<div class="kpi-card"><h3>${esc(h)}</h3><div class="value">${v}</div>${s ? `<div class="subtitle">${esc(s)}</div>` : ''}</div>`;
 
@@ -447,7 +447,7 @@
             ${kpi('Contrato', m.contractRef ? esc(m.contractRef.number) : '—', m.contractRef ? esc(m.contractRef.name || '') : 'sem contrato vinculado')}
             ${kpi('Total de MIPS', lspr ? fmt(lspr.mips) : '—', lspr ? `capacity marker ${esc(lspr.model)}` : 'sem LSPR definido')}
             ${kpi('Capacidade', lspr ? `${fmt(lspr.msu)} MSU` : '—', lspr ? esc(lspr.family) : '')}
-            ${kpi('Processadores', fmt(procTotal), `${fmt(m.cps)} CP · ${fmt(m.ziips)} zIIP · ${fmt(m.iflsActive)} IFL`)}
+            ${kpi('Processadores', fmt(procTotal), `${fmt(m.cps)} CP · ${fmt(m.ziips)} zIIP · ${fmt(m.iflsActive)} IFL${m.icfs ? ` · ${fmt(m.icfs)} CF` : ''}`)}
             ${kpi('Memória', `${num1(memTotal)} TB`, '')}
           </div>
 

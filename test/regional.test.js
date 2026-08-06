@@ -118,17 +118,17 @@ const lsprs = [
 ];
 const parqueClientes = [
   // CAIXA: duas máquinas, uma sem vínculo LSPR -> MIPS sai POR BAIXO e marcado.
-  { client: 'c1', lsprModel: '3931-7C6', status: 'ativa', cps: 6, ziips: 3, iflsActive: 10 },
-  { client: 'c1', lsprModel: '', status: 'ativa', cps: 4, ziips: 2, iflsActive: 5 },
+  { client: 'c1', lsprModel: '3931-7C6', status: 'ativa', cps: 6, ziips: 3, iflsActive: 10, iflsSpare: 2 },
+  { client: 'c1', lsprModel: '', status: 'ativa', cps: 4, ziips: 2, iflsActive: 5, iflsSpare: 0 },
   // BRB: uma máquina completa, sem IFL nenhum.
-  { client: 'c2', lsprModel: '9175-701', status: 'ativa', cps: 1, ziips: 0, iflsActive: 0 },
+  { client: 'c2', lsprModel: '9175-701', status: 'ativa', cps: 1, ziips: 0, iflsActive: 0, iflsSpare: 0 },
   // Fora do parque vivo: não pode entrar em conta nenhuma.
-  { client: 'c2', lsprModel: '3931-7C6', status: 'substituida', cps: 8, ziips: 4, iflsActive: 99 },
+  { client: 'c2', lsprModel: '3931-7C6', status: 'substituida', cps: 8, ziips: 4, iflsActive: 99, iflsSpare: 9 },
 ];
 const cap = agregarCapacidade(parqueClientes, lsprs);
 check('MIPS soma só o que tem vínculo LSPR', cap.get('c1').mips === 10129, cap.get('c1'));
 check('máquina sem LSPR é contada como parcial', cap.get('c1').semLspr === 1, cap.get('c1').semLspr);
-check('IFLs vêm do cadastro, não do máximo do modelo', cap.get('c1').iflsAtivos === 15, cap.get('c1'));
+check('IFLs vêm do cadastro, não do máximo do modelo', cap.get('c1').iflsAtivos === 15 && cap.get('c1').iflsSpare === 2, cap.get('c1'));
 check('máquina substituída fica de fora da capacidade',
   cap.get('c2').maquinas === 1 && cap.get('c2').mips === 2477 && cap.get('c2').iflsAtivos === 0, cap.get('c2'));
 
