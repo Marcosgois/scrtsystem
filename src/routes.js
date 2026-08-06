@@ -2243,7 +2243,15 @@ router.get('/lspr', asyncHandler(async (req, res) => {
     filter.$or = [{ model: rx }, { family: rx }, { generation: rx }, { machineType: rx }];
   }
   const limit = Math.min(Number(req.query.limit) || 50, 500);
-  const rows = await LsprModel.find(filter).sort({ machineType: 1, cps: 1 }).limit(limit).lean();
+  const skip = Math.max(Number(req.query.skip) || 0, 0);
+  // A resposta continua sendo o ARRAY puro — o combobox de modelo da infra e os
+  // testes dependem disso. O total do filtro vai no cabeçalho, para a tela de
+  // consulta poder dizer "mostrando 100 de 3.190" e paginar.
+  const [rows, total] = await Promise.all([
+    LsprModel.find(filter).sort({ machineType: 1, cps: 1 }).skip(skip).limit(limit).lean(),
+    LsprModel.countDocuments(filter),
+  ]);
+  res.setHeader('X-Total-Count', String(total));
   res.json(rows);
 }));
 

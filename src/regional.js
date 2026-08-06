@@ -138,6 +138,60 @@ function agregarParque(machines, lifecycles, { hoje = new Date().toISOString().s
   };
 }
 
+/**
+ * Capacidade INSTALADA por cliente — o tamanho do parque, não o consumo.
+ *
+ * Cuidado com a origem de cada número, que é onde dá para errar feio:
+ *  - MIPS vem da linha LSPR do modelo da máquina ("3931-7C9"), que é a
+ *    capacidade nominal daquele modelo. É o único jeito: MIPS não aparece no
+ *    SCRT nem é digitado à mão.
+ *  - IFLs vem do CADASTRO da máquina (iflsActive/iflsSpare), não do LSPR. O
+ *    campo `ifls` da tabela LSPR é o MÁXIMO que o modelo comporta — usar ele
+ *    diria que todo cliente tem 200 IFLs, o que seria uma mentira grande.
+ *
+ * Máquina substituída ou desativada fica de fora, como no parque.
+ */
+function agregarCapacidade(machines, lsprModels) {
+  const porModelo = new Map((lsprModels || []).map((l) => [String(l.model), l]));
+  const porCliente = new Map();
+  for (const m of machines || []) {
+    if (m.status === 'substituida' || m.status === 'desativada') continue;
+    const k = id(m.client);
+    if (!porCliente.has(k)) {
+      porCliente.set(k, { maquinas: 0, mips: 0, cps: 0, ziips: 0, iflsAtivos: 0, iflsSpare: 0, semLspr: 0 });
+    }
+    const c = porCliente.get(k);
+    c.maquinas += 1;
+    c.cps += Number(m.cps) || 0;
+    c.ziips += Number(m.ziips) || 0;
+    c.iflsAtivos += Number(m.iflsActive) || 0;
+    c.iflsSpare += Number(m.iflsSpare) || 0;
+    const l = porModelo.get(String(m.lsprModel || ''));
+    if (l && Number.isFinite(l.mips)) c.mips += l.mips;
+    else c.semLspr += 1;                 // sem vínculo LSPR não dá para somar MIPS
+  }
+  return porCliente;
+}
+
+/**
+ * Junta a capacidade instalada em cada linha do ranking de consumo.
+ * Cliente sem máquina cadastrada fica com null (a tela mostra "—"), NÃO com
+ * zero: zero afirmaria que o parque é vazio, quando na verdade é desconhecido.
+ */
+function anexarCapacidade(ranking, porCliente) {
+  return ranking.map((r) => {
+    const c = porCliente.get(String(r.clientId));
+    return {
+      ...r,
+      maquinas: c ? c.maquinas : 0,
+      mips: c && c.mips ? c.mips : null,
+      ifls: c ? c.iflsAtivos : null,
+      iflsSpare: c ? c.iflsSpare : null,
+      mipsParcial: !!(c && c.semLspr),   // parte das máquinas sem vínculo LSPR
+    };
+  });
+}
+
 /** Agregado comercial: quantos clientes têm contrato e a soma dos baselines. */
 function agregarContratos(clients) {
   let comContrato = 0;
@@ -163,4 +217,4 @@ function agregarContratos(clients) {
   return { comContrato, semContrato: clients.length - comContrato, baselineMensalTotal, porCliente };
 }
 
-module.exports = { agregarConsumo, agregarParque, agregarContratos, serieDoCliente, typeDaMaquina };
+module.exports = { agregarConsumo, agregarParque, agregarContratos, agregarCapacidade, anexarCapacidade, serieDoCliente, typeDaMaquina };

@@ -50,6 +50,9 @@
         <span class="client-select-label">Cliente</span>
         <select id="client-select" aria-label="Selecionar cliente"></select>
       </label>
+      <!-- Sem data-requires-edit: a tabela LSPR é referência pública da IBM, não
+           dado de cliente — quem só tem "ver" também precisa consultar. -->
+      <button class="btn btn-ghost" id="btn-lspr-table" title="Consultar a tabela de capacidade IBM Z">Tabela LSPR</button>
       <button class="btn btn-ghost" data-requires-edit id="btn-new-site">+ Site</button>
       <button class="btn btn-primary" data-requires-edit id="btn-new-machine">+ Máquina</button>
     </div>
@@ -182,6 +185,50 @@
     <div class="modal-forecast-scroll">
       <div id="lpars-list"></div>
       <div id="lpar-form" class="lpar-form hidden"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: consulta da tabela LSPR -->
+<div class="modal-backdrop hidden" id="modal-lspr">
+  <div class="modal modal-compare" role="dialog" aria-modal="true" aria-labelledby="modal-lspr-title">
+    <h2 id="modal-lspr-title">Tabela LSPR — capacidade por modelo IBM Z</h2>
+    <p class="muted small" id="lspr-source">Referência pública da IBM (zPCR Configuration Summary).</p>
+
+    <div class="infra-toolbar" style="margin-top:12px">
+      <input type="search" id="lspr-q" placeholder="Buscar modelo, família ou geração (ex.: 3931-705, z16)" style="flex:1 1 280px">
+      <select id="lspr-generation" aria-label="Filtrar por geração"></select>
+      <select id="lspr-type" aria-label="Filtrar por machine type"></select>
+      <button class="btn btn-ghost btn-sm" id="lspr-clear">Limpar</button>
+    </div>
+
+    <div class="table-responsive modal-forecast-scroll" style="margin-top:10px">
+      <table class="infra-table" id="lspr-table">
+        <thead>
+          <tr>
+            <th>Modelo</th>
+            <th>Família</th>
+            <th>Geração</th>
+            <th class="num">MIPS</th>
+            <th class="num">MSU</th>
+            <th class="num">#CPs</th>
+            <th class="num">#IFLs</th>
+            <th class="num">#ICFs</th>
+            <th class="num">#zIIPs</th>
+            <th class="num">#Partições</th>
+          </tr>
+        </thead>
+        <tbody id="lspr-body"></tbody>
+      </table>
+    </div>
+
+    <div class="audit-foot">
+      <span class="muted small" id="lspr-count"></span>
+      <button class="btn btn-ghost hidden" id="lspr-more">Carregar mais</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close-modal>Fechar</button>
     </div>
   </div>
 </div>

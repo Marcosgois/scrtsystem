@@ -4,7 +4,7 @@
    de bater com a soma das telas individuais — ou seja, respeitar a tag de máquina
    ignorada de CADA cliente antes de somar. */
 
-const { agregarConsumo, agregarParque, agregarContratos, serieDoCliente, typeDaMaquina } = require('../src/regional');
+const { agregarConsumo, agregarParque, agregarContratos, agregarCapacidade, anexarCapacidade, serieDoCliente, typeDaMaquina } = require('../src/regional');
 const { mergeByMonth, tagContextOf } = require('../src/routes');
 
 const helpers = { mergeByMonth, tagContextOf };
@@ -110,6 +110,42 @@ check('modelo em texto livre entra pelo lsprModel e agrupa com o código puro',
   z16m && z16m.quantidade === 2, pm.geracoes);
 check('4 dígitos no meio do texto não vira type', typeDaMaquina({ model: 'IBM z16 2022' }) === null);
 check('lsprModel tem prioridade sobre o modelo', typeDaMaquina({ model: '8561', lsprModel: '3931-7C9' }) === '3931');
+
+// ── capacidade instalada por cliente (MIPS do LSPR, IFLs do cadastro) ──
+const lsprs = [
+  { model: '3931-7C6', mips: 10129 },
+  { model: '9175-701', mips: 2477 },
+];
+const parqueClientes = [
+  // CAIXA: duas máquinas, uma sem vínculo LSPR -> MIPS sai POR BAIXO e marcado.
+  { client: 'c1', lsprModel: '3931-7C6', status: 'ativa', cps: 6, ziips: 3, iflsActive: 10, iflsSpare: 2 },
+  { client: 'c1', lsprModel: '', status: 'ativa', cps: 4, ziips: 2, iflsActive: 5, iflsSpare: 0 },
+  // BRB: uma máquina completa, sem IFL nenhum.
+  { client: 'c2', lsprModel: '9175-701', status: 'ativa', cps: 1, ziips: 0, iflsActive: 0, iflsSpare: 0 },
+  // Fora do parque vivo: não pode entrar em conta nenhuma.
+  { client: 'c2', lsprModel: '3931-7C6', status: 'substituida', cps: 8, ziips: 4, iflsActive: 99, iflsSpare: 9 },
+];
+const cap = agregarCapacidade(parqueClientes, lsprs);
+check('MIPS soma só o que tem vínculo LSPR', cap.get('c1').mips === 10129, cap.get('c1'));
+check('máquina sem LSPR é contada como parcial', cap.get('c1').semLspr === 1, cap.get('c1').semLspr);
+check('IFLs vêm do cadastro, não do máximo do modelo', cap.get('c1').iflsAtivos === 15 && cap.get('c1').iflsSpare === 2, cap.get('c1'));
+check('máquina substituída fica de fora da capacidade',
+  cap.get('c2').maquinas === 1 && cap.get('c2').mips === 2477 && cap.get('c2').iflsAtivos === 0, cap.get('c2'));
+
+const rankingCap = anexarCapacidade(ag.ranking, cap);
+const linhaCaixa = rankingCap.find((r) => r.clientId === 'c1');
+const linhaBrb = rankingCap.find((r) => r.clientId === 'c2');
+check('a linha do ranking ganha MIPS/IFLs sem perder o consumo',
+  linhaCaixa.totalMsuConsumed === 220 && linhaCaixa.mips === 10129 && linhaCaixa.ifls === 15, linhaCaixa);
+check('MIPS incompleto é sinalizado na linha', linhaCaixa.mipsParcial === true);
+check('MIPS completo NÃO é sinalizado', linhaBrb.mipsParcial === false, linhaBrb);
+check('cliente com 0 IFL mostra zero, não nulo (ele tem parque cadastrado)',
+  linhaBrb.ifls === 0 && linhaBrb.maquinas === 1, linhaBrb);
+
+// Cliente sem NENHUMA máquina: nulo, não zero — "não se sabe" é diferente de "é zero".
+const semParque = anexarCapacidade([{ clientId: 'c9', name: 'Sem parque', totalMsuConsumed: 0, pctDoTotal: 0 }], new Map());
+check('cliente sem parque cadastrado fica nulo (a tela mostra "—"), não zero',
+  semParque[0].mips === null && semParque[0].ifls === null && semParque[0].maquinas === 0, semParque[0]);
 
 // ── contratos ──
 const ct = agregarContratos([caixa, brb]);

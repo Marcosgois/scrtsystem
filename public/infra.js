@@ -823,4 +823,88 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && document.querySelector('.modal-backdrop:not(.hidden)')) closeModals();
 });
 
+/* ── Consulta da tabela LSPR ─────────────────────────────────────────────────
+ * Referência pública da IBM (3.190 modelos), aberta a quem só tem "ver": não é
+ * dado de cliente. A consulta é paginada porque a tabela inteira não cabe numa
+ * resposta — o servidor devolve o total do filtro no cabeçalho X-Total-Count.
+ */
+const LSPR_PAGINA = 100;
+const lsprConsulta = { q: '', generation: '', type: '', carregados: 0, total: 0, timer: null };
+
+async function lsprBuscar({ append = false } = {}) {
+  const p = new URLSearchParams();
+  if (lsprConsulta.q) p.set('q', lsprConsulta.q);
+  if (lsprConsulta.generation) p.set('generation', lsprConsulta.generation);
+  if (lsprConsulta.type) p.set('type', lsprConsulta.type);
+  p.set('limit', String(LSPR_PAGINA));
+  p.set('skip', String(append ? lsprConsulta.carregados : 0));
+
+  // Aqui não dá para usar o helper api(): ele devolve só o corpo, e o total do
+  // filtro vem no cabeçalho.
+  const res = await fetch(`/api/lspr?${p}`);
+  const rows = await res.json();
+  if (!res.ok) throw new Error(rows.error || `Erro ${res.status}`);
+  lsprConsulta.total = Number(res.headers.get('X-Total-Count')) || rows.length;
+
+  const html = rows.map((r) => `
+    <tr>
+      <td><strong>${esc(r.model)}</strong></td>
+      <td>${esc(r.family || '—')}</td>
+      <td>${esc(r.generation || '—')}</td>
+      <td class="num">${fmt(r.mips)}</td>
+      <td class="num">${fmt(r.msu)}</td>
+      <td class="num">${fmt(r.cps)}</td>
+      <td class="num">${fmt(r.ifls)}</td>
+      <td class="num">${fmt(r.icfs)}</td>
+      <td class="num">${fmt(r.ziips)}</td>
+      <td class="num">${fmt(r.partitions)}</td>
+    </tr>`).join('');
+
+  if (append) { $('lspr-body').insertAdjacentHTML('beforeend', html); lsprConsulta.carregados += rows.length; }
+  else { $('lspr-body').innerHTML = html || '<tr><td colspan="10" class="muted">Nenhum modelo com esse filtro.</td></tr>'; lsprConsulta.carregados = rows.length; }
+
+  $('lspr-count').textContent = lsprConsulta.total
+    ? `mostrando ${lsprConsulta.carregados} de ${fmt(lsprConsulta.total)} modelo(s)`
+    : '';
+  $('lspr-more').classList.toggle('hidden', lsprConsulta.carregados >= lsprConsulta.total);
+}
+
+async function abrirLspr() {
+  openModal('modal-lspr');
+  // Os filtros são montados uma vez só: as gerações e os machine types da tabela
+  // não mudam entre aberturas.
+  if (!$('lspr-generation').options.length) {
+    try {
+      const meta = await api('/lspr/meta');
+      $('lspr-generation').innerHTML = ['<option value="">Todas as gerações</option>']
+        .concat(meta.generations.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`)).join('');
+      $('lspr-type').innerHTML = ['<option value="">Todos os types</option>']
+        .concat(meta.machineTypes.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`)).join('');
+      if (meta.source) $('lspr-source').textContent = meta.source;
+    } catch (e) { /* os filtros são um conforto; a busca funciona sem eles */ }
+  }
+  try { await lsprBuscar(); }
+  catch (e) { toast(`Falha ao consultar o LSPR: ${e.message}`, 'error'); }
+}
+
+function lsprRebuscar() {
+  clearTimeout(lsprConsulta.timer);
+  lsprConsulta.timer = setTimeout(() => {
+    lsprBuscar().catch((e) => toast(e.message, 'error'));
+  }, 220);   // mesmo respiro do combobox de modelo, para não disparar por tecla
+}
+
+$('btn-lspr-table').addEventListener('click', () => abrirLspr());
+$('lspr-q').addEventListener('input', () => { lsprConsulta.q = $('lspr-q').value.trim(); lsprRebuscar(); });
+$('lspr-generation').addEventListener('change', () => { lsprConsulta.generation = $('lspr-generation').value; lsprRebuscar(); });
+$('lspr-type').addEventListener('change', () => { lsprConsulta.type = $('lspr-type').value; lsprRebuscar(); });
+$('lspr-clear').addEventListener('click', () => {
+  $('lspr-q').value = ''; $('lspr-generation').value = ''; $('lspr-type').value = '';
+  lsprConsulta.q = ''; lsprConsulta.generation = ''; lsprConsulta.type = '';
+  lsprBuscar().catch((e) => toast(e.message, 'error'));
+});
+$('lspr-more').addEventListener('click', () => {
+  lsprBuscar({ append: true }).catch((e) => toast(e.message, 'error'));
+});
+
 loadClients().catch((err) => toast(`Falha ao carregar: ${err.message}`, 'error'));

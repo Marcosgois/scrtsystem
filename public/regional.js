@@ -120,7 +120,31 @@ function renderRanking(c) {
       <td><strong data-no-i18n>${esc(r.name)}</strong></td>
       <td class="num">${fmtMsu(r.totalMsuConsumed)}</td>
       <td class="num">${r.pctDoTotal.toFixed(1)}%</td>
-    </tr>`).join('') : '<tr><td colspan="4" class="muted">Nenhum SCRT no período.</td></tr>';
+      <td class="num">${r.maquinas || '<span class="muted">—</span>'}</td>
+      <td class="num">${celulaMips(r)}</td>
+      <td class="num">${celulaIfls(r)}</td>
+    </tr>`).join('') : '<tr><td colspan="7" class="muted">Nenhum SCRT no período.</td></tr>';
+}
+
+/*
+ * MIPS somado das máquinas do cliente. Quando alguma máquina não tem vínculo
+ * LSPR, o total está POR BAIXO — e isso precisa aparecer, senão o número vira
+ * uma comparação injusta entre clientes com o cadastro completo e incompleto.
+ */
+function celulaMips(r) {
+  if (!r.mips) return '<span class="muted">—</span>';
+  const parcial = r.mipsParcial
+    ? ' <span class="muted small" title="Alguma máquina ainda não tem modelo LSPR vinculado, então o total está por baixo.">parcial</span>'
+    : '';
+  return `${nf.format(Math.round(r.mips))}${parcial}`;
+}
+
+// IFLs vêm do cadastro da máquina. Zero com parque cadastrado é informação
+// ("esse cliente não tem IFL"); sem parque nenhum é "—" (não se sabe).
+function celulaIfls(r) {
+  if (!r.maquinas) return '<span class="muted">—</span>';
+  const spare = r.iflsSpare ? ` <span class="muted small">+${r.iflsSpare} spare</span>` : '';
+  return `${nf.format(r.ifls || 0)}${spare}`;
 }
 
 function render(d) {
@@ -145,8 +169,10 @@ function render(d) {
   $('rg-kpi-eos').textContent = d.parque.maquinasForaDeSuporte;
   $('rg-kpi-baseline').textContent = d.contratos.baselineMensalTotal ? fmtMsu(d.contratos.baselineMensalTotal) : '–';
   $('rg-kpi-contratos-sub').textContent = `${d.contratos.comContrato} com contrato · ${d.contratos.semContrato} sem`;
+  // A legenda precisa dizer QUAL grandeza é de qual origem: MSU é consumo medido
+  // no SCRT do período; MIPS e IFLs são o parque cadastrado HOJE.
   $('rg-top-sub').textContent = c.janelaMeses.length
-    ? `${c.janelaMeses.length} mês(es): ${rotuloMes(c.janelaMeses[0])} a ${rotuloMes(c.janelaMeses[c.janelaMeses.length - 1])}`
+    ? `MSU de ${c.janelaMeses.length} mês(es): ${rotuloMes(c.janelaMeses[0])} a ${rotuloMes(c.janelaMeses[c.janelaMeses.length - 1])} · MIPS e IFLs do parque atual`
     : 'sem dado no período';
 
   renderChart(c.evolucao);

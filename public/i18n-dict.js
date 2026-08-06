@@ -1130,3 +1130,42 @@ window.ZCD_PATTERNS.push(
   [/^Clientes por consumo \((\d+)\)$/, "Clientes por consumo ($1)", "Clients by consumption ($1)"],
   [/^Já existe a região "([\s\S]*?)"\.$/, "Ya existe la región \"$1\".", "The region \"$1\" already exists."]
 );
+
+/* Painel gerencial: capacidade instalada no ranking */
+Object.assign(window.ZCD_DICT, {
+  "MSU consumido": ["MSU consumido", "MSU consumed"],
+  "MIPS instalados": ["MIPS instalados", "Installed MIPS"],
+  "IFLs ativos": ["IFLs activos", "Active IFLs"],
+  "parcial": ["parcial", "partial"],
+  "Alguma máquina ainda não tem modelo LSPR vinculado, então o total está por baixo.":
+    ["Alguna máquina todavía no tiene modelo LSPR vinculado, así que el total está por debajo.",
+     "Some machine has no LSPR model linked yet, so the total is understated."],
+});
+window.ZCD_PATTERNS.push(
+  [/^MSU de (\d+) mês\(es\): ([\s\S]*?) a ([\s\S]*?) · MIPS e IFLs do parque atual$/,
+    "MSU de $1 mes(es): $2 a $3 · MIPS e IFLs del parque actual",
+    "MSU over $1 month(s): $2 to $3 · MIPS and IFLs of the current fleet"],
+  [/^\+(\d+) spare$/, "+$1 spare", "+$1 spare"]
+);
+
+/* Infraestrutura: consulta da tabela LSPR */
+Object.assign(window.ZCD_DICT, {
+  "Tabela LSPR": ["Tabla LSPR", "LSPR table"],
+  "Consultar a tabela de capacidade IBM Z": ["Consultar la tabla de capacidad IBM Z", "Look up the IBM Z capacity table"],
+  "Tabela LSPR — capacidade por modelo IBM Z": ["Tabla LSPR — capacidad por modelo IBM Z", "LSPR table — capacity by IBM Z model"],
+  "Referência pública da IBM (zPCR Configuration Summary).": ["Referencia pública de IBM (zPCR Configuration Summary).", "Public IBM reference (zPCR Configuration Summary)."],
+  "Buscar modelo, família ou geração (ex.: 3931-705, z16)": ["Buscar modelo, familia o generación (ej.: 3931-705, z16)", "Search model, family or generation (e.g. 3931-705, z16)"],
+  "Filtrar por geração": ["Filtrar por generación", "Filter by generation"],
+  "Filtrar por machine type": ["Filtrar por machine type", "Filter by machine type"],
+  "Todas as gerações": ["Todas las generaciones", "All generations"],
+  "Todos os types": ["Todos los types", "All types"],
+  "Modelo": ["Modelo", "Model"],
+  "Família": ["Familia", "Family"],
+  "#Partições": ["#Particiones", "#Partitions"],
+  "Carregar mais": ["Cargar más", "Load more"],
+  "Nenhum modelo com esse filtro.": ["Ningún modelo con ese filtro.", "No model matches that filter."],
+});
+window.ZCD_PATTERNS.push(
+  [/^mostrando (\d+) de ([\d.]+) modelo\(s\)$/, "mostrando $1 de $2 modelo(s)", "showing $1 of $2 model(s)"],
+  [/^Falha ao consultar o LSPR: ([\s\S]*?)$/, "Error al consultar el LSPR: $1", "Failed to query LSPR: $1"]
+);

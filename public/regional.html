@@ -129,26 +129,37 @@
       <div class="chart-wrap"><canvas id="rg-chart" height="90" aria-label="Consumo mensal agregado"></canvas></div>
     </div>
 
-    <div class="two-col">
-      <!-- Top clientes -->
-      <div class="card reveal">
-        <div class="card-header">
-          <div>
-            <h2 id="rg-top-title">Top 5 clientes</h2>
-            <p class="muted" id="rg-top-sub">por consumo no período</p>
-          </div>
-          <!-- O ranking completo já vem na mesma resposta da API; o botão só troca
-               quantas linhas são desenhadas, sem ida nova ao servidor. -->
-          <button class="btn btn-ghost btn-sm hidden" id="rg-top-toggle">Ver todos</button>
+    <!-- Ranking de clientes: linha inteira, porque com consumo E capacidade são
+         seis colunas e em meia largura elas ficariam ilegíveis. -->
+    <div class="card reveal">
+      <div class="card-header">
+        <div>
+          <h2 id="rg-top-title">Top 5 clientes</h2>
+          <p class="muted" id="rg-top-sub">por consumo no período</p>
         </div>
-        <div class="table-responsive" id="rg-top-wrap">
-          <table class="infra-table">
-            <thead><tr><th>#</th><th>Cliente</th><th class="num">MSU</th><th class="num">% do total</th></tr></thead>
-            <tbody id="rg-top-body"></tbody>
-          </table>
-        </div>
+        <!-- O ranking completo já vem na mesma resposta da API; o botão só troca
+             quantas linhas são desenhadas, sem ida nova ao servidor. -->
+        <button class="btn btn-ghost btn-sm hidden" id="rg-top-toggle">Ver todos</button>
       </div>
+      <div class="table-responsive" id="rg-top-wrap">
+        <table class="infra-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Cliente</th>
+              <th class="num">MSU consumido</th>
+              <th class="num">% do total</th>
+              <th class="num">Máquinas</th>
+              <th class="num">MIPS instalados</th>
+              <th class="num">IFLs ativos</th>
+            </tr>
+          </thead>
+          <tbody id="rg-top-body"></tbody>
+        </table>
+      </div>
+    </div>
 
+    <div class="two-col">
       <!-- Parque por geração -->
       <div class="card reveal">
         <div class="card-header"><div>
@@ -162,19 +173,19 @@
           </table>
         </div>
       </div>
-    </div>
 
-    <!-- Contratos -->
-    <div class="card reveal">
-      <div class="card-header"><div>
-        <h2>Contratos do recorte</h2>
-        <p class="muted">Contrato vigente de cada cliente e o baseline mensal.</p>
-      </div></div>
-      <div class="table-responsive">
-        <table class="infra-table">
-          <thead><tr><th>Cliente</th><th>Contrato</th><th>Início</th><th>Fim</th><th class="num">Anos</th><th class="num">Baseline mensal</th></tr></thead>
-          <tbody id="rg-contracts-body"></tbody>
-        </table>
+      <!-- Contratos -->
+      <div class="card reveal">
+        <div class="card-header"><div>
+          <h2>Contratos do recorte</h2>
+          <p class="muted">Contrato vigente de cada cliente e o baseline mensal.</p>
+        </div></div>
+        <div class="table-responsive">
+          <table class="infra-table">
+            <thead><tr><th>Cliente</th><th>Contrato</th><th>Início</th><th>Fim</th><th class="num">Anos</th><th class="num">Baseline mensal</th></tr></thead>
+            <tbody id="rg-contracts-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
