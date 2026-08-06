@@ -7,8 +7,11 @@ const fs = require('fs');
 const path = require('path');
 const {
   Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, LsprModel,
-  Contract, MigrationEvent, Region,
+  Contract, MigrationEvent, Region, MachineLifecycle,
 } = require('./models');
+// typeDaMaquina mora no regional porque foi lá que a regra nasceu (o parque por
+// geração do painel). É a MESMA regra aqui: lsprModel primeiro, model depois.
+const { typeDaMaquina } = require('./regional');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
@@ -1326,6 +1329,32 @@ async function attachLspr(machines) {
 }
 
 /**
+ * Anexa a GERAÇÃO de cada máquina em `m.generation` ("z17", "z16"…).
+ *
+ * Serve à Visão geral, que precisa dizer o que a máquina é sem obrigar quem lê a
+ * decorar que 3931 é z16. Vem do LSPR quando há vínculo; sem vínculo (5 das 32
+ * em produção), cai no ciclo de vida IBM pelo type — que é justamente o caso em
+ * que "3931" sozinho na tela não ajudava ninguém.
+ */
+async function attachGeneration(machines) {
+  const semLspr = machines.filter((m) => !(m.lspr && m.lspr.generation));
+  let porType = new Map();
+  if (semLspr.length) {
+    const tipos = [...new Set(semLspr.map(typeDaMaquina).filter(Boolean))];
+    const rows = tipos.length ? await MachineLifecycle.find({ type: { $in: tipos } }).select('type family').lean() : [];
+    // Um type pode ter mais de uma linha (2064 = z900 G1 e G2); para o rótulo
+    // basta a primeira, como no painel gerencial.
+    for (const r of rows) if (!porType.has(String(r.type))) porType.set(String(r.type), r.family);
+  }
+  for (const m of machines) {
+    if (m.lspr && m.lspr.generation) { m.generation = m.lspr.generation; continue; }
+    const t = typeDaMaquina(m);
+    m.generation = (t && porType.get(t)) || null;
+  }
+  return machines;
+}
+
+/**
  * Anexa o contrato de cada máquina em `m.contractRef`.
  * Repare que NÃO usamos .populate('contract'): o formulário de máquina devolve no
  * PUT o objeto que recebeu, e um `contract` populado viraria lixo no banco. O id
@@ -2331,6 +2360,7 @@ router.get('/clients/:id/infra/machines', asyncHandler(async (req, res) => {
   const bySerial = await scrtBySerialLatest(client);
   for (const m of machines) m.scrt = bySerial.get(String(m.serial || '').trim().toUpperCase()) || null;
   await attachLspr(machines);       // referência de capacidade LSPR (m.lspr)
+  await attachGeneration(machines); // z17 / z16 …, inclusive sem vínculo LSPR
   await attachContracts(machines);  // contrato vigente (m.contractRef)
   await attachMigrations(machines); // resumo de MO/MES (m.migrations)
   res.json(machines);

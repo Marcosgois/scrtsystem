@@ -150,6 +150,13 @@ async function main() {
     check('máquinas importadas aparecem na infra', machines.length === importInfo.created, { got: machines.length, created: importInfo.created });
     const withLspr = machines.filter((m) => m.lspr);
     check('máquina importada traz referência LSPR (m.lspr)', withLspr.length > 0, withLspr.length);
+    // A Visão geral mostra a GERAÇÃO no lugar do antigo quadrado colorido. Ela
+    // precisa existir até SEM vínculo LSPR (5 das 32 máquinas de produção estão
+    // assim) — aí vem do ciclo de vida IBM pelo type.
+    check('máquina com LSPR traz a geração', withLspr.every((m) => !!m.generation), withLspr.map((m) => m.generation));
+    const semLspr = machines.filter((m) => !m.lspr);
+    check('máquina SEM LSPR também traz a geração (vem do ciclo de vida pelo type)',
+      !semLspr.length || semLspr.every((m) => m.generation), semLspr.map((m) => `${m.model}=${m.generation}`));
     const sample = withLspr[0];
     check('LSPR anexado tem MSU/MIPS/CPs', sample.lspr && sample.lspr.msu > 0 && sample.lspr.mips > 0, sample && sample.lspr);
     check('serial normalizado em maiúsculas', machines.every((m) => m.serial === m.serial.toUpperCase()), machines.map((m) => m.serial));

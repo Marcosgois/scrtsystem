@@ -1133,10 +1133,6 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 .empty-inline.small { padding: 10px 12px; font-size: 12px; }
 
 /* Marca de máquina (substitui a foto): bloco com gradiente */
-.imc-mark { width: 34px; height: 34px; border-radius: var(--radius); flex: 0 0 auto; display: inline-block; }
-.imc-mark.inline { width: 18px; height: 18px; vertical-align: middle; margin-right: 6px; border-radius: 3px; }
-.grad-linuxone { background: linear-gradient(135deg, #0f62fe, #4589ff); }
-.grad-z { background: linear-gradient(135deg, #262626, #525252); }
 
 /* Formulários em grade */
 .machine-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; }
@@ -1151,12 +1147,30 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 .site-block-nosite { border-top-color: var(--border-strong); border-top-style: dashed; }
 .site-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .site-block-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-.infra-machine-card { display: block; width: 100%; text-align: left; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
-.infra-machine-card:hover { border-color: var(--primary); }
-.infra-machine-card.dormant { opacity: 0.6; }
-.imc-head { display: flex; align-items: center; gap: 10px; }
-.imc-id { display: flex; flex-direction: column; line-height: 1.25; flex: 1; min-width: 0; }
-.imc-cap { white-space: nowrap; }
+/* Uma linha por máquina, em grade de 2 colunas: serial à esquerda e capacidade
+   à direita, na MESMA posição em todas as linhas. É isso que deixa o olho descer
+   a coluna e comparar sem ler número por número. */
+.imc-list { display: flex; flex-direction: column; }
+.imc-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 0 10px;
+  width: 100%; text-align: left; padding: 7px 9px 7px 10px;
+  background: none; border: 0; border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border); cursor: pointer; font-family: var(--font);
+}
+.imc-list > .imc-row:last-child { border-bottom: 0; }
+.imc-row:hover { background: var(--surface-subtle); border-left-color: var(--primary); }
+.imc-row.dormant { opacity: 0.55; }
+/* Sem vínculo LSPR não é erro, é pendência: uma marca discreta na borda, não um
+   alerta vermelho — 5 das 32 máquinas estão assim e a coluna não pode virar
+   um mar de aviso. */
+.imc-row.sem-lspr { border-left-color: var(--border-strong); }
+
+.imc-serial { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.imc-msu { font-size: 13px; color: var(--ink); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.imc-msu i { font-style: normal; font-size: 10.5px; color: var(--ink-muted); margin-left: 3px; }
+.imc-msu em { font-style: normal; font-size: 11px; color: var(--ink-muted); }
+.imc-ficha { grid-column: 1 / -1; font-size: 11px; color: var(--ink-secondary); line-height: 1.35; margin-top: 1px; }
+.imc-lpars { grid-column: 1 / -1; font-size: 10.5px; color: var(--ink-muted); margin-top: 2px; }
 .lpar-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .lpar-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); }
 .os-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
@@ -1688,3 +1702,27 @@ body:not(.is-manager) [data-requires-manager] { display: none !important; }
 .machine-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 10px 12px; }
 .num-field input[type="number"] { width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
 .machine-nums-note { margin: 8px 0 0; font-size: 11px; line-height: 1.4; }
+
+/* Geração da máquina (z17, z16…) — substituiu o quadrado colorido que só
+   distinguia IBM Z de LinuxONE e, com o parque quase todo IBM Z, era preto em
+   tudo. Texto informa; cor sem legenda, não. */
+.gen-tag {
+  display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .2px;
+  color: var(--accent); background: var(--accent-light);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 4px; padding: 1px 5px; vertical-align: middle;
+}
+/* Ressalva do rodapé: o total de MSU não cobre quem não tem vínculo LSPR. */
+.imc-foot-pend { color: var(--ink-muted); border-left: 1px solid var(--border); margin-left: 6px; padding-left: 8px; }
+
+/* O bloco "sem site" é o pior caso da tela: o Banco do Brasil tem 14 máquinas e
+   nenhum site, e elas caíam todas numa coluna de 320px com o resto da linha em
+   branco. Aqui ele ocupa a largura inteira e distribui as linhas em colunas. */
+.site-block-nosite { grid-column: 1 / -1; }
+.site-block-nosite .imc-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  column-gap: 18px;
+}
+/* Numa grade, "a última linha" não é mais a de baixo de cada coluna — manter a
+   borda em todas evita que a última de uma coluna pareça cortada. */
+.site-block-nosite .imc-list > .imc-row:last-child { border-bottom: 1px solid var(--border); }

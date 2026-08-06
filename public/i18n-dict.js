@@ -1211,3 +1211,16 @@ Object.assign(window.ZCD_DICT, {
     ["CPs viene del modelo LSPR · VFM es Virtual Flash Memory, que es flash y no entra en el total de memoria",
      "CPs comes from the LSPR model · VFM is Virtual Flash Memory — it is flash and does not count toward total memory"],
 });
+
+/* Infra: Visão geral redesenhada */
+Object.assign(window.ZCD_DICT, {
+  "sem LSPR": ["sin LSPR", "no LSPR"],
+  "Sem vínculo LSPR: capacidade de referência desconhecida":
+    ["Sin vínculo LSPR: capacidad de referencia desconocida",
+     "No LSPR link: reference capacity unknown"],
+});
+window.ZCD_PATTERNS.push(
+  [/^(\d+) sem LSPR$/, "$1 sin LSPR", "$1 without LSPR"],
+  [/^(\d+) LPARs?$/, "$1 LPAR(s)", "$1 LPAR(s)"],
+  [/^Ver detalhes de ([\s\S]*?)$/, "Ver detalles de $1", "See details for $1"]
+);

@@ -184,18 +184,67 @@ function lparChip(l) {
     <span class="muted">${l.ifls ? l.ifls + ' IFL' : ''}</span></span>`;
 }
 
-function machineCardCompact(m) {
+/*
+ * Uma LINHA por máquina, não um card.
+ *
+ * O que saiu e por quê:
+ *  - o quadrado escuro (.imc-mark) era gradiente cinza para IBM Z e azul para
+ *    LinuxONE. Como quase todo o parque é IBM Z, ele era preto em tudo: 34px de
+ *    altura por linha sem informar nada. No lugar vai a GERAÇÃO em texto (z17,
+ *    z16), que é o que a cor tentava dizer — e funciona até sem vínculo LSPR,
+ *    porque o servidor deduz pelo type no ciclo de vida IBM.
+ *  - a faixa "sem LPARs" ocupava uma linha em TODO card. Não existe uma única
+ *    LPAR cadastrada no sistema; ela só aparece agora quando existe de verdade.
+ *  - o "147 proc" somava CP + zIIP + IFL + CF num número só. São motores
+ *    diferentes, com preço e função diferentes: viram a ficha desdobrada, e cada
+ *    tipo só aparece se a máquina tiver.
+ *
+ * O que NÃO entrou: o consumo do SCRT. Ele é MSU ACUMULADO no mês; o MSU do LSPR
+ * é instantâneo. Lado a lado eles convidam a uma divisão que não se sustenta —
+ * e pior, a média mensal esconderia o pico de 4HRA, que é o que fatura. Consumo
+ * continua no módulo de Consumo zOTC, onde a régua é a certa.
+ */
+function machineRow(m) {
   const lps = lparsOfMachine(m._id);
-  const grad = /linuxone/i.test(m.model) ? 'grad-linuxone' : 'grad-z';
-  return `<button type="button" class="infra-machine-card${m.status !== 'ativa' ? ' dormant' : ''}" data-open-lpars="${m._id}" title="Ver detalhes da máquina">
-    <div class="imc-head">
-      <span class="imc-mark ${grad}"></span>
-      <span class="imc-id"><strong>${esc(m.model || 'Máquina')}</strong>${m.featureModel ? ` <span class="muted small">${esc(m.featureModel)}</span>` : ''}
-        <span class="muted small">${esc(m.serial || 's/ serial')}</span></span>
-      <span class="imc-cap muted small" title="${esc(engineBreakdown(m))}">${fmt(engineTotal(m))} proc · ${num1(memoryOf(m))} TB</span>
-    </div>
-    ${lps.length ? `<div class="lpar-strip">${lps.map(lparChip).join('')}</div>` : '<div class="lpar-strip muted small">sem LPARs</div>'}
+  const nominal = m.lspr && m.lspr.msu ? m.lspr.msu : null;
+  const tipo = m.lsprModel || [m.model, m.featureModel].filter(Boolean).join('-') || '—';
+
+  // Só os motores que a máquina tem. Zerado não vira "0 CP", vira ausência.
+  const motores = [];
+  if (m.cps) motores.push(`${fmt(m.cps)} CP`);
+  if (m.ziips) motores.push(`${fmt(m.ziips)} zIIP`);
+  if (m.iflsActive) motores.push(`${fmt(m.iflsActive)} IFL`);
+  if (m.icfs) motores.push(`${fmt(m.icfs)} CF`);
+  if (memoryOf(m)) motores.push(`${num1(memoryOf(m))} TB`);
+
+  // Uma pendência só, e a que dá para resolver: sem vínculo LSPR a máquina não
+  // tem capacidade de referência, e é isso que a coluna da direita mostra vazia.
+  const semLspr = !m.lspr;
+  const ficha = [m.generation || null, tipo, ...motores].filter(Boolean).join(' · ');
+
+  return `<button type="button" class="imc-row${semLspr ? ' sem-lspr' : ''}${m.status !== 'ativa' ? ' dormant' : ''}"
+          data-open-lpars="${m._id}" title="Ver detalhes de ${esc(m.serial || 'máquina')}">
+    <span class="imc-serial">${esc(m.serial || 's/ serial')}</span>
+    <span class="imc-msu">${nominal ? `${fmt(nominal)}<i>MSU</i>` : '<em title="Sem vínculo LSPR: capacidade de referência desconhecida">sem LSPR</em>'}</span>
+    <span class="imc-ficha">${esc(ficha)}</span>
+    ${lps.length ? `<span class="imc-lpars">${lps.length} LPAR${lps.length > 1 ? 's' : ''}</span>` : ''}
   </button>`;
+}
+
+/* Rodapé do site: a linha de totais da mesma tabela. Só soma o que dá para
+   somar — se metade das máquinas não tem LSPR, o total de MSU diz de quantas. */
+function siteFoot(ms) {
+  const comLspr = ms.filter((m) => m.lspr && m.lspr.msu);
+  const msu = comLspr.reduce((a, m) => a + m.lspr.msu, 0);
+  const mem = ms.reduce((a, m) => a + memoryOf(m), 0);
+  const semLspr = ms.length - comLspr.length;
+  const partes = [`${ms.length} máquina(s)`];
+  if (msu) partes.push(`${fmt(msu)} MSU`);
+  if (mem) partes.push(`${num1(mem)} TB`);
+  // O total de MSU só cobre quem tem vínculo LSPR. Dizer QUANTAS faltam é mais
+  // útil que um "(de 1)" que obriga a fazer a subtração de cabeça.
+  const ressalva = semLspr ? ` <span class="imc-foot-pend">${semLspr} sem LSPR</span>` : '';
+  return `<div class="site-block-foot muted small">${partes.join(' · ')}${ressalva}</div>`;
 }
 
 function renderOverview() {
@@ -214,22 +263,21 @@ function renderOverview() {
   const siteBlocks = state.sites.map((s) => {
     const ms = bySite.get(s._id) || [];
     const r = ROLES[s.role] || ROLES.prod;
-    const engines = ms.reduce((a, m) => a + engineTotal(m), 0);
-    const mem = ms.reduce((a, m) => a + memoryOf(m), 0);
     return `<div class="site-block" style="border-top-color:${r.color}">
       <div class="site-block-head">
         <span class="badge" style="background:${r.color}1a;color:${r.color}">${esc(r.label)}</span>
         <strong>${esc(s.name)}</strong>${s.location ? ` <span class="muted small">${esc(s.location)}</span>` : ''}
         <button type="button" class="btn-link" data-edit-site="${s._id}">editar</button>
       </div>
-      ${ms.length ? ms.map(machineCardCompact).join('') : '<div class="empty-inline small">sem máquinas neste site</div>'}
-      <div class="site-block-foot muted small">${ms.length} máquina(s) · ${fmt(engines)} proc · ${num1(mem)} TB</div>
+      ${ms.length ? `<div class="imc-list">${ms.map(machineRow).join('')}</div>` : '<div class="empty-inline small">sem máquinas neste site</div>'}
+      ${siteFoot(ms)}
     </div>`;
   }).join('');
   const semSiteBlock = semSite.length
     ? `<div class="site-block site-block-nosite">
         <div class="site-block-head"><span class="badge badge-neutral">Sem site</span><strong>Máquinas sem site definido</strong></div>
-        ${semSite.map(machineCardCompact).join('')}
+        <div class="imc-list">${semSite.map(machineRow).join('')}</div>
+        ${siteFoot(semSite)}
       </div>`
     : '';
   el.innerHTML = `<div class="site-columns">${siteBlocks}${semSiteBlock}</div>`;
@@ -292,7 +340,6 @@ function renderMachineRows() {
   const tbody = $('machine-rows');
   if (!rows.length) { tbody.innerHTML = '<tr><td colspan="10" class="muted small" style="padding:14px">Nenhuma máquina.</td></tr>'; return; }
   tbody.innerHTML = rows.map((m) => {
-    const grad = /linuxone/i.test(m.model) ? 'grad-linuxone' : 'grad-z';
     const r = m.site && ROLES[m.site.role];
     const siteCell = m.site
       ? `<span class="badge" style="background:${r.color}1a;color:${r.color}">${esc(ROLES[m.site.role].label)}</span> ${esc(m.site.name)}`
@@ -310,7 +357,7 @@ function renderMachineRows() {
     }
     const lpc = lparsOfMachine(m._id).length;
     return `<tr class="${m.status === 'substituida' ? 'machine-replaced' : (m.status !== 'ativa' ? 'machine-dormant' : '')}">
-      <td><span class="imc-mark ${grad} inline"></span><button type="button" class="btn-link" data-detail="${m._id}" title="Ver detalhes"><strong>${esc(m.model || '—')}</strong></button>${m.variant ? ` <span class="muted small">${esc(m.variant)}</span>` : ''}${m.featureModel ? `<div class="muted small">${esc(m.featureModel)}</div>` : ''}${statusBadge(m)}</td>
+      <td>${m.generation ? `<span class="gen-tag">${esc(m.generation)}</span> ` : ''}<button type="button" class="btn-link" data-detail="${m._id}" title="Ver detalhes"><strong>${esc(m.model || '—')}</strong></button>${m.variant ? ` <span class="muted small">${esc(m.variant)}</span>` : ''}${m.featureModel ? `<div class="muted small">${esc(m.featureModel)}</div>` : ''}${statusBadge(m)}</td>
       <td>${siteCell}</td>
       <td class="mono">${esc(m.serial || '—')}</td>
       <td>${engineTotal(m) ? `<strong>${fmt(engineTotal(m))}</strong><div class="muted small">${engineBreakdown(m)}</div>` : '<span class="muted small">—</span>'}</td>
