@@ -53,6 +53,37 @@ async function main() {
     const seedAgain = await seedLspr({ log: () => {} });
     check('seed é idempotente (não repopula)', seedAgain.seeded === false, seedAgain);
 
+    // A carga é RECONCILIAÇÃO, não "apaga e insere". Duas consequências que
+    // precisam ficar travadas:
+    const { LsprModel } = require('../src/models');
+
+    // 1. Tabela parcial (import que morreu no meio) se conserta sozinha na
+    //    próxima subida. Com o guard antigo `count > 0`, 5 documentos bloqueavam
+    //    igual a 3 mil e a tabela ficava capenga em silêncio.
+    const cheio = seedRes.count;
+    await LsprModel.deleteMany({ machineType: '2094' });
+    const parcial = await LsprModel.countDocuments();
+    const repara = await seedLspr({ log: () => {} });
+    check('tabela parcial é reparada no start (não fica capenga em silêncio)',
+      parcial < cheio && repara.seeded === true && repara.count === cheio, { cheio, parcial, depois: repara.count });
+
+    // 2. Reimportar NUNCA esvazia a coleção: se esvaziasse, um contrato ou MO/MES
+    //    criado nessa janela congelaria msu/mips nulos num snapshot histórico.
+    let vazioEmAlgumMomento = false;
+    const vigia = setInterval(async () => {
+      if ((await LsprModel.countDocuments()) === 0) vazioEmAlgumMomento = true;
+    }, 2);
+    await seedLspr({ replace: true, log: () => {} });
+    clearInterval(vigia);
+    await new Promise((r) => setTimeout(r, 20));
+    check('reimportação nunca deixa a tabela vazia', vazioEmAlgumMomento === false);
+    check('reimportação mantém o total', (await LsprModel.countDocuments()) === cheio);
+
+    // 3. A tabela publicada conhece o z17 ME2 (type 9176), que entrou no zPCR em
+    //    ago/2026 — é o caso concreto que motivou trocar o guard.
+    const t9176 = await LsprModel.countDocuments({ machineType: '9176' });
+    check('referência inclui o type 9176 (z17 ME2 / Rockhopper 5)', t9176 > 0, t9176);
+
     // ── Login admin ──
     const setup = await fetch(`${BASE}/auth/setup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

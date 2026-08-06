@@ -245,11 +245,34 @@ O módulo de **Infraestrutura** (`/infra`) traz duas facilidades ligadas ao SCRT
   ligada automaticamente à sua linha **LSPR** pelo *type-model* (ex.: `3931-705`).
 - **Referência LSPR** (capacidade por modelo IBM Z): MIPS, MSU, #CPs e #IFLs máximos por modelo,
   vindos do zPCR *Configuration Summary*. São dados públicos da IBM, versionados em
-  [src/data/lspr.json](src/data/lspr.json) (~3.000 modelos) e carregados no banco no primeiro
-  start (idempotente). No cadastro da máquina há um seletor para conferir/ajustar o vínculo à mão.
+  [src/data/lspr.json](src/data/lspr.json) (3.190 modelos, até o z17 ME2 / type 9176) e
+  sincronizados com o banco a cada start. No cadastro da máquina há um seletor para
+  conferir/ajustar o vínculo à mão.
 
 Consulta via API: `GET /api/lspr?q=<texto>&type=<9175>&generation=<z16>`, `GET /api/lspr/:model`,
-`GET /api/lspr/meta`. Para reimportar após uma versão nova do arquivo: `npm run import:lspr`.
+`GET /api/lspr/meta`.
+
+### Atualizar quando a IBM publicar uma versão nova
+
+No zPCR, salve o *Configuration Summary* (o arquivo `CheatSheet*.html`) e rode:
+
+```bash
+node scripts/parse-lspr-cheatsheet.js ~/Downloads/CheatSheet*.html          # só compara
+node scripts/parse-lspr-cheatsheet.js ~/Downloads/CheatSheet*.html --write  # grava o JSON
+```
+
+Sem `--write` ele só imprime o diff (modelos novos, sumidos e com número diferente) — é assim
+que se confere se o banco está atualizado. Com `--write` ele regrava `src/data/lspr.json`; daí é
+commitar e publicar. **Não precisa mexer no banco à mão**: a carga (`src/lsprSeed.js`) compara a
+contagem do banco com a do arquivo a cada start e reconcilia sozinha, por *upsert* — nunca apaga
+a coleção antes de inserir, porque a janela com a tabela vazia congelaria MSU/MIPS nulos no
+snapshot de qualquer contrato ou MO/MES criado naquele instante. `npm run import:lspr` continua
+existindo para forçar a reconciliação quando um VALOR mudou sem mudar a quantidade de modelos.
+
+O parser é estrito de propósito: se o formato do zPCR mudar (outro número de colunas, linha de
+total, modelo fora do padrão `NNNN-XXX`), ele **para** em vez de gravar dado pela metade —
+capacidade errada no banco vira proposta comercial errada. As armadilhas do formato estão
+travadas em [test/lspr-cheatsheet.test.js](test/lspr-cheatsheet.test.js).
 
 ## Contratos, MO/MES e histórico da máquina
 
@@ -526,7 +549,7 @@ src/
   forecast.js             # projeção linear e SARIMA
   mlc.js                  # cálculo do contrato de MLC
   lsprSeed.js             # carga da referência LSPR no banco
-  data/lspr.json          # ~3.000 modelos IBM Z (MIPS/MSU/CPs) — dados públicos IBM
+  data/lspr.json          # 3.190 modelos IBM Z (MIPS/MSU/CPs) — dados públicos IBM
 public/
   home.html/.js           # landing animada (Three.js + GSAP) e atalho por cliente
   login.html              # login e criação do 1º admin
@@ -541,7 +564,7 @@ public/
   scrt-files.js           # modal dos arquivos SCRT do mês
   styles.css              # sistema visual (IBM Carbon) + regras de celular
   vendor/                 # chart.umd.js, three.min.js, gsap.min.js
-scripts/                  # demo, import da referência LSPR, import do MLC da CAIXA
+scripts/                  # demo, conversor/import da referência LSPR, import do MLC da CAIXA
 test/                     # 8 suítes (ver abaixo)
 data/                     # NÃO versionado: banco, PDFs, logs, segredo de sessão
 SCRT/<CLIENTE>/           # NÃO versionado: arquivos SCRT reais
@@ -558,6 +581,7 @@ npm run test:forecast     # projeção linear/SARIMA e os limites de histórico
 npm run test:mlc          # cálculo do contrato de MLC
 npm run test:migration    # migração de bancos criados por versões anteriores
 npm run test:auth         # login e a matriz de acesso (view/edit/admin)
+npm run test:lspr-cheatsheet # conversor do Configuration Summary do zPCR
 npm run test:infra-lspr   # referência LSPR e importação de máquinas do SCRT
 npm run test:contratos    # contratos, aditivos, vínculos, MO/MES e Demo/PoC
 npm run test:e2e          # API completa com MongoDB em memória

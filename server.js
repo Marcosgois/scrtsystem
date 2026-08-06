@@ -179,9 +179,12 @@ async function main() {
 
   try {
     await connectDb(uri);
-    // Referência LSPR (dados públicos IBM): popula na 1ª vez, idempotente depois.
+    // Referência LSPR (dados públicos IBM): reconcilia com src/data/lspr.json.
+    // Não derruba o servidor se falhar — a tabela é referência, não dado de
+    // cliente — mas a próxima subida tenta de novo, porque a contagem não bate.
     const { seedLspr } = require('./src/lsprSeed');
-    await seedLspr({ log: console.log }).catch((e) => console.warn('[LSPR] seed ignorado:', e.message));
+    await seedLspr({ log: console.log })
+      .catch((e) => console.warn('[LSPR] tabela de referência NÃO sincronizada:', e.message));
   } catch (err) {
     console.error(`\n[MongoDB] Não foi possível conectar em ${uri.replace(/\/\/[^@]*@/, '//***@')}`);
     console.error(`[MongoDB] ${err.message}`);
