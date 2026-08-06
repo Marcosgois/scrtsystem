@@ -74,8 +74,10 @@ router.get('/overview', asyncHandler(async (req, res) => {
       .select('client periodKey periodLabel totalMsuConsumed containersTotalMsu processorsInMultiplex machines lpars containers')
       .lean(),
     // lsprModel entra porque é dele que sai o type ("3931-7C9" -> 3931) quando o
-    // cliente gravou o modelo em texto livre ("IBM Z z16/700").
-    InfraMachine.find({ client: { $in: ids } }).select('client model lsprModel status').lean(),
+    // cliente gravou o modelo em texto livre ("IBM Z z16/700"); variant e
+    // featureModel, porque é neles que aparece o modelo que separa duas linhas de
+    // ciclo de vida do mesmo type ("ME2" x "MER" no 9176).
+    InfraMachine.find({ client: { $in: ids } }).select('client model variant featureModel lsprModel status').lean(),
     MachineLifecycle.find().lean(),
   ]);
 
