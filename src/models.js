@@ -91,6 +91,9 @@ const machineTagSchema = new mongoose.Schema(
 const clientSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, unique: true },
+    // Região a que o cliente pertence (no máximo UMA — ver regionSchema). Vazio =
+    // fora de qualquer região; aparece como "Sem região" no painel gerencial.
+    region: { type: mongoose.Schema.Types.ObjectId, ref: 'Region', default: null, index: true },
     // Tags de máquina: catálogo (nome + se é ignorada) e atribuição por serial.
     // Máquina de tag ignorada tem o consumo de MSU excluído do faturável.
     machineTagDefs: { type: [machineTagDefSchema], default: [] },
@@ -109,6 +112,26 @@ const clientSchema = new mongoose.Schema(
     // LEGADO: contrato MLC único. Migrado para contractPeriods[0]; mantido para
     // não quebrar leitura antiga enquanto a migração roda.
     mlcContract: { type: mlcContractSchema, default: null },
+    notes: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+
+/*
+ * Região geográfica/comercial, com aninhamento: LA contém Brasil, Brasil contém
+ * clientes — e LA soma os clientes do Brasil mais os das outras filhas.
+ *
+ * A região guarda só o PAI; a lista de clientes de uma região é calculada
+ * percorrendo os descendentes (src/regions.js). Guardar a lista fechada em cada
+ * nível ficaria desatualizada toda vez que um cliente entrasse numa folha.
+ *
+ * Cada cliente pertence a NO MÁXIMO uma região (Client.region) — assim somar as
+ * regiões irmãs nunca conta o mesmo MSU duas vezes.
+ */
+const regionSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true, unique: true },
+    parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Region', default: null, index: true },
     notes: { type: String, default: '' },
   },
   { timestamps: true }
@@ -630,8 +653,9 @@ const Contract = mongoose.model('Contract', contractSchema);
 const MigrationEvent = mongoose.model('MigrationEvent', migrationEventSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 const MachineLifecycle = mongoose.model('MachineLifecycle', machineLifecycleSchema);
+const Region = mongoose.model('Region', regionSchema);
 
 module.exports = {
   Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel,
-  Contract, MigrationEvent, AuditLog, MachineLifecycle,
+  Contract, MigrationEvent, AuditLog, MachineLifecycle, Region,
 };

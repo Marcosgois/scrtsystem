@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "npm run test:parser && npm run test:forecast && npm run test:mlc && npm run test:contract-periods && npm run test:migration && npm run test:auth && npm run test:audit && npm run test:security && npm run test:infra-lspr && npm run test:contratos && npm run test:e2e",
+    "test": "npm run test:parser && npm run test:forecast && npm run test:mlc && npm run test:contract-periods && npm run test:regions && npm run test:migration && npm run test:auth && npm run test:audit && npm run test:security && npm run test:infra-lspr && npm run test:contratos && npm run test:e2e",
     "demo": "node scripts/demo.js",
     "test:parser": "node test/parser.test.js",
     "test:e2e": "node test/e2e.test.js",
@@ -19,6 +19,7 @@
     "test:forecast": "node test/forecast.test.js",
     "test:mlc": "node test/mlc.test.js",
     "test:contract-periods": "node test/contract-periods.test.js",
+    "test:regions": "node test/regions.test.js",
     "import:mlc-caixa": "node scripts/import-mlc-caixa.js",
     "import:lspr": "node scripts/import-lspr.js",
     "db:status": "node scripts/sync-db.js --status",
