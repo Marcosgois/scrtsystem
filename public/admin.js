@@ -62,10 +62,12 @@ async function load() {
 function renderKpis() {
   const total = state.users.length;
   const admins = state.users.filter((u) => u.role === 'admin').length;
-  const regular = total - admins;
+  const gerentes = state.users.filter((u) => u.role === 'manager').length;
+  const regular = total - admins - gerentes;
   $('admin-kpis').innerHTML = [
     ['Usuários', total, 'contas ativas'],
     ['Administradores', admins, 'acesso total'],
+    ['Gerentes', gerentes, 'veem todos os clientes'],
     ['Usuários comuns', regular, 'acesso por cliente'],
     ['Clientes', state.clients.length, 'disponíveis para associar'],
   ].map(([h, v, s]) => `
@@ -76,6 +78,15 @@ function renderKpis() {
 function accessSummary(u) {
   if (u.role === 'admin') return '<span class="access-chip all">Todos os clientes</span>';
   const list = u.access || [];
+  // Gerente vê todos por padrão; a lista abaixo só aparece quando elevam algum
+  // cliente para edição.
+  if (u.role === 'manager') {
+    const edits = list.filter((a) => a.level === 'edit');
+    const byId = new Map(state.clients.map((c) => [String(c._id), c.name]));
+    return '<span class="access-chip all">Todos os clientes · ver</span>'
+      + (edits.length ? '<div class="access-summary">' + edits.map((a) =>
+        `<span class="access-chip edit">${esc(byId.get(String(a.client)) || 'cliente removido')} · editar</span>`).join('') + '</div>' : '');
+  }
   if (!list.length) return '<span class="muted small">— sem acesso</span>';
   const byId = new Map(state.clients.map((c) => [String(c._id), c.name]));
   return '<div class="access-summary">' + list.map((a) => {
@@ -95,7 +106,9 @@ function renderTable() {
     const isSelf = String(u._id) === String(me._id);
     const roleTag = u.role === 'admin'
       ? '<span class="role-tag admin">Administrador</span>'
-      : '<span class="role-tag user">Usuário</span>';
+      : u.role === 'manager'
+        ? '<span class="role-tag manager">Gerente</span>'
+        : '<span class="role-tag user">Usuário</span>';
     return `
       <tr>
         <td>
@@ -121,6 +134,7 @@ function renderTable() {
 /* ── Modal de usuário ───────────────────────────────── */
 const ROLES = [
   { key: 'user', label: 'Usuário', desc: 'Acesso por cliente', color: '#0f62fe' },
+  { key: 'manager', label: 'Gerente', desc: 'Vê todos os clientes, inclusive os novos', color: '#0072c3' },
   { key: 'admin', label: 'Administrador', desc: 'Acesso total', color: '#6929c4' },
 ];
 
@@ -135,8 +149,14 @@ function renderRolePicker() {
 
 function renderAccessBlock() {
   const isAdmin = state.role === 'admin';
+  const isManager = state.role === 'manager';
   $('u-access-block').style.display = isAdmin ? 'none' : '';
-  $('u-access-admin-note').style.display = isAdmin ? '' : 'none';
+  const nota = $('u-access-admin-note');
+  nota.style.display = isAdmin || isManager ? '' : 'none';
+  // Gerente já vê tudo; a lista abaixo só serve para dar EDIÇÃO em algum cliente.
+  nota.textContent = isAdmin
+    ? 'Administradores têm acesso a todos os clientes automaticamente.'
+    : 'Gerentes já veem todos os clientes, inclusive os criados depois. Use a lista abaixo só para dar permissão de EDIÇÃO em algum cliente.';
   if (isAdmin) return;
   const list = $('u-access-list');
   if (!state.clients.length) {

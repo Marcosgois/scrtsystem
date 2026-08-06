@@ -393,7 +393,9 @@ const userSchema = new mongoose.Schema(
     // Incrementado ao trocar a senha: invalida todos os tokens de sessão antigos
     // (o token carrega a versão; attachUser compara). Revogação sem estado no servidor.
     tokenVersion: { type: Number, default: 0 },
-    role: { type: String, enum: ['admin', 'user'], default: 'user' },
+    // 'manager' = gerente: enxerga TODO cliente (piso de 'view' em accessLevel),
+    // inclusive os criados depois. Não administra usuários nem exclui cliente.
+    role: { type: String, enum: ['admin', 'manager', 'user'], default: 'user' },
     access: { type: [userAccessSchema], default: [] },
   },
   { timestamps: true }

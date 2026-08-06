@@ -206,6 +206,11 @@ function validateCreate({ name, email, password }) {
   if (!password || String(password).length < MIN_SENHA) return `A senha precisa de ao menos ${MIN_SENHA} caracteres.`;
   return null;
 }
+// Papel válido, com 'user' como padrão seguro: valor desconhecido nunca vira
+// admin nem gerente por acidente.
+const PAPEIS = ['admin', 'manager', 'user'];
+const papelValido = (p) => (PAPEIS.includes(p) ? p : 'user');
+
 function parseAccess(list) {
   if (!Array.isArray(list)) return [];
   const seen = new Set();
@@ -234,7 +239,9 @@ adminRouter.post('/users', asyncHandler(async (req, res) => {
   const user = await User.create({
     name: String(name).trim(), email: String(email).toLowerCase().trim(),
     passwordHash: hash, passwordSalt: salt, passwordParams: params,
-    role: role === 'admin' ? 'admin' : 'user',
+    role: papelValido(role),
+    // Admin vê tudo, então lista de acesso não faz sentido. Gerente já tem piso de
+    // 'view' em todos, mas a lista continua valendo para elevar algum para 'edit'.
     access: role === 'admin' ? [] : parseAccess(req.body.access),
   });
   res.status(201).json(publicUser(user));
@@ -245,7 +252,7 @@ adminRouter.put('/users/:id', asyncHandler(async (req, res) => {
   const update = {};
   const b = req.body || {};
   if (b.name !== undefined) { if (!String(b.name).trim()) return res.status(400).json({ error: 'Nome não pode ser vazio.' }); update.name = String(b.name).trim(); }
-  if (b.role !== undefined) update.role = b.role === 'admin' ? 'admin' : 'user';
+  if (b.role !== undefined) update.role = papelValido(b.role);
   if (b.access !== undefined) update.access = parseAccess(b.access);
   if (b.password) {
     if (String(b.password).length < MIN_SENHA) return res.status(400).json({ error: `A senha precisa de ao menos ${MIN_SENHA} caracteres.` });
@@ -257,7 +264,9 @@ adminRouter.put('/users/:id', asyncHandler(async (req, res) => {
   // Não deixar remover o último admin.
   const target = await User.findById(req.params.id);
   if (!target) return res.status(404).json({ error: 'Usuário não encontrado.' });
-  if (target.role === 'admin' && update.role === 'user') {
+  // Qualquer papel que NÃO seja admin é rebaixamento — inclusive 'manager'. Testar
+  // só contra 'user' deixaria o último admin virar gerente e o sistema sem admin.
+  if (target.role === 'admin' && update.role && update.role !== 'admin') {
     const admins = await User.countDocuments({ role: 'admin' });
     if (admins <= 1) return res.status(422).json({ error: 'Não é possível rebaixar o último administrador.' });
   }

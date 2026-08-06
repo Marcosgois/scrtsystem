@@ -1290,6 +1290,7 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
 }
 .role-tag.admin { background: var(--accent-light); color: var(--accent); border-color: #d9c9f0; }
 .role-tag.user { background: var(--surface-hover); color: var(--ink-secondary); border-color: var(--border); }
+.role-tag.manager { background: #d0e2ff; color: #0043ce; border-color: #a6c8ff; }
 .access-summary { display: flex; flex-wrap: wrap; gap: 5px; }
 .access-chip {
   font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);

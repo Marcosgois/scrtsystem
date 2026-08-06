@@ -13,6 +13,7 @@ const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
 const { computeMlcView } = require('./mlc');
+const auth = require('./auth');
 
 const router = express.Router();
 const upload = multer({
@@ -338,11 +339,10 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 router.get('/clients', asyncHandler(async (req, res) => {
   const user = req.user;
   const isAdmin = user && user.role === 'admin';
-  const levelOf = (id) => {
-    if (isAdmin) return 'admin';
-    const g = ((user && user.access) || []).find((a) => String(a.client) === String(id));
-    return g ? g.level : null;
-  };
+  // Usa o accessLevel compartilhado (src/auth.js) de propósito: esta rota já teve
+  // uma cópia própria da regra e ficou para trás quando o perfil de gerente entrou
+  // — o guard deixava passar, mas a listagem vinha vazia. Uma fonte só evita isso.
+  const levelOf = (id) => auth.accessLevel(user, id);
   let clients = await Client.find().sort({ name: 1 }).lean();
   if (!isAdmin) clients = clients.filter((c) => levelOf(c._id)); // só os clientes do usuário
   const stats = await ScrtReport.aggregate([

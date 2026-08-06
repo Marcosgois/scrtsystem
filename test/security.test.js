@@ -94,6 +94,43 @@ async function main() {
   const delAdmin = await admin.req(`/clients/${A._id}`, { method: 'DELETE' });
   check('admin consegue excluir o cliente', delAdmin.status === 200, delAdmin.status);
 
+  // ── Perfil GERENTE: vê todo cliente, inclusive os criados DEPOIS dele ──
+  await admin.req('/admin/users', { method: 'POST', json: { name: 'Renata', email: 'renata@x.com', password: 'renata12345', role: 'manager', access: [] } });
+  const gerente = session();
+  await gerente.req('/auth/login', { method: 'POST', json: { email: 'renata@x.com', password: 'renata12345' } });
+
+  const listaGer = (await gerente.req('/clients')).body;
+  check('gerente enxerga os clientes existentes sem concessão explícita',
+    Array.isArray(listaGer) && listaGer.some((c) => String(c._id) === String(B._id)), listaGer && listaGer.length);
+
+  // O ponto do pedido: cliente criado DEPOIS já nasce visível para o gerente.
+  const novo = (await admin.req('/clients', { method: 'POST', json: { name: 'ClienteNovoDepois' } })).body;
+  const listaGerDepois = (await gerente.req('/clients')).body;
+  check('cliente criado DEPOIS já aparece para o gerente, sem mexer em permissão',
+    listaGerDepois.some((c) => String(c._id) === String(novo._id)), listaGerDepois.map((c) => c.name));
+  const leitura = await gerente.req(`/clients/${novo._id}/infra/machines`);
+  check('gerente consegue LER o cliente novo', leitura.status === 200, leitura.status);
+
+  // Mas é só leitura: não edita nem exclui, e não administra.
+  const tentaEditar = await gerente.req(`/clients/${novo._id}`, { method: 'PATCH', json: { monthlyBaselineMsu: 1 } });
+  check('gerente NÃO edita (403)', tentaEditar.status === 403, tentaEditar.status);
+  const tentaExcluir = await gerente.req(`/clients/${novo._id}`, { method: 'DELETE' });
+  check('gerente NÃO exclui cliente (403)', tentaExcluir.status === 403, tentaExcluir.status);
+  const tentaAdmin = await gerente.req('/admin/users');
+  check('gerente NÃO administra usuários (403)', tentaAdmin.status === 403, tentaAdmin.status);
+
+  // Concessão explícita continua valendo por cima do piso e pode elevar para edição.
+  await admin.req('/admin/users', { method: 'POST', json: { name: 'Gui', email: 'gui@x.com', password: 'gui12345678', role: 'manager', access: [{ client: novo._id, level: 'edit' }] } });
+  const gerenteEdit = session();
+  await gerenteEdit.req('/auth/login', { method: 'POST', json: { email: 'gui@x.com', password: 'gui12345678' } });
+  const editOk = await gerenteEdit.req(`/clients/${novo._id}`, { method: 'PATCH', json: { monthlyBaselineMsu: 7 } });
+  check('gerente COM concessão de edição consegue editar', editOk.status === 200, editOk.status);
+
+  // Rebaixar o último admin para gerente não pode passar (deixaria o sistema sem admin).
+  const eu = (await admin.req('/auth/me')).body;
+  const rebaixa = await admin.req(`/admin/users/${eu._id}`, { method: 'PUT', json: { role: 'manager' } });
+  check('não deixa rebaixar o ÚLTIMO admin para gerente (422)', rebaixa.status === 422, rebaixa.status);
+
   // ── Rate limit: por último, pois tranca o IP do processo ──
   const bruta = session();
   let travou = false;

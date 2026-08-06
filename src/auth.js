@@ -141,7 +141,14 @@ function accessLevel(user, clientId) {
   if (user.role === 'admin') return 'admin';
   const id = String(clientId);
   const grant = (user.access || []).find((a) => String(a.client) === id);
-  return grant ? grant.level : null;
+  if (grant) return grant.level;
+  // GERENTE: piso de 'view' em TODO cliente — inclusive nos criados depois.
+  // É de propósito que isto não sincronize uma lista de acessos na criação do
+  // cliente: lista precisaria de gancho na criação E de backfill dos existentes,
+  // e sairia do ar no dia em que alguém criasse cliente por outro caminho.
+  // Uma concessão explícita acima continua valendo e pode elevar para 'edit'.
+  if (user.role === 'manager') return 'view';
+  return null;
 }
 const canView = (user, clientId) => accessLevel(user, clientId) != null;
 const canEdit = (user, clientId) => ['admin', 'edit'].includes(accessLevel(user, clientId));
