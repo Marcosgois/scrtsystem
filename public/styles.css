@@ -939,6 +939,11 @@ td.cel-destaque { background: #c8e6c9; }
   .mlc-plan-grid { grid-template-columns: 1fr; }
 }
 
+/* Quadro de análise de consumo por ano contratual (tela de zOTC) */
+.analise-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.analise-plan-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .analise-plan-grid { grid-template-columns: 1fr; } }
+
 /* Cabeçalho da consolidação anual: abas à esquerda, exportação à direita. */
 .forecast-consol-head {
   display: flex;

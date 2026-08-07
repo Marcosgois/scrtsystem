@@ -353,7 +353,9 @@ check('linha com número errado de células falha alto (em vez de tabela torta)'
 
 const { computeMlcView } = require('../src/mlc');
 const { montarVisoes } = require('../src/mlcViews');
-const { deckMlc, slidesEscolhidos } = require('../src/deckMlc');
+const { montarVisoesZotc } = require('../src/zotcViews');
+const { deckMlc } = require('../src/deckMlc');
+const { deckZotc, slidesEscolhidos } = require('../src/deckZotc');
 
 const ANO_MLC = (over) => ({
   baselineAnnualMsu: 173439316, valorPorMsu: 1.42, encargoCrescimentoPorMsu: 0.28, cbaPct: 0.19,
@@ -375,28 +377,37 @@ const CONSUMO_MLC = {};
   }
 }
 const VIEW_MLC = computeMlcView(CONTRATO_MLC, CONSUMO_MLC);
-const VISOES = montarVisoes(VIEW_MLC, CONTRATO_MLC, { lag: 2, baselinePadraoAnual: 232399860, ano: 1 });
+const VISOES = montarVisoes(VIEW_MLC, CONTRATO_MLC, { lag: 2, ano: 1 });
 const DADOS_MLC = { client: { name: 'ACME S/A' }, views: VISOES };
+const VISOES_ZOTC = montarVisoesZotc(CONTRATO_MLC, CONSUMO_MLC, { baselinePadraoAnual: 232399860 });
+const DADOS_ZOTC = { client: { name: 'ACME S/A' }, views: VISOES_ZOTC };
 
 console.log('\nDeck de MLC:');
-check('escolha de slides aceita lista e cai nos três quando vazia/inválida', () => {
-  assert.deepStrictEqual(slidesEscolhidos('1,3'), [1, 3]);
-  assert.deepStrictEqual(slidesEscolhidos([2]), [2]);
-  assert.deepStrictEqual(slidesEscolhidos('3,1,3'), [1, 3], 'ordena e tira repetido');
-  for (const v of ['', null, undefined, '9', 'abc']) assert.deepStrictEqual(slidesEscolhidos(v), [1, 2, 3], `entrada ${v}`);
-});
-check('os três slides saem, com o rodapé numerado certo', () => {
+check('o deck de MLC tem UM slide: o ano de fatura', () => {
   const p = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);
-  assert.ok(p['ppt/slides/slide3.xml'] && !p['ppt/slides/slide4.xml']);
-  assert.ok(p['ppt/slides/slide1.xml'].includes('1/3'));
-  assert.ok(p['ppt/slides/slide3.xml'].includes('3/3'));
-});
-check('escolhendo um slide só, ele vira 1/1', () => {
-  const p = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '2' }).buffer);
-  assert.ok(!p['ppt/slides/slide2.xml'], 'deveria ter um slide só');
+  assert.ok(!p['ppt/slides/slide2.xml'], 'as visões de MSU saíram para o deck de zOTC');
   const s = p['ppt/slides/slide1.xml'];
   assert.ok(s.includes('1/1'));
-  assert.ok(/Compara/.test(s), 'o slide escolhido tem de ser o comparativo');
+  assert.ok(/Consumo Software MLC/.test(s));
+});
+check('escolha de slides do zOTC aceita lista e cai nos dois quando vazia/inválida', () => {
+  assert.deepStrictEqual(slidesEscolhidos('1,2'), [1, 2]);
+  assert.deepStrictEqual(slidesEscolhidos([2]), [2]);
+  assert.deepStrictEqual(slidesEscolhidos('2,1,2'), [1, 2], 'ordena e tira repetido');
+  for (const v of ['', null, undefined, '9', 'abc']) assert.deepStrictEqual(slidesEscolhidos(v), [1, 2], `entrada ${v}`);
+});
+check('o deck de zOTC tem os dois slides de MSU, numerados', () => {
+  const p = abrir(deckZotc(DADOS_ZOTC, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);
+  assert.ok(p['ppt/slides/slide2.xml'] && !p['ppt/slides/slide3.xml']);
+  assert.ok(/Compara/.test(p['ppt/slides/slide1.xml']), 'slide 1 = comparação por ano');
+  assert.ok(p['ppt/slides/slide1.xml'].includes('1/2'));
+  assert.ok(p['ppt/slides/slide2.xml'].includes('2/2'));
+});
+check('escolhendo um slide só do zOTC, ele vira 1/1', () => {
+  const p = abrir(deckZotc(DADOS_ZOTC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '2' }).buffer);
+  assert.ok(!p['ppt/slides/slide2.xml'], 'deveria ter um slide só');
+  assert.ok(p['ppt/slides/slide1.xml'].includes('1/1'));
+  assert.ok(/consumido, planejado e contratado/i.test(p['ppt/slides/slide1.xml']));
 });
 check('slide 1 traz o par Med/Inv e o CAP com o saldo', () => {
   const s = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '1' }).buffer)['ppt/slides/slide1.xml'];
@@ -410,15 +421,17 @@ check('ano sem CAP cadastrado não imprime saldo negativo', () => {
   assert.ok(/Sem CAP contratado cadastrado/.test(s), 'deveria explicar a ausência');
   assert.ok(!/Saldo CAP/.test(s));
 });
-check('slide 3 traz a conclusão gerada e a nota de rodapé', () => {
-  const s = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '3' }).buffer)['ppt/slides/slide1.xml'];
+check('o slide de planejado traz a conclusão gerada, em marcadores', () => {
+  const s = abrir(deckZotc(DADOS_ZOTC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '2' }).buffer)['ppt/slides/slide1.xml'];
   assert.ok(s.includes('Conclus'), 'faltou o bloco de conclusão');
-  assert.ok(VISOES.planejado.conclusoes.length > 0, 'o cenário deveria gerar conclusão');
+  assert.ok(VISOES_ZOTC.planejado.conclusoes.length > 0, 'o cenário deveria gerar conclusão');
   assert.ok(s.includes('<a:buChar char="•"/>'), 'a conclusão sai em marcadores');
 });
-check('nome do arquivo é legível e sem acento', () => {
-  const { fileName } = deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z') });
-  assert.strictEqual(fileName, 'consumo-software-acme-s-a-2026-08-07.pptx');
+check('nome do arquivo é legível, sem acento, e diz de que deck é', () => {
+  assert.strictEqual(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z') }).fileName,
+    'consumo-mlc-acme-s-a-2026-08-07.pptx');
+  assert.strictEqual(deckZotc(DADOS_ZOTC, { hoje: new Date('2026-08-07T12:00:00Z') }).fileName,
+    'consumo-zotc-acme-s-a-2026-08-07.pptx');
 });
 check('nome de cliente com & e < não quebra o XML', () => {
   const p = abrir(deckMlc({ ...DADOS_MLC, client: { name: 'A & B <Ltda>' } }, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);
@@ -461,6 +474,7 @@ check('o ajuste de fonte da tabela do ano cabe na caixa ÚTIL da célula', () =>
 });
 check('sem visões, recusa em vez de gerar deck vazio', () => {
   assert.throws(() => deckMlc({ client: { name: 'X' }, views: null }, {}), /Sem visões/);
+  assert.throws(() => deckZotc({ client: { name: 'X' }, views: null }, {}), /Sem visões/);
 });
 check('todo XML do deck de MLC continua bem formado e com as relações fechadas', () => {
   const p = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);

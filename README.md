@@ -22,7 +22,7 @@ administração de usuários em `/admin`):
 | Módulo | Rota | O que faz |
 |---|---|---|
 | **Consumo zOTC (SCRT)** | `/consumo` | Upload do SCRT mensal, dashboard de MSUs, LPARs, grupos e comparativo mês a mês |
-| **Consumo MLC** | `/mlc` | Contrato de MLC por cliente, com o consumo sincronizado do SCRT, reajuste de preço no meio do ano e as três visões da reunião (em tela e em PowerPoint) |
+| **Consumo MLC** | `/mlc` | Contrato de MLC por cliente, com o consumo sincronizado do SCRT, reajuste de preço no meio do ano e o fechamento do ano de fatura (em tela e em PowerPoint) |
 | **Inventário** | `/inventario` | Relatório IBM SW Material: produtos/PIDs, licenças e o casamento com S&S |
 | **Infraestrutura** | `/infra` | Parque físico (sites, máquinas, LPARs), referência LSPR e MO/MES |
 | **Contratos** | `/contratos` | Contratos ligando máquinas e PIDs, com os PDFs assinados e o ciclo de MO/MES |
@@ -530,7 +530,8 @@ Todas as rotas ficam sob `/api`. Exceto `/api/auth/*`, todas exigem login; as qu
 | GET DELETE | `/reports/:id` | Relatório completo · exclui |
 | GET | `/reports/:id/file[?download=1]` | SCRT original guardado |
 | GET PUT DELETE | `/clients/:id/mlc[?ano=N]` | Contrato de MLC, a visão mês a mês e as três visões da reunião |
-| GET | `/clients/:id/mlc.pptx?ano=&slides=` | As três visões como apresentação (16:9); `slides=1,3` escolhe quais |
+| GET | `/clients/:id/mlc.pptx?ano=` | O ano de fatura como apresentação (16:9) |
+| GET | `/clients/:id/zotc.pptx?slides=` | A análise de consumo por ano contratual (16:9); `slides=2` escolhe qual |
 
 **Inventário de software**
 
@@ -589,8 +590,11 @@ src/
   pptx.js                 # escritor mínimo de .pptx (OOXML) — primitivas em pontos
   deckCapacity.js         # o deck de capacity planning (gráfico vetorial + tabelas)
   mlc.js                  # cálculo do contrato de MLC (inclui as vigências de preço)
-  mlcViews.js             # as três visões do MLC (ano em R$, comparativo, planejado)
-  deckMlc.js              # o deck das três visões em .pptx
+  mlcViews.js             # a visão do ano de MLC (R$): CAP, CBA e defasagem Med/Inv
+  zotcViews.js            # as visões de consumo (MSU): comparativo de anos e planejado
+  deckBase.js             # moldura, escala e legenda comuns aos decks
+  deckMlc.js              # o deck do ano de MLC em .pptx
+  deckZotc.js             # o deck da análise de consumo em .pptx
   lsprSeed.js             # carga da referência LSPR no banco
   data/lspr.json          # 3.190 modelos IBM Z (MIPS/MSU/CPs) — dados públicos IBM
 public/
@@ -617,13 +621,14 @@ SCRT/<CLIENTE>/           # NÃO versionado: arquivos SCRT reais
 ## Testes
 
 ```bash
-npm test                  # roda tudo (15 suítes)
+npm test                  # roda tudo (17 suítes)
 
 npm run test:parser       # parser contra os SCRTs reais + casos sintéticos
 npm run test:forecast     # projeção linear/SARIMA e os limites de histórico
 npm run test:deck         # fechamento anual (calendário × contratual) e o .pptx gerado
 npm run test:mlc          # cálculo do contrato de MLC
-npm run test:mlc-views    # as três visões: CAP, defasagem Med/Inv e conclusão automática
+npm run test:mlc-views    # a visão do ano de MLC: CAP, CBA e defasagem Med/Inv
+npm run test:zotc-views   # consumo por ano contratual, estouro do baseline e conclusão automática
 npm run test:migration    # migração de bancos criados por versões anteriores
 npm run test:auth         # login e a matriz de acesso (view/edit/admin)
 npm run test:lspr-cheatsheet # conversor do Configuration Summary do zPCR

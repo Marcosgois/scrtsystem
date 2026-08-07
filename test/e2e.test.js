@@ -820,14 +820,25 @@ async function main() {
         && Math.abs(v1.anoMlc.cap.mensalRs - 25000000) < 1e-6
         && Math.abs(v1.anoMlc.cap.saldoRs - (300000000 - v1.anoMlc.totais.consumoRs)) < 1e-6,
         v1.anoMlc.cap);
-      const p1 = v1.planejado.anos[0];
-      check('visões: 1 mês real + 11 no planejado (100.000.000/12 cada)',
+      check('visões de MLC não carregam mais as de consumo (foram para o zOTC)',
+        v1.comparativo === undefined && v1.planejado === undefined, Object.keys(v1));
+
+      // As visões de CONSUMO (MSU) agora vêm no dashboard do zOTC.
+      r = await api(`/clients/${mlcId}/dashboard`);
+      const z = r.body.views;
+      const p1 = z.planejado.anos[0];
+      check('zOTC: as visões de consumo vêm no dashboard',
+        z && z.temAnoContratual === true && z.comparativo.anos.length === 1, z && Object.keys(z));
+      check('zOTC: 1 mês real + 11 no planejado (100.000.000/12 cada)',
         p1.mesesReais === 1 && p1.mesesPlanejados === 11 && p1.estimado === true
         && Math.abs(p1.consumidasMsu - (22040571 + (100000000 / 12) * 11)) < 1e-6,
         { reais: p1.mesesReais, planejados: p1.mesesPlanejados, total: p1.consumidasMsu });
-      check('visões: conclusão é gerada a partir dos números',
-        Array.isArray(v1.planejado.conclusoes) && v1.planejado.conclusoes.length > 0,
-        v1.planejado.conclusoes);
+      check('zOTC: conclusão é gerada a partir dos números',
+        Array.isArray(z.planejado.conclusoes) && z.planejado.conclusoes.length > 0,
+        z.planejado.conclusoes);
+      check('zOTC: o comparativo alinha o ano em 12 casas',
+        z.comparativo.anos[0].pontos.length === 12 && z.comparativo.anos[0].reais[0] === 22040571,
+        z.comparativo.anos[0] && z.comparativo.anos[0].pontos.slice(0, 3));
 
       r = await api(`/clients/${mlcId}/mlc`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -854,20 +865,35 @@ async function main() {
         && r.body.view.years[0].months[3].cbaPct === 0.17,
         r.body.contract.years[0].vigencias);
 
-      const mlcPptx = await fetch(`${BASE}/clients/${mlcId}/mlc.pptx?slides=1,3`, {
-        headers: authCookie ? { Cookie: authCookie } : {},
-      });
-      const bufMlc = Buffer.from(await mlcPptx.arrayBuffer());
-      check('mlc.pptx: 200 com o content-type do PowerPoint e nome de arquivo',
-        mlcPptx.status === 200
-        && mlcPptx.headers.get('content-type') === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-        && /^attachment; filename="consumo-software-/.test(mlcPptx.headers.get('content-disposition') || ''),
-        { status: mlcPptx.status, cd: mlcPptx.headers.get('content-disposition') });
-      check('mlc.pptx: a escolha de slides é respeitada (1 e 3 = 2 slides)', (() => {
-        if (bufMlc.slice(0, 4).toString('binary') !== 'PK\x03\x04') return false;
-        const partes = require('fflate').unzipSync(new Uint8Array(bufMlc));
+      const baixar = async (rota) => {
+        const res = await fetch(`${BASE}${rota}`, { headers: authCookie ? { Cookie: authCookie } : {} });
+        return { res, buf: Buffer.from(await res.arrayBuffer()) };
+      };
+      const ehPptx = (buf) => buf.slice(0, 4).toString('binary') === 'PK\x03\x04';
+      const partesDe = (buf) => require('fflate').unzipSync(new Uint8Array(buf));
+
+      const mlcPptx = await baixar(`/clients/${mlcId}/mlc.pptx`);
+      check('mlc.pptx: 200, content-type do PowerPoint e nome de arquivo próprio',
+        mlcPptx.res.status === 200
+        && mlcPptx.res.headers.get('content-type') === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        && /^attachment; filename="consumo-mlc-/.test(mlcPptx.res.headers.get('content-disposition') || ''),
+        { status: mlcPptx.res.status, cd: mlcPptx.res.headers.get('content-disposition') });
+      check('mlc.pptx: UM slide (as visões de MSU saíram para o deck de zOTC)',
+        ehPptx(mlcPptx.buf) && !partesDe(mlcPptx.buf)['ppt/slides/slide2.xml'], { bytes: mlcPptx.buf.length });
+
+      const zotcPptx = await baixar(`/clients/${mlcId}/zotc.pptx`);
+      check('zotc.pptx: 200 com nome de arquivo próprio',
+        zotcPptx.res.status === 200
+        && /^attachment; filename="consumo-zotc-/.test(zotcPptx.res.headers.get('content-disposition') || ''),
+        { status: zotcPptx.res.status, cd: zotcPptx.res.headers.get('content-disposition') });
+      check('zotc.pptx: os dois slides de MSU', (() => {
+        if (!ehPptx(zotcPptx.buf)) return false;
+        const partes = partesDe(zotcPptx.buf);
         return !!partes['ppt/slides/slide2.xml'] && !partes['ppt/slides/slide3.xml'];
-      })(), { bytes: bufMlc.length });
+      })(), { bytes: zotcPptx.buf.length });
+      const zotcUm = await baixar(`/clients/${mlcId}/zotc.pptx?slides=2`);
+      check('zotc.pptx: a escolha de slides é respeitada',
+        zotcUm.res.status === 200 && !partesDe(zotcUm.buf)['ppt/slides/slide2.xml'], zotcUm.res.status);
 
       r = await api(`/clients/${mlcId}/mlc`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },

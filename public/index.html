@@ -161,6 +161,57 @@
       <div id="contract-years" class="contract-years hidden"></div>
     </div>
 
+    <!-- Análise de consumo por ano contratual (MSU) -->
+    <div class="card reveal" id="analise-card">
+      <div class="card-header">
+        <div>
+          <h2>Análise de consumo por ano contratual</h2>
+          <p class="muted small" id="analise-sub">Consumo em MSU comparado entre os anos do contrato e contra o baseline</p>
+        </div>
+        <div class="analise-actions">
+          <div class="segmented" id="analise-tabs" role="tablist">
+            <button type="button" class="seg-btn active" data-analise="comparativo">Comparação por ano</button>
+            <button type="button" class="seg-btn" data-analise="planejado">Consumido × planejado</button>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-zotc-pptx" title="Baixa esta análise em PowerPoint (16:9)">Gerar PowerPoint</button>
+        </div>
+      </div>
+
+      <div id="analise-vazio" class="empty-inline hidden"></div>
+
+      <!-- Comparação de consumo ao mês por ano -->
+      <div class="analise-aba" data-analise="comparativo">
+        <div class="chart-container" style="height: 330px;">
+          <canvas id="zotcCmpChart" role="img"
+                  aria-label="Consumo mensal em MSU de cada ano contratual, sobrepostos pela posição do mês dentro do ano."></canvas>
+        </div>
+        <p class="muted small" id="analise-cmp-nota"></p>
+        <div class="table-responsive" style="margin-top: 12px;">
+          <table id="analise-cmp-tabela"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+
+      <!-- Consumido × planejado × contratado -->
+      <div class="analise-aba hidden" data-analise="planejado">
+        <div class="analise-plan-grid">
+          <div>
+            <div class="table-responsive">
+              <table id="analise-plan-tabela"><thead></thead><tbody></tbody></table>
+            </div>
+            <div class="muted small" id="analise-plan-notas"></div>
+          </div>
+          <div class="mlc-conclusao">
+            <h3>Conclusão</h3>
+            <ul id="analise-plan-conclusoes"></ul>
+          </div>
+        </div>
+        <div class="chart-container" style="height: 270px; margin-top: 18px;">
+          <canvas id="zotcPlanChart" role="img"
+                  aria-label="MSUs consumidas e planejadas por ano contratual, contra o baseline contratado."></canvas>
+        </div>
+      </div>
+    </div>
+
     <div class="two-col">
       <!-- Histórico -->
       <div class="card reveal">

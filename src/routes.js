@@ -17,9 +17,11 @@ const { forecast } = require('./forecast');
 const { serieUnificada, porAnoCalendario, porAnoContratual } = require('./forecastYears');
 const { deckCapacityPlanning } = require('./deckCapacity');
 const { deckMlc } = require('./deckMlc');
+const { deckZotc } = require('./deckZotc');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
 const { computeMlcView, addMonths } = require('./mlc');
 const { montarVisoes } = require('./mlcViews');
+const { montarVisoesZotc } = require('./zotcViews');
 const auth = require('./auth');
 
 const router = express.Router();
@@ -840,7 +842,40 @@ router.get('/clients/:id/dashboard', asyncHandler(async (req, res) => {
     defs: tagDefsOf(client),
     assignments: client.machineTags || [],
   };
-  res.json({ client, series, latest, machineTags });
+  // As visões de consumo por ano contratual (comparativo e planejado × contratado),
+  // que a tela desenha no quadro abaixo do principal.
+  const views = await visoesDeConsumo(client);
+  res.json({ client, series, latest, machineTags, views });
+}));
+
+/**
+ * As visões de consumo do zOTC em .pptx.
+ * ?slides=1,2  (1 = comparação por ano · 2 = consumido × planejado)
+ *
+ * GET, como os outros decks: o guard trata verbo que não é de leitura como
+ * escrita e exigiria permissão de EDIÇÃO — gerar apresentação é leitura.
+ */
+router.get('/clients/:id/zotc.pptx', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const views = await visoesDeConsumo(client);
+  if (!views.temAnoContratual) {
+    return res.status(422).json({ error: 'Defina o início do ano contratual deste cliente para gerar a apresentação.' });
+  }
+  if (!views.comparativo.anos.length) {
+    return res.status(422).json({ error: 'Nenhum ano contratual tem consumo medido ainda.' });
+  }
+
+  const { buffer, fileName } = deckZotc(
+    { client: { _id: client._id, name: client.name }, views },
+    { slides: req.query.slides, autor: (req.user && req.user.name) || 'IBM Z Control Desk' }
+  );
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+  res.send(buffer);
 }));
 
 /**
@@ -1340,14 +1375,28 @@ function lagDeInventario(client) {
   return Number.isFinite(v) && v >= 0 && v <= 12 ? Math.round(v) : 2;
 }
 
-/** Opções das três visões: ano escolhido na query, defasagem e baseline do cliente. */
+/** Opções da visão de MLC: ano escolhido na query e defasagem do inventário. */
 function opcoesDeVisao(client, query) {
   const anoRaw = query && query.ano !== undefined ? Number(query.ano) : NaN;
-  return {
-    lag: lagDeInventario(client),
-    baselinePadraoAnual: (Number(client.monthlyBaselineMsu) || 0) * 12,
-    ano: Number.isInteger(anoRaw) ? anoRaw : null,
+  return { lag: lagDeInventario(client), ano: Number.isInteger(anoRaw) ? anoRaw : null };
+}
+
+/*
+ * As visões de CONSUMO (MSU) do zOTC. Leem o MESMO contrato que o MLC — o mês de
+ * início do ano contratual e os anos cadastrados — para as duas telas nunca
+ * discordarem de onde um ano começa. Diferente do MLC, não exigem preço
+ * cadastrado: basta o mês-âncora.
+ */
+async function visoesDeConsumo(client) {
+  const contrato = {
+    startPeriodKey: client.contractYearStart || (client.mlcContract && client.mlcContract.startPeriodKey) || null,
+    years: (client.mlcContract && client.mlcContract.years) || [],
   };
+  if (!contrato.startPeriodKey) return { temAnoContratual: false, comparativo: { anos: [], baseline: null, estouro: null }, planejado: { anos: [], conclusoes: [], notas: [] } };
+  const consumo = await scrtConsumoByPeriod(client);
+  return montarVisoesZotc(contrato, consumo, {
+    baselinePadraoAnual: (Number(client.monthlyBaselineMsu) || 0) * 12,
+  });
 }
 
 /** Devolve o contrato MLC do cliente e a visão calculada mês a mês. */
@@ -1385,8 +1434,8 @@ router.get('/clients/:id/mlc', asyncHandler(async (req, res) => {
 }));
 
 /**
- * As três visões do MLC em .pptx, para levar à reunião.
- * ?ano=N (índice do ano) &slides=1,2,3
+ * A visão de MLC do ano em .pptx, para levar à reunião.
+ * ?ano=N (índice do ano)
  *
  * GET, como o forecast.pptx: o guard trata verbo que não é de leitura como
  * escrita e exigiria permissão de EDIÇÃO — gerar apresentação é leitura.
@@ -1409,7 +1458,7 @@ router.get('/clients/:id/mlc.pptx', asyncHandler(async (req, res) => {
 
   const { buffer, fileName } = deckMlc(
     { client: { _id: client._id, name: client.name }, views },
-    { slides: req.query.slides, autor: (req.user && req.user.name) || 'IBM Z Control Desk' }
+    { autor: (req.user && req.user.name) || 'IBM Z Control Desk' }
   );
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
   res.setHeader('Content-Disposition',

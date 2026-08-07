@@ -22,6 +22,8 @@ const state = {
   forecast: null, // resultado do capacity planning
   forecastChart: null,
   forecastConsol: 'calendar', // fechamento anual exibido: 'calendar' | 'contract'
+  analise: 'comparativo',     // aba do quadro de análise: 'comparativo' | 'planejado'
+  analiseCharts: {},          // instâncias do Chart.js do quadro de análise
 };
 
 const $ = (id) => document.getElementById(id);
@@ -696,6 +698,7 @@ async function loadDashboard() {
   renderKpis(series, client);
   renderChart(series, client);
   renderHistory(series, client);
+  renderAnalise();
 
   await loadMonthDetail(last.periodKey);
 }
@@ -1694,6 +1697,178 @@ function renderLparCard() {
     }
   }
 }
+
+/* ── Análise de consumo por ano contratual (MSU) ──────
+ *
+ * As duas visões vêm prontas do servidor em `dashboard.views` (src/zotcViews.js)
+ * — a mesma estrutura que o .pptx consome. A tela NÃO recalcula nada: é o que
+ * garante que o slide levado ao cliente diga o que está no navegador.
+ */
+
+const CHART_ANALISE = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { position: 'top', align: 'end', labels: { usePointStyle: true, pointStyleWidth: 10, boxHeight: 7, font: { size: 12 } } },
+    tooltip: { backgroundColor: '#1c1c1c', padding: 12 },
+  },
+};
+const pct2 = (p) => (p == null ? '–' : `${Number(p).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
+/* MSU é sempre inteiro na tela: o mês completado pelo planejado sai de uma
+   divisão por 12 e traria três casas decimais que não querem dizer nada. */
+const msu = (n) => (n == null ? '–' : Math.round(Number(n)).toLocaleString('pt-BR'));
+
+function renderAnalise() {
+  const v = state.dashboard && state.dashboard.views;
+  const card = $('analise-card');
+  if (!v) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+
+  const vazio = $('analise-vazio');
+  const semDados = !v.temAnoContratual || !v.comparativo.anos.length;
+  vazio.classList.toggle('hidden', !semDados);
+  document.querySelectorAll('.analise-aba').forEach((d) => d.classList.toggle('hidden', semDados || d.dataset.analise !== state.analise));
+  document.querySelectorAll('#analise-tabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.analise === state.analise));
+  $('btn-zotc-pptx').disabled = semDados;
+
+  if (semDados) {
+    vazio.innerHTML = !v.temAnoContratual
+      ? 'Defina o <strong>início do ano contratual</strong> para comparar o consumo entre os anos do contrato. '
+        + '<button type="button" class="btn btn-primary btn-sm" id="btn-analise-definir">Definir ano contratual</button>'
+      : 'Nenhum ano contratual tem consumo medido ainda.';
+    const b = $('btn-analise-definir');
+    if (b) b.addEventListener('click', openContractYearModal);
+    return;
+  }
+
+  if (state.analise === 'comparativo') renderAnaliseComparativo(v.comparativo);
+  else renderAnalisePlanejado(v.planejado);
+}
+
+function renderAnaliseComparativo(c) {
+  const datasets = c.anos.map((a) => ({
+    label: a.mesesPlanejados > 0 ? `${a.label} (${a.mesesComDado} medidos + ${a.mesesPlanejados} planejados)` : a.label,
+    data: a.pontos,
+    borderColor: `#${a.cor}`, backgroundColor: `#${a.cor}`,
+    borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 4, tension: 0.1, spanGaps: false,
+    // Tracejado a partir do mês em que o dado deixa de ser medido.
+    segment: a.posicaoUltimoReal != null && a.mesesPlanejados > 0
+      ? { borderDash: (ctx) => (ctx.p0DataIndex + 1 >= a.posicaoUltimoReal ? [6, 4] : undefined) }
+      : undefined,
+  }));
+  if (c.baseline) {
+    datasets.push({
+      label: c.baseline.label, data: Array.from({ length: 12 }, () => c.baseline.mensalMsu),
+      borderColor: '#0072c3', borderWidth: 2, borderDash: [2, 3], pointRadius: 0, fill: false,
+    });
+  }
+
+  if (state.analiseCharts.cmp) state.analiseCharts.cmp.destroy();
+  state.analiseCharts.cmp = new Chart($('zotcCmpChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: Array.from({ length: 12 }, (_, i) => String(i + 1)), datasets },
+    options: {
+      ...CHART_ANALISE,
+      plugins: {
+        ...CHART_ANALISE.plugins,
+        tooltip: {
+          ...CHART_ANALISE.plugins.tooltip,
+          callbacks: {
+            title: (its) => `Mês ${its[0].label} do ano contratual`,
+            label: (it) => ` ${it.dataset.label}: ${msu(it.parsed.y)} MSU`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, title: { display: true, text: 'posição do mês dentro do ano contratual' } },
+        y: { beginAtZero: false, grid: { color: '#eef1f5' }, ticks: { callback: (v) => fmtM(v) }, title: { display: true, text: 'MSUs por mês' } },
+      },
+    },
+  });
+
+  $('analise-cmp-nota').innerHTML = 'Cada série é um ano contratual, alinhado pela <strong>posição do mês dentro do ano</strong> — '
+    + 'é o que permite comparar o mesmo ponto do ciclo em anos diferentes. Trecho tracejado = completado pelo consumo planejado.'
+    + (c.estouro
+      ? ` <span class="delta up">Estouro:</span> no mês ${c.estouro.posicao}${c.estouro.planejado ? ' (trecho planejado)' : ''} o `
+        + `acumulado do ${esc(c.estouro.anoLabel)} chega a ${msu(c.estouro.acumuladoMsu)} MSU e passa o baseline anual de `
+        + `${msu(c.baseline.anualMsu)} MSU.`
+      : '');
+
+  const t = $('analise-cmp-tabela');
+  t.querySelector('thead').innerHTML = '<tr><th>Ano</th>'
+    + Array.from({ length: 12 }, (_, i) => `<th class="num">${i + 1}</th>`).join('') + '<th class="num">Total</th></tr>';
+  t.querySelector('tbody').innerHTML = c.anos.map((a) => {
+    const total = a.pontos.reduce((s, v) => s + (v || 0), 0);
+    return `<tr><td><strong>${esc(a.label)}</strong> <span class="muted small">${esc(a.periodoLabel)}</span></td>`
+      + a.pontos.map((v, k) => {
+        const planejado = a.posicaoUltimoReal != null && k + 1 > a.posicaoUltimoReal;
+        return `<td class="num${planejado ? ' muted' : ''}">${v == null ? '–' : msu(v)}</td>`;
+      }).join('')
+      + `<td class="num"><strong>${msu(total)}</strong></td></tr>`;
+  }).join('');
+}
+
+function renderAnalisePlanejado(p) {
+  const t = $('analise-plan-tabela');
+  t.querySelector('thead').innerHTML = '<tr><th>Ano contratual</th><th class="num">Consumo planejado</th>'
+    + '<th class="num">Baseline contratado</th><th class="num">MSUs consumidas</th><th class="num">Consumido vs contratado</th></tr>';
+
+  const marcaBaseline = p.notas.find((n) => n.tipo === 'baseline');
+  const marcaEstimado = p.notas.find((n) => n.tipo === 'estimado' || n.tipo === 'parcial');
+  t.querySelector('tbody').innerHTML = p.anos.map((a) => `
+    <tr>
+      <td><strong>${esc(a.label)}</strong> <span class="muted small">${esc(a.periodoLabel)}</span></td>
+      <td class="num">${a.planejadoMsu > 0 ? msu(a.planejadoMsu) : '<span class="muted">–</span>'}</td>
+      <td class="num${a.baselineIgualConsumoAnterior ? ' cel-destaque' : ''}">${msu(a.baselineZotcMsu)}${a.baselineIgualConsumoAnterior && marcaBaseline ? ` <span class="muted small">${marcaBaseline.marca}</span>` : ''}</td>
+      <td class="num"><strong>${msu(a.consumidasMsu)}</strong>${(a.estimado || a.parcialSemPlanejado) && marcaEstimado ? ` <span class="muted small">${marcaEstimado.marca}</span>` : ''}</td>
+      <td class="num"><span class="delta ${a.excedeBaseline ? 'up' : 'down'}">${pct2(a.vsContratadoPct)}</span></td>
+    </tr>`).join('');
+
+  $('analise-plan-notas').innerHTML = p.notas.map((n) => `<div>${esc(n.marca)} ${esc(n.texto)}</div>`).join('');
+  $('analise-plan-conclusoes').innerHTML = p.conclusoes.length
+    ? p.conclusoes.map((c) => `<li>${esc(c)}</li>`).join('')
+    : '<li class="muted">Sem ano fechado o bastante para concluir alguma coisa.</li>';
+
+  if (state.analiseCharts.plan) state.analiseCharts.plan.destroy();
+  state.analiseCharts.plan = new Chart($('zotcPlanChart').getContext('2d'), {
+    data: {
+      labels: p.anos.map((a) => a.label),
+      datasets: [
+        { type: 'bar', label: 'MSUs consumidas (SCRT)', data: p.anos.map((a) => a.consumidasMsu), backgroundColor: '#2e6bd4' },
+        { type: 'bar', label: 'Consumo planejado', data: p.anos.map((a) => a.planejadoMsu || null), backgroundColor: '#ed7d31' },
+        {
+          type: 'line', label: 'Baseline contratado', data: p.anos.map((a) => a.baselineZotcMsu || null),
+          borderColor: '#da1e28', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, stepped: 'middle', fill: false,
+        },
+      ],
+    },
+    options: {
+      ...CHART_ANALISE,
+      plugins: {
+        ...CHART_ANALISE.plugins,
+        tooltip: { ...CHART_ANALISE.plugins.tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${msu(c.parsed.y)} MSU` } },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: '#eef1f5' }, ticks: { callback: (v) => fmtM(v) }, title: { display: true, text: 'MSUs por ano contratual' } },
+      },
+    },
+  });
+}
+
+$('analise-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  state.analise = btn.dataset.analise;
+  renderAnalise();
+});
+
+$('btn-zotc-pptx').addEventListener('click', () => {
+  if (!state.clientId) return;
+  window.location.assign(`/api/clients/${state.clientId}/zotc.pptx`);
+  toast('Gerando a apresentação…');
+});
 
 /* ── Capacity planning (projeção) ───────────────────── */
 
