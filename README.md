@@ -96,9 +96,9 @@ A sessão é um cookie assinado com HMAC (`httpOnly`, `SameSite=Lax`), a senha �
 
 ### Entrada pelo w3id (SSO), sem segundo login
 
-Onde a aplicação está atrás do **Cloudflare Access federado ao w3id** — hoje só o ambiente de
-desenvolvimento —, a pessoa já autenticou no w3id ANTES de a requisição chegar no servidor.
-Pedir e-mail e senha de novo seria redundante, então o app aproveita essa identidade:
+Os dois ambientes ficam atrás do **Cloudflare Access federado ao w3id**, então a pessoa já
+autenticou no w3id ANTES de a requisição chegar no servidor. Pedir e-mail e senha de novo seria
+redundante, então o app aproveita essa identidade:
 
 1. **Já cadastrado** → entra direto, sem ver tela de login. A sessão normal do app é emitida
    na primeira requisição, e daí em diante tudo segue igual (o cookie sustenta o resto).
@@ -136,9 +136,14 @@ Configuração (duas variáveis; sem as duas, o SSO fica **desligado** e vale s�
 
 O `SSO_AUD` é o que impede um token legítimo de OUTRA aplicação do mesmo tenant de servir aqui.
 
-**O login por senha continua existindo** — é o único caminho da produção enquanto o w3id dela
-não sai do boarding, e é o que permite o primeiro admin num sistema vazio. Na tela de SSO há um
-link discreto "Entrar com e-mail e senha".
+**O login por senha continua existindo** — é o que permite o primeiro admin num sistema vazio, o
+que salva quem está cadastrado com um domínio e chega pelo outro, e a saída se o Cloudflare cair.
+Na tela de SSO há um link discreto "Entrar com e-mail e senha".
+
+**Cada ambiente tem o seu `SSO_AUD`.** Dev e prod vivem no mesmo tenant, e o `aud` é por
+aplicação — copiar o de dev para prod faria qualquer token de dev autenticar em produção. Um
+jeito rápido de conferir o par certo sem abrir o painel: `curl -sI` na URL do ambiente e ler o
+`Location` do 302 — o host é o `SSO_TEAM_DOMAIN` e o parâmetro `kid` é o `SSO_AUD`.
 
 Sair pelo menu leva à URL de logout do Access (`/cdn-cgi/access/logout`): apagar só o cookie do
 app não desloga ninguém, porque a requisição seguinte reautentica pelo w3id na hora.
