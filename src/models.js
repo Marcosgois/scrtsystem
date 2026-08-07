@@ -22,7 +22,35 @@ const mlcEncargoSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// Um ano do contrato MLC. Os parâmetros podem mudar de um ano para o outro.
+/*
+ * Uma VIGÊNCIA de preços dentro do ano contratual.
+ *
+ * Acontece de um aditivo reajustar os valores no meio do ano: jan a mar com um
+ * preço, abr a dez com outro. Cada vigência diz A PARTIR DE QUAL MÊS os valores
+ * dela passam a valer, e vale até o mês anterior à próxima (ou até o fim do ano).
+ *
+ * O BASELINE não está aqui de propósito: ele é anual e continua no ano. O que o
+ * aditivo reajusta é preço — valor por MSU, encargo de crescimento, CBA e os
+ * encargos fixos.
+ *
+ * Os valores do próprio ano são o primeiro trecho, implicitamente: mês anterior
+ * à primeira vigência usa o que está no ano. Assim contrato sem vigência nenhuma
+ * (todos os que existem hoje) continua calculando exatamente igual.
+ */
+const mlcVigenciaSchema = new mongoose.Schema(
+  {
+    fromPeriodKey: { type: String, required: true },   // "2026-04": vale a partir deste mês
+    valorPorMsu: { type: Number, default: 0 },
+    encargoCrescimentoPorMsu: { type: Number, default: 0 },
+    cbaPct: { type: Number, default: 0 },
+    encargos: { type: [mlcEncargoSchema], default: [] },
+    notas: { type: String, default: '' },              // "Aditivo 3/2026", p.ex.
+  },
+  { _id: false }
+);
+
+// Um ano do contrato MLC. Os parâmetros podem mudar de um ano para o outro — e,
+// via `vigencias`, também no meio do ano.
 const mlcYearSchema = new mongoose.Schema(
   {
     label: { type: String, default: '' }, // "Ano 1"; vazio => gerado na visão
@@ -31,6 +59,7 @@ const mlcYearSchema = new mongoose.Schema(
     encargoCrescimentoPorMsu: { type: Number, default: 0 }, // R$ por MSU acima do baseline
     cbaPct: { type: Number, default: 0 }, // desconto CBA (0.19 = 19%)
     encargos: { type: [mlcEncargoSchema], default: [] },
+    vigencias: { type: [mlcVigenciaSchema], default: [] },
   },
   { _id: false }
 );

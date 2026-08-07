@@ -1753,3 +1753,23 @@ body:not(.is-manager) [data-requires-manager] { display: none !important; }
 /* Numa grade, "a última linha" não é mais a de baixo de cada coluna — manter a
    borda em todas evita que a última de uma coluna pareça cortada. */
 .site-block-nosite .imc-list > .imc-row:last-child { border-bottom: 1px solid var(--border); }
+
+/* ── MLC: reajuste no meio do ano ────────────────────────────────────────── */
+/* Quando um aditivo muda os preços dentro do ano, um "R$/MSU" só no cabeçalho
+   seria mentira — o ano passa a ter mais de um. Os preços vão para esta tabela,
+   cada faixa com a janela de meses em que vale. */
+.mlc-trechos { margin: 8px 0 12px; }
+.mlc-trechos-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.mlc-trechos-table th {
+  text-align: left; font-weight: 500; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--ink-muted); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border);
+}
+.mlc-trechos-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.mlc-trechos-table tr:last-child td { border-bottom: 0; }
+.mlc-trechos-table .num { text-align: right; }
+
+.vig-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-top: 8px; background: var(--surface); }
+.vig-head { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 8px; }
+.vig-mes { width: 150px; flex: none; margin-bottom: 0; }
+.vig-nota { flex: 1; margin-bottom: 0; }
+.vig-head .btn-icon { margin-bottom: 6px; }

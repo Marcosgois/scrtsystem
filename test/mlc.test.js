@@ -83,5 +83,96 @@ check('rótulo do ano é gerado quando ausente', v2.years[1].label === 'Ano 2');
 check('sem contrato devolve years vazio', computeMlcView({}, {}).years.length === 0);
 
 console.log('');
+
+/* ── Vigências de preço dentro do ano ──────────────────────────────────────
+   Um aditivo pode reajustar os valores no meio do ano: jan-mar com um preço,
+   abr-dez com outro. O BASELINE não muda — ele é anual e do ano inteiro; o que
+   o aditivo reajusta é preço. */
+{
+  const contrato = {
+    startPeriodKey: '2026-01',
+    years: [{
+      baselineAnnualMsu: 120000, valorPorMsu: 2, encargoCrescimentoPorMsu: 0.5, cbaPct: 0.1,
+      encargos: [{ nome: 'Flat', valorMensal: 100 }],
+      vigencias: [{
+        fromPeriodKey: '2026-04', valorPorMsu: 3, encargoCrescimentoPorMsu: 0.8, cbaPct: 0.2,
+        encargos: [{ nome: 'Flat', valorMensal: 150 }], notas: 'Aditivo 1',
+      }],
+    }],
+  };
+  const consumo = {};
+  for (let m = 1; m <= 12; m++) consumo[`2026-${String(m).padStart(2, '0')}`] = 12000;
+  const ano = computeMlcView(contrato, consumo).years[0];
+  const mes = (k) => ano.months.find((x) => x.periodKey === k);
+
+  check('vigência: o baseline mensal é o MESMO o ano todo (o aditivo reajusta preço, não volume)',
+    ano.months.every((m) => m.baselineMensalMsu === 10000), ano.months.map((m) => m.baselineMensalMsu));
+
+  // Antes do aditivo: 10.000 × 2 = 20.000 · growth 2.000 × 0,5 = 1.000 · flat 100
+  check('vigência: março ainda usa o preço do ano (18.990)',
+    mes('2026-03').baselineMensalRs === 20000 && mes('2026-03').growthChargeRs === 1000
+    && mes('2026-03').encargosRs === 100 && Math.abs(mes('2026-03').withCbaRs - 18990) < 1e-9, mes('2026-03'));
+
+  // A partir do aditivo: 10.000 × 3 = 30.000 · growth 2.000 × 0,8 = 1.600 · flat 150
+  check('vigência: abril já usa o preço novo (25.400)',
+    mes('2026-04').baselineMensalRs === 30000 && mes('2026-04').growthChargeRs === 1600
+    && mes('2026-04').encargosRs === 150 && Math.abs(mes('2026-04').withCbaRs - 25400) < 1e-9, mes('2026-04'));
+
+  check('vigência: o total do ano soma os dois preços, não um deles vezes 12',
+    Math.abs(ano.totals.withCbaRs - (18990 * 3 + 25400 * 9)) < 1e-6, ano.totals.withCbaRs);
+
+  check('vigência: os trechos saem descritos para a tela',
+    ano.temVariacao === true && ano.trechos.length === 2
+    && ano.trechos[0].label === 'Jan/26 a Mar/26' && ano.trechos[0].doAno === true
+    && ano.trechos[1].label === 'Abr/26 a Dez/26' && ano.trechos[1].notas === 'Aditivo 1',
+    ano.trechos.map((t) => t.label));
+
+  check('vigência: cada mês diz de que trecho veio',
+    mes('2026-03').vigenciaIndex === -1 && mes('2026-04').vigenciaIndex === 0);
+}
+
+{
+  // Ano SEM vigência tem de calcular exatamente como antes — é o caso de todos
+  // os contratos que já existem, e não pode haver migração de dado.
+  const semVig = {
+    startPeriodKey: '2026-01',
+    years: [{ baselineAnnualMsu: 120000, valorPorMsu: 2, encargoCrescimentoPorMsu: 0.5, cbaPct: 0.1, encargos: [{ nome: 'Flat', valorMensal: 100 }] }],
+  };
+  const comVigVazia = JSON.parse(JSON.stringify(semVig));
+  comVigVazia.years[0].vigencias = [];
+  const consumo = { '2026-01': 12000, '2026-02': 12000 };
+  const a = computeMlcView(semVig, consumo).years[0];
+  const b = computeMlcView(comVigVazia, consumo).years[0];
+  check('sem vigência: a conta não muda em nada',
+    JSON.stringify(a.months) === JSON.stringify(b.months) && a.temVariacao === false && a.trechos.length === 1,
+    { totalA: a.totals.withCbaRs, totalB: b.totals.withCbaRs });
+
+  // Duas vigências: o mês pega a ÚLTIMA que já começou, não a primeira.
+  const tres = JSON.parse(JSON.stringify(semVig));
+  tres.years[0].vigencias = [
+    { fromPeriodKey: '2026-04', valorPorMsu: 3, encargoCrescimentoPorMsu: 0, cbaPct: 0, encargos: [] },
+    { fromPeriodKey: '2026-09', valorPorMsu: 5, encargoCrescimentoPorMsu: 0, cbaPct: 0, encargos: [] },
+  ];
+  const c12 = {};
+  for (let m = 1; m <= 12; m++) c12[`2026-${String(m).padStart(2, '0')}`] = 10000;
+  const y = computeMlcView(tres, c12).years[0];
+  const rs = (k) => y.months.find((x) => x.periodKey === k).baselineMensalRs;
+  check('três trechos: cada mês pega a última vigência que já começou',
+    rs('2026-03') === 20000 && rs('2026-08') === 30000 && rs('2026-12') === 50000,
+    { mar: rs('2026-03'), ago: rs('2026-08'), dez: rs('2026-12') });
+
+  // Fora de ordem no array não pode mudar o resultado.
+  const foraDeOrdem = JSON.parse(JSON.stringify(tres));
+  foraDeOrdem.years[0].vigencias.reverse();
+  const y2 = computeMlcView(foraDeOrdem, c12).years[0];
+  // O vigenciaIndex É a posição no array, então reordenar muda ele de propósito.
+  // O que não pode mudar é o dinheiro.
+  const dinheiro = (v) => v.months.map((m) => [m.periodKey, m.baselineMensalRs, m.growthChargeRs, m.encargosRs, m.withCbaRs]);
+  check('vigências fora de ordem no array dão o mesmo resultado financeiro',
+    JSON.stringify(dinheiro(y)) === JSON.stringify(dinheiro(y2)));
+}
+
+// O guard fica no FIM: com ele no meio do arquivo, todo teste escrito depois
+// não era contado e a suíte dizia "passou" com falha na tela.
 if (failures) { console.error(`MLC: ${failures} teste(s) falharam`); process.exit(1); }
 console.log('MLC: TODOS OS TESTES PASSARAM');

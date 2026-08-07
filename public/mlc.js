@@ -128,12 +128,34 @@ function renderYearCard(ano) {
   const encargosDesc = ano.encargos.length
     ? ano.encargos.map((e) => `${esc(e.nome)} ${fmtBRL(e.valorMensal)}`).join(' · ')
     : 'sem encargos fixos';
-  const params = [
-    `Baseline ${fmtInt(ano.baselineAnnualMsu)} MSU/ano (${fmtInt(ano.baselineMensalMsu)}/mês)`,
-    `R$/MSU ${nf.format(ano.valorPorMsu)}`,
-    `Cresc./MSU ${nf.format(ano.encargoCrescimentoPorMsu)}`,
-    `CBA ${nf.format(ano.cbaPct * 100)}%`,
-  ].join(' · ');
+  // Com reajuste no meio do ano, um "R$/MSU" só no cabeçalho seria mentira: o
+  // ano tem mais de um. Aí o cabeçalho fica no baseline (que é do ano inteiro) e
+  // os preços vão para a tabela de trechos, cada um com sua janela de meses.
+  const trechos = ano.trechos || [];
+  const params = ano.temVariacao
+    ? `Baseline ${fmtInt(ano.baselineAnnualMsu)} MSU/ano (${fmtInt(ano.baselineMensalMsu)}/mês) · ${trechos.length} faixas de preço no ano`
+    : [
+      `Baseline ${fmtInt(ano.baselineAnnualMsu)} MSU/ano (${fmtInt(ano.baselineMensalMsu)}/mês)`,
+      `R$/MSU ${nf.format(ano.valorPorMsu)}`,
+      `Cresc./MSU ${nf.format(ano.encargoCrescimentoPorMsu)}`,
+      `CBA ${nf.format(ano.cbaPct * 100)}%`,
+    ].join(' · ');
+
+  const tabelaTrechos = ano.temVariacao ? `
+    <div class="mlc-trechos">
+      <table class="mlc-trechos-table">
+        <thead><tr><th>Vigência</th><th class="num">R$/MSU</th><th class="num">Cresc./MSU</th><th class="num">CBA</th><th class="num">Encargos fixos</th><th>Referência</th></tr></thead>
+        <tbody>${trechos.map((t) => `
+          <tr>
+            <td><strong>${esc(t.label)}</strong> <span class="muted small">${t.meses} ${t.meses > 1 ? 'meses' : 'mês'}</span></td>
+            <td class="num">${nf.format(t.valorPorMsu)}</td>
+            <td class="num">${nf.format(t.encargoCrescimentoPorMsu)}</td>
+            <td class="num">${nf.format(t.cbaPct * 100)}%</td>
+            <td class="num">${fmtBRL(t.encargosMensal)}</td>
+            <td class="muted small">${esc(t.notas || (t.doAno ? 'valores do ano' : ''))}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>` : '';
 
   const linhas = ano.months.map((m) => {
     if (m.source !== 'scrt') {
@@ -172,6 +194,7 @@ function renderYearCard(ano) {
         <h2>${esc(ano.label)} <span class="muted mlc-year-range">${labelKey(ano.firstPeriodKey)} – ${labelKey(ano.lastPeriodKey)}</span></h2>
         <p class="muted">${esc(params)}</p>
         <p class="muted mlc-encargos">Encargos fixos mensais: ${encargosDesc}</p>
+        ${tabelaTrechos}
       </div>
     </div>
     <div class="table-responsive">
@@ -224,7 +247,7 @@ function sugerirInicio() {
 }
 
 function novoAno(label) {
-  return { label, baselineAnnualMsu: 0, valorPorMsu: 0, encargoCrescimentoPorMsu: 0, cbaPct: 0, encargos: [] };
+  return { label, baselineAnnualMsu: 0, valorPorMsu: 0, encargoCrescimentoPorMsu: 0, cbaPct: 0, encargos: [], vigencias: [] };
 }
 function cloneYear(y) {
   return {
@@ -234,7 +257,32 @@ function cloneYear(y) {
     encargoCrescimentoPorMsu: y.encargoCrescimentoPorMsu || 0,
     cbaPct: y.cbaPct || 0,
     encargos: (y.encargos || []).map((e) => ({ nome: e.nome || '', valorMensal: e.valorMensal || 0 })),
+    vigencias: (y.vigencias || []).map((v) => ({
+      fromPeriodKey: v.fromPeriodKey || '',
+      valorPorMsu: v.valorPorMsu || 0,
+      encargoCrescimentoPorMsu: v.encargoCrescimentoPorMsu || 0,
+      cbaPct: v.cbaPct || 0,
+      encargos: (v.encargos || []).map((e) => ({ nome: e.nome || '', valorMensal: e.valorMensal || 0 })),
+      notas: v.notas || '',
+    })),
   };
+}
+
+/* Mês inicial do ano no editor. O contrato pode ainda não estar salvo, então sai
+   do campo de início da tela — é ele que manda enquanto se edita. */
+function primeiroMesDoAno(i) {
+  const inicio = ($('contract-start') && $('contract-start').value) || '';
+  if (!/^\d{4}-\d{2}$/.test(inicio)) return '';
+  const [a, m] = inicio.split('-').map(Number);
+  const idx = a * 12 + (m - 1) + i * 12;
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`;
+}
+function ultimoMesDoAno(i) {
+  const p = primeiroMesDoAno(i);
+  if (!p) return '';
+  const [a, m] = p.split('-').map(Number);
+  const idx = a * 12 + (m - 1) + 11;
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`;
 }
 
 function renderYearsEditor() {
@@ -245,6 +293,37 @@ function renderYearsEditor() {
         <input type="text" class="enc-nome" data-year="${i}" data-enc="${j}" value="${esc(e.nome)}" placeholder="Nome (ex.: Dev/Test)">
         <input type="number" step="any" class="enc-valor" data-year="${i}" data-enc="${j}" value="${e.valorMensal}" placeholder="R$/mês">
         <button type="button" class="btn-icon" data-remove-enc data-year="${i}" data-enc="${j}" title="Remover encargo" aria-label="Remover encargo">×</button>
+      </div>`).join('');
+
+    const pri = primeiroMesDoAno(i);
+    const ult = ultimoMesDoAno(i);
+    const vigencias = (y.vigencias || []).map((v, j) => `
+      <div class="vig-row">
+        <div class="vig-head">
+          <label class="field vig-mes"><span>A partir de</span>
+            <input type="month" class="v-from" data-year="${i}" data-vig="${j}" value="${esc(v.fromPeriodKey)}"
+                   ${pri ? `min="${pri}" max="${ult}"` : ''}></label>
+          <label class="field vig-nota"><span>Referência (opcional)</span>
+            <input type="text" class="v-notas" data-year="${i}" data-vig="${j}" value="${esc(v.notas)}" placeholder="Ex.: Aditivo 3/2026"></label>
+          <button type="button" class="btn-icon" data-remove-vig data-year="${i}" data-vig="${j}" title="Remover reajuste" aria-label="Remover reajuste">×</button>
+        </div>
+        <div class="year-grid">
+          <label class="field"><span>Valor por MSU (R$)</span>
+            <input type="number" step="any" class="v-valor" data-year="${i}" data-vig="${j}" value="${v.valorPorMsu}"></label>
+          <label class="field"><span>Encargo de crescimento por MSU (R$)</span>
+            <input type="number" step="any" class="v-cresc" data-year="${i}" data-vig="${j}" value="${v.encargoCrescimentoPorMsu}"></label>
+          <label class="field"><span>CBA (%)</span>
+            <input type="number" step="any" class="v-cba" data-year="${i}" data-vig="${j}" value="${round(v.cbaPct * 100)}"></label>
+        </div>
+        <div class="encargos-head"><span class="muted small">Encargos fixos deste trecho</span>
+          <button type="button" class="btn btn-ghost btn-sm" data-add-venc data-year="${i}" data-vig="${j}">+ Encargo</button>
+        </div>
+        ${(v.encargos || []).map((e, k) => `
+          <div class="encargo-row">
+            <input type="text" class="venc-nome" data-year="${i}" data-vig="${j}" data-enc="${k}" value="${esc(e.nome)}" placeholder="Nome">
+            <input type="number" step="any" class="venc-valor" data-year="${i}" data-vig="${j}" data-enc="${k}" value="${e.valorMensal}" placeholder="R$/mês">
+            <button type="button" class="btn-icon" data-remove-venc data-year="${i}" data-vig="${j}" data-enc="${k}" title="Remover" aria-label="Remover">×</button>
+          </div>`).join('') || '<p class="muted small">Sem encargo fixo neste trecho — se o contrato mantém os mesmos, repita-os aqui.</p>'}
       </div>`).join('');
 
     return `<div class="year-editor">
@@ -268,11 +347,26 @@ function renderYearsEditor() {
         </div>
         ${encargos || '<p class="muted small">Nenhum encargo fixo. Use "+ Encargo" para adicionar Dev/Test, Produtos Flat, etc.</p>'}
       </div>
+      <div class="encargos-block">
+        <div class="encargos-head">
+          <span>Reajustes no meio do ano</span>
+          <button type="button" class="btn btn-ghost btn-sm" data-add-vig data-year="${i}">+ Reajuste</button>
+        </div>
+        <p class="muted small">Os valores acima valem a partir de ${esc(rotuloMes(primeiroMesDoAno(i)) || 'o início do ano')}. Um reajuste passa a valer do mês informado até o próximo (ou até o fim do ano). O baseline anual não muda — o reajuste é de preço.</p>
+        ${vigencias || ''}
+      </div>
     </div>`;
   }).join('');
 }
 
 function round(n) { return Math.round(n * 1e6) / 1e6; }
+
+const MESES_ED = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+function rotuloMes(k) {
+  if (!/^\d{4}-\d{2}$/.test(k || '')) return '';
+  const [a, m] = k.split('-').map(Number);
+  return `${MESES_ED[m - 1]}/${String(a).slice(-2)}`;
+}
 
 // Lê os inputs do editor de volta para draftYears (antes de re-render ou salvar).
 function syncDraftFromInputs() {
@@ -284,6 +378,14 @@ function syncDraftFromInputs() {
   el.querySelectorAll('.y-cba').forEach((inp) => { draftYears[+inp.dataset.year].cbaPct = num(inp.value) / 100; });
   el.querySelectorAll('.enc-nome').forEach((inp) => { draftYears[+inp.dataset.year].encargos[+inp.dataset.enc].nome = inp.value; });
   el.querySelectorAll('.enc-valor').forEach((inp) => { draftYears[+inp.dataset.year].encargos[+inp.dataset.enc].valorMensal = num(inp.value); });
+  const vig = (inp) => draftYears[+inp.dataset.year].vigencias[+inp.dataset.vig];
+  el.querySelectorAll('.v-from').forEach((inp) => { vig(inp).fromPeriodKey = inp.value; });
+  el.querySelectorAll('.v-notas').forEach((inp) => { vig(inp).notas = inp.value; });
+  el.querySelectorAll('.v-valor').forEach((inp) => { vig(inp).valorPorMsu = num(inp.value); });
+  el.querySelectorAll('.v-cresc').forEach((inp) => { vig(inp).encargoCrescimentoPorMsu = num(inp.value); });
+  el.querySelectorAll('.v-cba').forEach((inp) => { vig(inp).cbaPct = num(inp.value) / 100; });
+  el.querySelectorAll('.venc-nome').forEach((inp) => { vig(inp).encargos[+inp.dataset.enc].nome = inp.value; });
+  el.querySelectorAll('.venc-valor').forEach((inp) => { vig(inp).encargos[+inp.dataset.enc].valorMensal = num(inp.value); });
 }
 
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
@@ -296,6 +398,22 @@ $('contract-years-editor').addEventListener('click', (e) => {
   if (btn.hasAttribute('data-remove-year')) draftYears.splice(+btn.dataset.year, 1);
   else if (btn.hasAttribute('data-add-enc')) draftYears[+btn.dataset.year].encargos.push({ nome: '', valorMensal: 0 });
   else if (btn.hasAttribute('data-remove-enc')) draftYears[+btn.dataset.year].encargos.splice(+btn.dataset.enc, 1);
+  else if (btn.hasAttribute('data-add-vig')) {
+    const ano = draftYears[+btn.dataset.year];
+    // O reajuste nasce COPIANDO os valores em vigor: quem reajusta costuma mudar
+    // um campo só, e partir de zero convidaria a salvar um trecho com preço nulo.
+    const ult = (ano.vigencias || [])[ano.vigencias.length - 1] || ano;
+    ano.vigencias.push({
+      fromPeriodKey: '',
+      valorPorMsu: ult.valorPorMsu || 0,
+      encargoCrescimentoPorMsu: ult.encargoCrescimentoPorMsu || 0,
+      cbaPct: ult.cbaPct || 0,
+      encargos: (ult.encargos || []).map((e) => ({ nome: e.nome, valorMensal: e.valorMensal })),
+      notas: '',
+    });
+  } else if (btn.hasAttribute('data-remove-vig')) draftYears[+btn.dataset.year].vigencias.splice(+btn.dataset.vig, 1);
+  else if (btn.hasAttribute('data-add-venc')) draftYears[+btn.dataset.year].vigencias[+btn.dataset.vig].encargos.push({ nome: '', valorMensal: 0 });
+  else if (btn.hasAttribute('data-remove-venc')) draftYears[+btn.dataset.year].vigencias[+btn.dataset.vig].encargos.splice(+btn.dataset.enc, 1);
   else return;
   renderYearsEditor();
 });

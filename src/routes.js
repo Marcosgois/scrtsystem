@@ -15,7 +15,7 @@ const { typeDaMaquina } = require('./regional');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
-const { computeMlcView } = require('./mlc');
+const { computeMlcView, addMonths } = require('./mlc');
 const auth = require('./auth');
 
 const router = express.Router();
@@ -1195,19 +1195,54 @@ function sanitizeMlcContract(body) {
   if (!Array.isArray(body.years) || body.years.length === 0) {
     return { error: 'Informe pelo menos um ano de contrato em "years".' };
   }
+  const listaEncargos = (arr) => (Array.isArray(arr) ? arr : [])
+    .map((e) => ({ nome: String((e && e.nome) || '').trim(), valorMensal: num(e && e.valorMensal) }))
+    .filter((e) => e.nome);
+
+  let erro = null;
   const years = body.years.map((y, i) => {
-    const encargos = Array.isArray(y && y.encargos) ? y.encargos : [];
+    // Trechos de preço dentro do ano. O mês tem de cair DENTRO do ano (a decisão
+    // é que vigência não atravessa a virada), e dois trechos não podem começar no
+    // mesmo mês — senão qual dos dois vale seria uma escolha invisível.
+    const primeiro = addMonths(start, i * 12);
+    const ultimo = addMonths(start, i * 12 + 11);
+    const vistos = new Set();
+    const vigencias = (Array.isArray(y && y.vigencias) ? y.vigencias : [])
+      .map((v) => {
+        const from = String((v && v.fromPeriodKey) || '').trim();
+        if (!PERIOD_KEY_RE.test(from)) { erro = erro || `Ano ${i + 1}: informe o mês inicial da vigência no formato AAAA-MM.`; return null; }
+        if (from < primeiro || from > ultimo) {
+          erro = erro || `Ano ${i + 1}: a vigência de ${from} está fora do ano (${primeiro} a ${ultimo}).`;
+          return null;
+        }
+        // Começar no primeiro mês do ano tornaria os valores do ano inalcançáveis:
+        // é edição do próprio ano, não um trecho novo.
+        if (from === primeiro) { erro = erro || `Ano ${i + 1}: a vigência não pode começar no primeiro mês do ano — edite os valores do ano.`; return null; }
+        if (vistos.has(from)) { erro = erro || `Ano ${i + 1}: há duas vigências começando em ${from}.`; return null; }
+        vistos.add(from);
+        return {
+          fromPeriodKey: from,
+          valorPorMsu: num(v.valorPorMsu),
+          encargoCrescimentoPorMsu: num(v.encargoCrescimentoPorMsu),
+          cbaPct: num(v.cbaPct),
+          encargos: listaEncargos(v.encargos),
+          notas: String((v && v.notas) || '').trim(),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.fromPeriodKey.localeCompare(b.fromPeriodKey));
+
     return {
       label: String((y && y.label) || '').trim() || `Ano ${i + 1}`,
       baselineAnnualMsu: num(y && y.baselineAnnualMsu),
       valorPorMsu: num(y && y.valorPorMsu),
       encargoCrescimentoPorMsu: num(y && y.encargoCrescimentoPorMsu),
       cbaPct: num(y && y.cbaPct),
-      encargos: encargos
-        .map((e) => ({ nome: String((e && e.nome) || '').trim(), valorMensal: num(e && e.valorMensal) }))
-        .filter((e) => e.nome),
+      encargos: listaEncargos(y && y.encargos),
+      vigencias,
     };
   });
+  if (erro) return { error: erro };
   return { contract: { startPeriodKey: start, years } };
 }
 

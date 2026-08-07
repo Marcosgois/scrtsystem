@@ -1249,3 +1249,26 @@ window.ZCD_PATTERNS.push(
   [/^(\d+) sem memória$/, "$1 sin memoria", "$1 without memory"],
   [/^([\d.]+) MSU nominais \((\d+)\/(\d+)\)$/, "$1 MSU nominales ($2/$3)", "$1 nominal MSU ($2/$3)"]
 );
+
+/* MLC: reajuste no meio do ano */
+Object.assign(window.ZCD_DICT, {
+  "Reajustes no meio do ano": ["Reajustes a mitad de año", "Mid-year price changes"],
+  "+ Reajuste": ["+ Reajuste", "+ Price change"],
+  "A partir de": ["A partir de", "Effective from"],
+  "Referência (opcional)": ["Referencia (opcional)", "Reference (optional)"],
+  "Ex.: Aditivo 3/2026": ["Ej.: Adenda 3/2026", "E.g. Amendment 3/2026"],
+  "Encargos fixos deste trecho": ["Cargos fijos de este tramo", "Fixed charges for this period"],
+  "Sem encargo fixo neste trecho — se o contrato mantém os mesmos, repita-os aqui.":
+    ["Sin cargo fijo en este tramo — si el contrato mantiene los mismos, repítalos aquí.",
+     "No fixed charge in this period — if the contract keeps the same ones, repeat them here."],
+  "Vigência": ["Vigencia", "Effective period"],
+  "Referência": ["Referencia", "Reference"],
+  "valores do ano": ["valores del año", "year's values"],
+  "Remover reajuste": ["Eliminar reajuste", "Remove price change"],
+});
+window.ZCD_PATTERNS.push(
+  [/^(\d+) faixas de preço no ano$/, "$1 franjas de precio en el año", "$1 price tiers in the year"],
+  [/^Os valores acima valem a partir de ([\s\S]*?)\. Um reajuste passa a valer do mês informado até o próximo \(ou até o fim do ano\)\. O baseline anual não muda — o reajuste é de preço\.$/,
+    "Los valores de arriba valen a partir de $1. Un reajuste pasa a valer desde el mes informado hasta el siguiente (o hasta el fin del año). El baseline anual no cambia — el reajuste es de precio.",
+    "The values above apply from $1. A price change takes effect from the given month until the next one (or the end of the year). The annual baseline does not change — the change is to prices."]
+);

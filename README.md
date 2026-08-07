@@ -22,7 +22,7 @@ administração de usuários em `/admin`):
 | Módulo | Rota | O que faz |
 |---|---|---|
 | **Consumo zOTC (SCRT)** | `/consumo` | Upload do SCRT mensal, dashboard de MSUs, LPARs, grupos e comparativo mês a mês |
-| **Consumo MLC** | `/mlc` | Contrato de MLC por cliente, com o consumo sincronizado do SCRT |
+| **Consumo MLC** | `/mlc` | Contrato de MLC por cliente, com o consumo sincronizado do SCRT e reajuste de preço no meio do ano |
 | **Inventário** | `/inventario` | Relatório IBM SW Material: produtos/PIDs, licenças e o casamento com S&S |
 | **Infraestrutura** | `/infra` | Parque físico (sites, máquinas, LPARs), referência LSPR e MO/MES |
 | **Contratos** | `/contratos` | Contratos ligando máquinas e PIDs, com os PDFs assinados e o ciclo de MO/MES |
@@ -276,6 +276,29 @@ O parser é estrito de propósito: se o formato do zPCR mudar (outro número de 
 total, modelo fora do padrão `NNNN-XXX`), ele **para** em vez de gravar dado pela metade —
 capacidade errada no banco vira proposta comercial errada. As armadilhas do formato estão
 travadas em [test/lspr-cheatsheet.test.js](test/lspr-cheatsheet.test.js).
+
+## MLC: reajuste de preço no meio do ano
+
+O contrato de MLC fixa por ano um **baseline anual de MSUs** e os preços. Acontece
+de um aditivo reajustar os preços no meio do ano — jan a mar com um valor, abr a
+dez com outro. Cada ano aceita então uma lista de **reajustes** (`year.vigencias`),
+e cada um diz a partir de que mês passa a valer; vale até o mês anterior ao
+próximo, ou até o fim do ano.
+
+O que o reajuste muda: **valor por MSU, encargo de crescimento, CBA e os encargos
+fixos**. O que ele NÃO muda: o **baseline**, que é anual e continua no ano — o
+aditivo reajusta preço, não volume contratado. Por isso o baseline mensal
+(anual ÷ 12) é o mesmo nos doze meses, e o que varia é o valor em reais.
+
+Os valores do próprio ano são o primeiro trecho, implicitamente: os meses antes do
+primeiro reajuste usam o que está no ano. Consequência prática: **contrato sem
+reajuste nenhum calcula exatamente como antes**, e não houve migração de dado.
+
+A API recusa reajuste com mês fora do ano, com mês repetido, fora do formato
+`AAAA-MM`, ou começando no primeiro mês do ano (isso é edição dos valores do ano,
+não um trecho novo). Na tela, o cabeçalho do ano deixa de mostrar um "R$/MSU"
+único quando há mais de uma faixa — seria mentira — e os preços vão para uma
+tabela de vigências, cada linha com a janela de meses em que vale.
 
 ## Contratos, MO/MES e histórico da máquina
 
@@ -550,7 +573,7 @@ src/
   scrtParser.js           # parser do CSV SCRT (latin-1/UTF-8, seções ==B5/==N5/==N7)
   xlsx.js                 # leitura de SCRT em planilha (uma aba por máquina)
   forecast.js             # projeção linear e SARIMA
-  mlc.js                  # cálculo do contrato de MLC
+  mlc.js                  # cálculo do contrato de MLC (inclui as vigências de preço)
   lsprSeed.js             # carga da referência LSPR no banco
   data/lspr.json          # 3.190 modelos IBM Z (MIPS/MSU/CPs) — dados públicos IBM
 public/
