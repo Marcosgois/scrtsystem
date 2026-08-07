@@ -8,6 +8,7 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="styles.css">
+  <script src="vendor/chart.umd.js"></script>
   <script src="/i18n-dict.js"></script>
   <script src="/i18n.js"></script>
 </head>
@@ -91,13 +92,77 @@
         <p class="muted" id="mlc-subtitle">Monthly License Charge · consumo do SCRT</p>
       </div>
       <div class="client-header-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-mlc-pptx" title="Baixa as três visões em PowerPoint (16:9)">Gerar PowerPoint</button>
         <button class="btn btn-ghost btn-sm" data-requires-edit id="btn-edit-contract-2">Editar contrato</button>
       </div>
     </div>
 
-    <div class="kpi-grid" id="mlc-kpis"></div>
+    <div class="mlc-tabs-bar">
+      <div class="segmented" id="mlc-tabs" role="tablist">
+        <button type="button" class="seg-btn active" data-aba="geral">Visão geral</button>
+        <button type="button" class="seg-btn" data-aba="ano">Consumo MLC do ano</button>
+        <button type="button" class="seg-btn" data-aba="comparativo">Comparação por ano</button>
+        <button type="button" class="seg-btn" data-aba="planejado">Consumido × planejado</button>
+      </div>
+      <div class="mlc-tabs-actions">
+        <label class="compare-select-wrap hidden" id="mlc-ano-wrap">
+          <span class="muted small">ano</span>
+          <select id="mlc-ano" aria-label="Ano contratual"></select>
+        </label>
+        <button class="btn btn-ghost btn-sm hidden" id="btn-mlc-pptx-slide">Só este slide em PPT</button>
+      </div>
+    </div>
 
-    <div id="mlc-years"></div>
+    <!-- Aba: visão geral (cards por ano do contrato) -->
+    <div class="mlc-aba" data-aba="geral">
+      <div class="kpi-grid" id="mlc-kpis"></div>
+      <div id="mlc-years"></div>
+    </div>
+
+    <!-- Aba: consumo de MLC do ano (R$) -->
+    <div class="mlc-aba hidden" data-aba="ano">
+      <div class="table-responsive">
+        <table id="mlc-ano-tabela"><thead></thead><tbody></tbody></table>
+      </div>
+      <div class="mlc-cap-grid" id="mlc-cap"></div>
+      <div class="chart-container" style="height: 300px; margin-top: 18px;">
+        <canvas id="mlcAnoChart" role="img"
+                aria-label="Consumo mensal em reais contra o CAP contratado. Os mesmos números estão na tabela acima."></canvas>
+      </div>
+      <p class="muted small" id="mlc-ano-nota"></p>
+    </div>
+
+    <!-- Aba: comparação de consumo por ano (MSU) -->
+    <div class="mlc-aba hidden" data-aba="comparativo">
+      <div class="chart-container" style="height: 340px;">
+        <canvas id="mlcCmpChart" role="img"
+                aria-label="Consumo mensal em MSU de cada ano contratual, sobrepostos pela posição do mês dentro do ano."></canvas>
+      </div>
+      <p class="muted small" id="mlc-cmp-nota"></p>
+      <div class="table-responsive" style="margin-top: 12px;">
+        <table id="mlc-cmp-tabela"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- Aba: consumido × planejado × contratado -->
+    <div class="mlc-aba hidden" data-aba="planejado">
+      <div class="mlc-plan-grid">
+        <div>
+          <div class="table-responsive">
+            <table id="mlc-plan-tabela"><thead></thead><tbody></tbody></table>
+          </div>
+          <div class="muted small" id="mlc-plan-notas"></div>
+        </div>
+        <div class="mlc-conclusao">
+          <h3>Conclusão</h3>
+          <ul id="mlc-plan-conclusoes"></ul>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 280px; margin-top: 18px;">
+        <canvas id="mlcPlanChart" role="img"
+                aria-label="MSUs consumidas e planejadas por ano contratual, contra o baseline contratado."></canvas>
+      </div>
+    </div>
   </section>
 </main>
 

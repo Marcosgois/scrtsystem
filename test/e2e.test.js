@@ -793,6 +793,82 @@ async function main() {
         body: JSON.stringify({ contractYearStart: '2026-06' }),
       });
 
+      // ── As três visões da reunião + a exportação em PowerPoint ──────────
+      r = await api(`/clients/${mlcId}/mlc`);
+      const v0 = r.body.views;
+      check('visões: vêm juntas no GET /mlc, com o ano e a defasagem resolvidos',
+        !!v0 && v0.anoSelecionado === 0 && v0.anoMlc.lagMonths === 2 && v0.anosDisponiveis.length === 1,
+        v0 && { ano: v0.anoSelecionado, lag: v0.anoMlc.lagMonths });
+      check('visões: a defasagem rotula Jun/26 como Inv/Ago/26 sem mudar o valor',
+        v0.anoMlc.colunas[0].medLabel === 'Jun/26' && v0.anoMlc.colunas[0].invLabel === 'Ago/26'
+        && Math.abs(v0.anoMlc.colunas[0].consumoRs - 27020285.5) < 1e-6,
+        v0.anoMlc.colunas[0]);
+      check('visões: sem CAP cadastrado, o bloco não existe (em vez de saldo negativo)',
+        v0.anoMlc.cap === null, v0.anoMlc.cap);
+
+      // Cadastra teto e meta do ano e confere que as visões passam a existir.
+      const comMetas = {
+        ...contrato,
+        years: [{ ...contrato.years[0], capAnualRs: 300000000, capCbaRs: 240000000, plannedAnnualMsu: 100000000, baselineZotcAnualMsu: 150000000 }],
+      };
+      r = await api(`/clients/${mlcId}/mlc`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(comMetas),
+      });
+      const v1 = r.body.views;
+      check('visões: CAP cadastrado aparece com saldo e mensal = anual/12',
+        r.status === 200 && v1.anoMlc.cap && v1.anoMlc.cap.anualRs === 300000000
+        && Math.abs(v1.anoMlc.cap.mensalRs - 25000000) < 1e-6
+        && Math.abs(v1.anoMlc.cap.saldoRs - (300000000 - v1.anoMlc.totais.consumoRs)) < 1e-6,
+        v1.anoMlc.cap);
+      const p1 = v1.planejado.anos[0];
+      check('visões: 1 mês real + 11 no planejado (100.000.000/12 cada)',
+        p1.mesesReais === 1 && p1.mesesPlanejados === 11 && p1.estimado === true
+        && Math.abs(p1.consumidasMsu - (22040571 + (100000000 / 12) * 11)) < 1e-6,
+        { reais: p1.mesesReais, planejados: p1.mesesPlanejados, total: p1.consumidasMsu });
+      check('visões: conclusão é gerada a partir dos números',
+        Array.isArray(v1.planejado.conclusoes) && v1.planejado.conclusoes.length > 0,
+        v1.planejado.conclusoes);
+
+      r = await api(`/clients/${mlcId}/mlc`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...contrato, years: [{ ...contrato.years[0], capAnualRs: -1 }] }),
+      });
+      check('visões: CAP negativo -> 400 (num() sozinho deixaria passar como 0)', r.status === 400, r.body);
+      r = await api(`/clients/${mlcId}/mlc`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...contrato, years: [{ ...contrato.years[0], capAnualRs: 100, capCbaRs: 200 }] }),
+      });
+      check('visões: CAP com CBA maior que o CAP cheio -> 400', r.status === 400, r.body);
+
+      // O PUT substitui o contrato inteiro: as vigências têm de sobreviver a um save.
+      const comVigencia = {
+        ...comMetas,
+        years: [{ ...comMetas.years[0], vigencias: [{ fromPeriodKey: '2026-09', valorPorMsu: 1.9, encargoCrescimentoPorMsu: 0.4, cbaPct: 0.17, encargos: [], notas: 'Aditivo' }] }],
+      };
+      await api(`/clients/${mlcId}/mlc`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(comVigencia),
+      });
+      r = await api(`/clients/${mlcId}/mlc`);
+      check('visões: vigência gravada sobrevive e o mês seguinte usa o preço novo',
+        r.body.contract.years[0].vigencias.length === 1
+        && r.body.view.years[0].months[3].cbaPct === 0.17,
+        r.body.contract.years[0].vigencias);
+
+      const mlcPptx = await fetch(`${BASE}/clients/${mlcId}/mlc.pptx?slides=1,3`, {
+        headers: authCookie ? { Cookie: authCookie } : {},
+      });
+      const bufMlc = Buffer.from(await mlcPptx.arrayBuffer());
+      check('mlc.pptx: 200 com o content-type do PowerPoint e nome de arquivo',
+        mlcPptx.status === 200
+        && mlcPptx.headers.get('content-type') === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        && /^attachment; filename="consumo-software-/.test(mlcPptx.headers.get('content-disposition') || ''),
+        { status: mlcPptx.status, cd: mlcPptx.headers.get('content-disposition') });
+      check('mlc.pptx: a escolha de slides é respeitada (1 e 3 = 2 slides)', (() => {
+        if (bufMlc.slice(0, 4).toString('binary') !== 'PK\x03\x04') return false;
+        const partes = require('fflate').unzipSync(new Uint8Array(bufMlc));
+        return !!partes['ppt/slides/slide2.xml'] && !partes['ppt/slides/slide3.xml'];
+      })(), { bytes: bufMlc.length });
+
       r = await api(`/clients/${mlcId}/mlc`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ startPeriodKey: '2026-13', years: contrato.years }),

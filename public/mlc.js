@@ -16,6 +16,8 @@ const state = {
   clients: [],
   clientId: localStorage.getItem('tfp.clientId') || null,
   data: null, // resposta do GET /mlc
+  aba: 'geral', // 'geral' | 'ano' | 'comparativo' | 'planejado'
+  charts: {},   // instâncias do Chart.js, uma por aba
 };
 
 async function api(path, opts = {}) {
@@ -90,6 +92,7 @@ function render() {
 
   renderKpis(d.view);
   renderYears(d.view);
+  renderVisoes();
 }
 
 function labelKey(k) {
@@ -246,8 +249,13 @@ function sugerirInicio() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+const METAS_VAZIAS = { capAnualRs: 0, capCbaRs: 0, plannedAnnualMsu: 0, baselineZotcAnualMsu: 0 };
+
 function novoAno(label) {
-  return { label, baselineAnnualMsu: 0, valorPorMsu: 0, encargoCrescimentoPorMsu: 0, cbaPct: 0, encargos: [], vigencias: [] };
+  return {
+    label, baselineAnnualMsu: 0, valorPorMsu: 0, encargoCrescimentoPorMsu: 0, cbaPct: 0,
+    encargos: [], vigencias: [], ...METAS_VAZIAS,
+  };
 }
 function cloneYear(y) {
   return {
@@ -256,6 +264,10 @@ function cloneYear(y) {
     valorPorMsu: y.valorPorMsu || 0,
     encargoCrescimentoPorMsu: y.encargoCrescimentoPorMsu || 0,
     cbaPct: y.cbaPct || 0,
+    capAnualRs: y.capAnualRs || 0,
+    capCbaRs: y.capCbaRs || 0,
+    plannedAnnualMsu: y.plannedAnnualMsu || 0,
+    baselineZotcAnualMsu: y.baselineZotcAnualMsu || 0,
     encargos: (y.encargos || []).map((e) => ({ nome: e.nome || '', valorMensal: e.valorMensal || 0 })),
     vigencias: (y.vigencias || []).map((v) => ({
       fromPeriodKey: v.fromPeriodKey || '',
@@ -348,6 +360,21 @@ function renderYearsEditor() {
         ${encargos || '<p class="muted small">Nenhum encargo fixo. Use "+ Encargo" para adicionar Dev/Test, Produtos Flat, etc.</p>'}
       </div>
       <div class="encargos-block">
+        <div class="encargos-head"><span>Tetos e metas do ano <span class="muted small">(opcionais — usados nas visões da reunião)</span></span></div>
+        <div class="year-grid">
+          <label class="field"><span>CAP anual MLC (R$)</span>
+            <input type="number" step="any" min="0" class="y-cap" data-year="${i}" value="${y.capAnualRs || ''}" placeholder="teto contratado"></label>
+          <label class="field"><span>CAP com CBA (R$)</span>
+            <input type="number" step="any" min="0" class="y-capcba" data-year="${i}" value="${y.capCbaRs || ''}" placeholder="disponibilidade"></label>
+          <label class="field"><span>Consumo planejado (MSU)</span>
+            <input type="number" step="any" min="0" class="y-plan" data-year="${i}" value="${y.plannedAnnualMsu || ''}" placeholder="entregue pelo cliente"></label>
+          <label class="field"><span>Baseline zOTC do ano (MSU)</span>
+            <input type="number" step="any" min="0" class="y-basezotc" data-year="${i}" value="${y.baselineZotcAnualMsu || ''}" placeholder="vazio = baseline do cliente"></label>
+        </div>
+        <p class="muted small">O <strong>CAP com CBA</strong> é negociado à parte, não é o CAP × (1 − CBA). O <strong>baseline zOTC</strong>
+        é o teto de consumo do contrato zOTC, diferente do baseline anual do MLC acima.</p>
+      </div>
+      <div class="encargos-block">
         <div class="encargos-head">
           <span>Reajustes no meio do ano</span>
           <button type="button" class="btn btn-ghost btn-sm" data-add-vig data-year="${i}">+ Reajuste</button>
@@ -376,6 +403,10 @@ function syncDraftFromInputs() {
   el.querySelectorAll('.y-valor').forEach((inp) => { draftYears[+inp.dataset.year].valorPorMsu = num(inp.value); });
   el.querySelectorAll('.y-cresc').forEach((inp) => { draftYears[+inp.dataset.year].encargoCrescimentoPorMsu = num(inp.value); });
   el.querySelectorAll('.y-cba').forEach((inp) => { draftYears[+inp.dataset.year].cbaPct = num(inp.value) / 100; });
+  el.querySelectorAll('.y-cap').forEach((inp) => { draftYears[+inp.dataset.year].capAnualRs = num(inp.value); });
+  el.querySelectorAll('.y-capcba').forEach((inp) => { draftYears[+inp.dataset.year].capCbaRs = num(inp.value); });
+  el.querySelectorAll('.y-plan').forEach((inp) => { draftYears[+inp.dataset.year].plannedAnnualMsu = num(inp.value); });
+  el.querySelectorAll('.y-basezotc').forEach((inp) => { draftYears[+inp.dataset.year].baselineZotcAnualMsu = num(inp.value); });
   el.querySelectorAll('.enc-nome').forEach((inp) => { draftYears[+inp.dataset.year].encargos[+inp.dataset.enc].nome = inp.value; });
   el.querySelectorAll('.enc-valor').forEach((inp) => { draftYears[+inp.dataset.year].encargos[+inp.dataset.enc].valorMensal = num(inp.value); });
   const vig = (inp) => draftYears[+inp.dataset.year].vigencias[+inp.dataset.vig];
@@ -432,6 +463,9 @@ async function saveContract() {
   }
   if (!draftYears.length) return showError('Adicione pelo menos um ano de contrato.');
 
+  /* O PUT SUBSTITUI o contrato inteiro: tudo que não for enviado some do banco.
+     Foi assim que os reajustes cadastrados desapareciam a cada "Salvar" — o corpo
+     ia sem `vigencias`. Se acrescentar campo ao ano, acrescente aqui também. */
   const contract = {
     startPeriodKey: start,
     years: draftYears.map((y, i) => ({
@@ -441,6 +475,20 @@ async function saveContract() {
       encargoCrescimentoPorMsu: y.encargoCrescimentoPorMsu,
       cbaPct: y.cbaPct,
       encargos: y.encargos.map((e) => ({ nome: e.nome.trim(), valorMensal: e.valorMensal })).filter((e) => e.nome),
+      vigencias: (y.vigencias || [])
+        .filter((v) => /^\d{4}-\d{2}$/.test(v.fromPeriodKey || ''))
+        .map((v) => ({
+          fromPeriodKey: v.fromPeriodKey,
+          valorPorMsu: v.valorPorMsu,
+          encargoCrescimentoPorMsu: v.encargoCrescimentoPorMsu,
+          cbaPct: v.cbaPct,
+          encargos: (v.encargos || []).map((e) => ({ nome: e.nome.trim(), valorMensal: e.valorMensal })).filter((e) => e.nome),
+          notas: (v.notas || '').trim(),
+        })),
+      capAnualRs: y.capAnualRs,
+      capCbaRs: y.capCbaRs,
+      plannedAnnualMsu: y.plannedAnnualMsu,
+      baselineZotcAnualMsu: y.baselineZotcAnualMsu,
     })),
   };
   try {
@@ -477,8 +525,294 @@ function showError(msg) {
 function closeModal() { $('modal-contract').classList.add('hidden'); }
 
 /* ------------------------------------------------------------------ *
+ *  As três visões da reunião
+ *
+ *  Tudo aqui vem pronto do servidor, em `data.views` (src/mlcViews.js) — a mesma
+ *  estrutura que o .pptx consome. A tela NÃO recalcula nada: é o que garante que
+ *  o slide levado ao cliente diga exatamente o que está no navegador.
+ * ------------------------------------------------------------------ */
+
+const CHART_BASE = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { position: 'top', align: 'end', labels: { usePointStyle: true, pointStyleWidth: 10, boxHeight: 7, font: { size: 12 } } },
+    tooltip: { backgroundColor: '#1c1c1c', padding: 12 },
+  },
+};
+const fmtM = (n) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}M` : fmtInt(n));
+const fmtPct2 = (p) => (p == null ? '–' : `${Number(p).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
+
+function trocarAba(aba) {
+  state.aba = aba;
+  document.querySelectorAll('#mlc-tabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.aba === aba));
+  document.querySelectorAll('.mlc-aba').forEach((d) => d.classList.toggle('hidden', d.dataset.aba !== aba));
+  $('mlc-ano-wrap').classList.toggle('hidden', aba !== 'ano');
+  $('btn-mlc-pptx-slide').classList.toggle('hidden', aba === 'geral');
+  const nomes = { ano: 'Consumo MLC do ano', comparativo: 'Comparação por ano', planejado: 'Consumido × planejado' };
+  if (nomes[aba]) $('btn-mlc-pptx-slide').textContent = `Só "${nomes[aba]}" em PPT`;
+  // Chart.js só mede direito o que está visível; redesenha ao entrar na aba.
+  renderVisoes();
+}
+
+function renderVisoes() {
+  const v = state.data && state.data.views;
+  if (!v) return;
+  preencherSeletorDeAno(v);
+  if (state.aba === 'ano') renderAnoMlc(v.anoMlc);
+  if (state.aba === 'comparativo') renderComparativo(v.comparativo);
+  if (state.aba === 'planejado') renderPlanejado(v.planejado);
+}
+
+function preencherSeletorDeAno(v) {
+  const sel = $('mlc-ano');
+  const atual = String(v.anoSelecionado);
+  const html = v.anosDisponiveis.map((a) =>
+    `<option value="${a.indice}">${esc(a.label)} · ${esc(a.periodoLabel)}${a.mesesComScrt ? '' : ' (sem SCRT)'}</option>`).join('');
+  if (sel.innerHTML !== html) sel.innerHTML = html;
+  sel.value = atual;
+}
+
+/* ── Visão 1: consumo de MLC do ano (R$) ── */
+
+function renderAnoMlc(a) {
+  const tabela = $('mlc-ano-tabela');
+  if (!a) { tabela.querySelector('tbody').innerHTML = ''; return; }
+
+  tabela.querySelector('thead').innerHTML =
+    '<tr><th>Histórico inventário (R$) reportado</th>'
+    + a.colunas.map((c) => `<th class="num">Med/ ${esc(c.medLabel)}<br><span class="muted small">Inv/ ${esc(c.invLabel)}</span></th>`).join('')
+    + '<th class="num">Total</th></tr>';
+
+  const linha = (rotulo, campo, total) =>
+    `<tr><td><strong>${esc(rotulo)}</strong></td>`
+    + a.colunas.map((c) => `<td class="num">${c[campo] == null ? '<span class="muted">–</span>' : fmtBRL(c[campo])}</td>`).join('')
+    + `<td class="num"><strong>${fmtBRL(total)}</strong></td></tr>`;
+  tabela.querySelector('tbody').innerHTML =
+    linha('Consumo mensal (R$)', 'consumoRs', a.totais.consumoRs)
+    + linha(`Consumo com CBA (${a.cbaLabel})`, 'comCbaRs', a.totais.comCbaRs);
+
+  $('mlc-cap').innerHTML = a.cap ? blocoCap(a) : `<div class="mlc-cap-vazio muted small">
+      Sem <strong>CAP contratado</strong> cadastrado para o ${esc(a.label)}. Informe o teto anual em
+      <strong>Editar contrato</strong> para acompanhar o saldo.</div>`;
+
+  $('mlc-ano-nota').innerHTML = `<strong>Med/</strong> = mês medido no SCRT · <strong>Inv/</strong> = mês em que entra no `
+    + `inventário (defasagem de ${a.lagMonths} ${a.lagMonths === 1 ? 'mês' : 'meses'}). Os valores são os do mês medido. `
+    + `${a.totais.mesesComScrt} de ${a.totais.mesesNoAno} meses com SCRT recebido.`;
+
+  desenharAnoChart(a);
+}
+
+function blocoCap(a) {
+  const c = a.cap;
+  const bloco = (titulo, linhas) => `<div class="mlc-cap-card">
+      <div class="mlc-cap-head">${esc(titulo)}</div>
+      ${linhas.map((l) => `<div class="mlc-cap-row${l.destaque ? ' destaque' : ''}">
+        <span>${esc(l.k)}</span><strong${l.alerta ? ' class="delta up"' : ''}>${esc(l.v)}</strong></div>`).join('')}
+    </div>`;
+  const cards = [bloco(`CAP — máximo anual MLC ${a.label} (${c.janelaLabel})`, [
+    { k: 'CAP contratado', v: fmtBRL(c.anualRs) },
+    { k: 'Total CAP consumido', v: fmtBRL(c.consumidoRs) },
+    { k: c.estourado ? 'CAP excedido' : 'Saldo CAP', v: fmtBRL(Math.abs(c.saldoRs)), destaque: true, alerta: c.estourado },
+  ])];
+  if (c.cba) {
+    cards.push(bloco(`CAP — disponibilidade CBA (${c.janelaLabel})`, [
+      { k: 'Disponibilidade contratada', v: fmtBRL(c.cba.anualRs) },
+      { k: `Total consumido (${fmtPct2(c.cba.descontoPct)} de desconto)`, v: fmtBRL(c.cba.consumidoRs) },
+      { k: c.cba.estourado ? 'CBA excedido' : 'Saldo CAP CBA', v: fmtBRL(Math.abs(c.cba.saldoRs)), destaque: true, alerta: c.cba.estourado },
+    ]));
+  }
+  return cards.join('');
+}
+
+function desenharAnoChart(a) {
+  const ctx = $('mlcAnoChart').getContext('2d');
+  const datasets = [{
+    type: 'bar', label: 'Consumo mensal (R$)',
+    data: a.colunas.map((c) => c.consumoRs),
+    backgroundColor: '#a8c0ea', borderColor: '#5b8ad6', borderWidth: 1,
+  }];
+  if (a.cap) {
+    datasets.push({
+      type: 'line', label: `CAP contratado mensal (${fmtBRL(a.cap.mensalRs)})`,
+      data: a.colunas.map(() => a.cap.mensalRs),
+      borderColor: '#ff832b', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false,
+    });
+  }
+  if (state.charts.ano) state.charts.ano.destroy();
+  state.charts.ano = new Chart(ctx, {
+    data: { labels: a.colunas.map((c) => `Inv/ ${c.invLabel}`), datasets },
+    options: {
+      ...CHART_BASE,
+      plugins: {
+        ...CHART_BASE.plugins,
+        tooltip: { ...CHART_BASE.plugins.tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${fmtBRL(c.parsed.y)}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 0, autoSkipPadding: 8 } },
+        y: { beginAtZero: false, grid: { color: '#eef1f5' }, ticks: { callback: (v) => fmtM(v) } },
+      },
+    },
+  });
+}
+
+/* ── Visão 2: comparação de consumo por ano (MSU) ── */
+
+function renderComparativo(c) {
+  const nota = $('mlc-cmp-nota');
+  if (!c.anos.length) {
+    nota.textContent = 'Nenhum ano contratual tem consumo medido.';
+    if (state.charts.cmp) { state.charts.cmp.destroy(); state.charts.cmp = null; }
+    $('mlc-cmp-tabela').querySelector('tbody').innerHTML = '';
+    return;
+  }
+
+  const datasets = c.anos.map((a) => ({
+    label: a.mesesPlanejados > 0 ? `${a.label} (${a.mesesComDado} medidos + ${a.mesesPlanejados} planejados)` : a.label,
+    data: a.pontos,
+    borderColor: `#${a.cor}`, backgroundColor: `#${a.cor}`,
+    borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 4, tension: 0.1, spanGaps: false,
+    // Tracejado a partir do mês em que o dado deixa de ser medido.
+    segment: a.posicaoUltimoReal != null && a.mesesPlanejados > 0
+      ? { borderDash: (ctx) => (ctx.p0DataIndex + 1 >= a.posicaoUltimoReal ? [6, 4] : undefined) }
+      : undefined,
+  }));
+  if (c.baseline) {
+    datasets.push({
+      label: c.baseline.label, data: Array.from({ length: 12 }, () => c.baseline.mensalMsu),
+      borderColor: '#0072c3', borderWidth: 2, borderDash: [2, 3], pointRadius: 0, fill: false,
+    });
+  }
+
+  const ctx = $('mlcCmpChart').getContext('2d');
+  if (state.charts.cmp) state.charts.cmp.destroy();
+  state.charts.cmp = new Chart(ctx, {
+    type: 'line',
+    data: { labels: Array.from({ length: 12 }, (_, i) => String(i + 1)), datasets },
+    options: {
+      ...CHART_BASE,
+      plugins: {
+        ...CHART_BASE.plugins,
+        tooltip: {
+          ...CHART_BASE.plugins.tooltip,
+          callbacks: {
+            title: (its) => `Mês ${its[0].label} do ano contratual`,
+            label: (it) => ` ${it.dataset.label}: ${fmtInt(it.parsed.y)} MSU`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, title: { display: true, text: 'posição do mês dentro do ano contratual' } },
+        y: { beginAtZero: false, grid: { color: '#eef1f5' }, ticks: { callback: (v) => fmtM(v) }, title: { display: true, text: 'MSUs por mês' } },
+      },
+    },
+  });
+
+  nota.innerHTML = 'Cada série é um ano contratual, alinhado pela <strong>posição do mês dentro do ano</strong> — '
+    + 'é o que permite comparar o mesmo ponto do ciclo em anos diferentes. Trecho tracejado = completado pelo consumo planejado.'
+    + (c.estouro
+      ? ` <span class="delta up">Estouro:</span> no mês ${c.estouro.posicao}${c.estouro.planejado ? ' (trecho planejado)' : ''} o `
+        + `acumulado do ${esc(c.estouro.anoLabel)} chega a ${fmtInt(c.estouro.acumuladoMsu)} MSU e passa o baseline anual de `
+        + `${fmtInt(c.baseline.anualMsu)} MSU.`
+      : '');
+
+  const t = $('mlc-cmp-tabela');
+  t.querySelector('thead').innerHTML = '<tr><th>Ano</th>'
+    + Array.from({ length: 12 }, (_, i) => `<th class="num">${i + 1}</th>`).join('') + '<th class="num">Total</th></tr>';
+  t.querySelector('tbody').innerHTML = c.anos.map((a) => {
+    const total = a.pontos.reduce((s, v) => s + (v || 0), 0);
+    return `<tr><td><strong>${esc(a.label)}</strong> <span class="muted small">${esc(a.periodoLabel)}</span></td>`
+      + a.pontos.map((v, k) => {
+        const planejado = a.posicaoUltimoReal != null && k + 1 > a.posicaoUltimoReal;
+        return `<td class="num${planejado ? ' muted' : ''}">${v == null ? '–' : fmtInt(v)}</td>`;
+      }).join('')
+      + `<td class="num"><strong>${fmtInt(total)}</strong></td></tr>`;
+  }).join('');
+}
+
+/* ── Visão 3: consumido × planejado × contratado ── */
+
+function renderPlanejado(p) {
+  const t = $('mlc-plan-tabela');
+  t.querySelector('thead').innerHTML = '<tr><th>Ano contratual</th><th class="num">Consumo planejado</th>'
+    + '<th class="num">Baseline contratado</th><th class="num">MSUs consumidas</th><th class="num">Consumido vs contratado</th></tr>';
+
+  const marcaBaseline = p.notas.find((n) => n.tipo === 'baseline');
+  const marcaEstimado = p.notas.find((n) => n.tipo === 'estimado' || n.tipo === 'parcial');
+  t.querySelector('tbody').innerHTML = p.anos.map((a) => `
+    <tr>
+      <td><strong>${esc(a.label)}</strong> <span class="muted small">${esc(a.periodoLabel)}</span></td>
+      <td class="num">${a.planejadoMsu > 0 ? fmtInt(a.planejadoMsu) : '<span class="muted">–</span>'}</td>
+      <td class="num${a.baselineIgualConsumoAnterior ? ' cel-destaque' : ''}">${fmtInt(a.baselineZotcMsu)}${a.baselineIgualConsumoAnterior && marcaBaseline ? ` <span class="muted small">${marcaBaseline.marca}</span>` : ''}</td>
+      <td class="num"><strong>${fmtInt(a.consumidasMsu)}</strong>${(a.estimado || a.parcialSemPlanejado) && marcaEstimado ? ` <span class="muted small">${marcaEstimado.marca}</span>` : ''}</td>
+      <td class="num"><span class="delta ${a.excedeBaseline ? 'up' : 'down'}">${fmtPct2(a.vsContratadoPct)}</span></td>
+    </tr>`).join('');
+
+  $('mlc-plan-notas').innerHTML = p.notas.map((n) => `<div>${esc(n.marca)} ${esc(n.texto)}</div>`).join('');
+  $('mlc-plan-conclusoes').innerHTML = p.conclusoes.length
+    ? p.conclusoes.map((c) => `<li>${esc(c)}</li>`).join('')
+    : '<li class="muted">Sem ano fechado o bastante para concluir alguma coisa.</li>';
+
+  const ctx = $('mlcPlanChart').getContext('2d');
+  if (state.charts.plan) state.charts.plan.destroy();
+  state.charts.plan = new Chart(ctx, {
+    data: {
+      labels: p.anos.map((a) => a.label),
+      datasets: [
+        { type: 'bar', label: 'MSUs consumidas (SCRT)', data: p.anos.map((a) => a.consumidasMsu), backgroundColor: '#2e6bd4' },
+        { type: 'bar', label: 'Consumo planejado', data: p.anos.map((a) => a.planejadoMsu || null), backgroundColor: '#ed7d31' },
+        {
+          type: 'line', label: 'Baseline contratado', data: p.anos.map((a) => a.baselineZotcMsu || null),
+          borderColor: '#da1e28', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, stepped: 'middle', fill: false,
+        },
+      ],
+    },
+    options: {
+      ...CHART_BASE,
+      plugins: {
+        ...CHART_BASE.plugins,
+        tooltip: { ...CHART_BASE.plugins.tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${fmtInt(c.parsed.y)} MSU` } },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: '#eef1f5' }, ticks: { callback: (v) => fmtM(v) }, title: { display: true, text: 'MSUs por ano contratual' } },
+      },
+    },
+  });
+}
+
+/* ── Exportação ── */
+
+function baixarPptx(slides) {
+  if (!state.clientId || !state.data || !state.data.views) return;
+  const ano = state.data.views.anoSelecionado;
+  const q = new URLSearchParams({ ano: String(ano) });
+  if (slides) q.set('slides', slides);
+  window.location.assign(`/api/clients/${state.clientId}/mlc.pptx?${q}`);
+  toast('Gerando a apresentação…');
+}
+
+/* ------------------------------------------------------------------ *
  *  Eventos globais
  * ------------------------------------------------------------------ */
+
+$('mlc-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (btn) trocarAba(btn.dataset.aba);
+});
+
+$('mlc-ano').addEventListener('change', async (e) => {
+  try {
+    state.data = await api(`/clients/${state.clientId}/mlc?ano=${encodeURIComponent(e.target.value)}`);
+    renderVisoes();
+  } catch (err) { toast(`Falha ao trocar de ano: ${err.message}`, 'error'); }
+});
+
+$('btn-mlc-pptx').addEventListener('click', () => baixarPptx(null));
+$('btn-mlc-pptx-slide').addEventListener('click', () => {
+  baixarPptx({ ano: '1', comparativo: '2', planejado: '3' }[state.aba]);
+});
 
 $('client-select').addEventListener('change', async (e) => {
   state.clientId = e.target.value;

@@ -280,5 +280,203 @@ check('primitiva desconhecida falha alto', () => {
   assert.throws(() => buildPptx({ slides: [{ shapes: [{ t: 'bolha' }] }] }), /bolha/);
 });
 
+/* ── Primitivas novas do pptx ────────────────────────────────────────────── */
+
+const { larguraTexto, tamanhoQueCabe } = require('../src/pptx');
+
+console.log('\nMedição de texto:');
+check('largura de número é exata (Arial: todo dígito mede 556/1000 de em)', () => {
+  assert.ok(Math.abs(larguraTexto('12345', 10) - 27.8) < 0.01, larguraTexto('12345', 10));
+  // "22.676.133,49": 10 dígitos (556) + 2 pontos e 1 vírgula (278)
+  assert.ok(Math.abs(larguraTexto('22.676.133,49', 10) - 63.94) < 0.01, larguraTexto('22.676.133,49', 10));
+});
+check('negrito é mais largo, e texto vazio mede zero', () => {
+  assert.ok(larguraTexto('MSU', 10, { bold: true }) > larguraTexto('MSU', 10));
+  assert.strictEqual(larguraTexto('', 10), 0);
+  assert.strictEqual(larguraTexto(null, 10), 0);
+});
+check('tamanhoQueCabe encolhe até caber e respeita o piso', () => {
+  const txt = '22.676.133,49';
+  const s = tamanhoQueCabe(txt, 12, 40);
+  assert.ok(larguraTexto(txt, s) <= 40, `${s}pt ainda mede ${larguraTexto(txt, s)}`);
+  assert.ok(s < 12, 'deveria ter encolhido');
+  assert.strictEqual(tamanhoQueCabe(txt, 12, 1, { piso: 6 }), 6, 'não desce abaixo do piso');
+  assert.strictEqual(tamanhoQueCabe('ok', 10, 500), 10, 'o que já cabe não encolhe');
+});
+
+console.log('\nFormas novas:');
+check('rect com texto vira UMA forma, com o texto dentro', () => {
+  const p = abrir(buildPptx({ slides: [{ shapes: [
+    { t: 'rect', x: 10, y: 10, w: 40, h: 100, fill: 'A8C0EA', text: '1.234', vert: 'vert270', size: 7.5 },
+  ] }] }).buffer);
+  const s = p['ppt/slides/slide1.xml'];
+  assert.strictEqual((s.match(/<p:sp>/g) || []).length, 1, 'a barra e o rótulo são a mesma forma');
+  assert.ok(s.includes('vert="vert270"'), 'sem a escrita vertical');
+  assert.ok(s.includes('<a:t>1.234</a:t>'));
+});
+check('rect sem texto continua sem parágrafo de conteúdo', () => {
+  const p = abrir(buildPptx({ slides: [{ shapes: [{ t: 'rect', x: 0, y: 0, w: 10, h: 10, fill: 'CCCCCC' }] }] }).buffer);
+  assert.ok(p['ppt/slides/slide1.xml'].includes('<a:p/>'));
+});
+check('célula de tabela com duas linhas vira dois parágrafos', () => {
+  const p = abrir(buildPptx({ slides: [{ shapes: [{
+    t: 'table', x: 0, y: 0, cols: [100, 100], headRows: 2,
+    rows: [[{ lines: [{ text: 'Med/ Jun 25' }, { text: 'Inv/ Ago 25' }] }, 'B'], ['1', '2'], ['3', '4']],
+  }] }] }).buffer);
+  const s = p['ppt/slides/slide1.xml'];
+  assert.ok(s.includes('Med/ Jun 25') && s.includes('Inv/ Ago 25'));
+  assert.strictEqual((s.match(/<a:tr /g) || []).length, 3);
+});
+check('coordenada não finita NUNCA sai como NaN no XML', () => {
+  /* NaN/Infinity num atributo de coordenada não é ST_Coordinate: o PowerPoint
+     recusa o slide inteiro com "problema com o conteúdo" e não diz qual forma.
+     Um valor absurdo no contrato (preço 1e308) chega aqui como Infinity. */
+  const p = abrir(buildPptx({ slides: [{ shapes: [
+    { t: 'rect', x: NaN, y: 10, w: Infinity, h: 20, fill: 'CCCCCC' },
+    { t: 'line', x1: 0, y1: -Infinity, x2: 10, y2: 10, color: '000000' },
+    { t: 'text', x: 0, y: NaN, w: 100, h: 10, text: 'ok', size: NaN },
+    { t: 'poly', pts: [[0, 0], [NaN, 10], [20, 20]], color: '000000' },
+  ] }] }).buffer);
+  const s = p['ppt/slides/slide1.xml'];
+  assert.ok(!/NaN/.test(s), `saiu NaN no XML:\n${s.match(/[^<]*NaN[^>]*/)}`);
+  assert.ok(!/Infinity/.test(s), 'saiu Infinity no XML');
+  assert.ok(/<a:off x="0"/.test(s), 'a coordenada inválida deveria virar 0');
+});
+check('linha com número errado de células falha alto (em vez de tabela torta)', () => {
+  assert.throws(
+    () => buildPptx({ slides: [{ shapes: [{ t: 'table', x: 0, y: 0, cols: [10, 10], rows: [['a', 'b'], ['c']] }] }] }),
+    /linha 1 tem 1 células para 2 colunas/
+  );
+});
+
+/* ── O deck de MLC ───────────────────────────────────────────────────────── */
+
+const { computeMlcView } = require('../src/mlc');
+const { montarVisoes } = require('../src/mlcViews');
+const { deckMlc, slidesEscolhidos } = require('../src/deckMlc');
+
+const ANO_MLC = (over) => ({
+  baselineAnnualMsu: 173439316, valorPorMsu: 1.42, encargoCrescimentoPorMsu: 0.28, cbaPct: 0.19,
+  encargos: [{ nome: 'Dev/Test', valorMensal: 900000 }], ...over,
+});
+const CONTRATO_MLC = {
+  startPeriodKey: '2024-06',
+  years: [
+    ANO_MLC({ label: 'Ano 1', plannedAnnualMsu: 197697049, baselineZotcAnualMsu: 232399860 }),
+    ANO_MLC({ label: 'Ano 2', capAnualRs: 273721090.24, capCbaRs: 221713323.43, plannedAnnualMsu: 215048454, baselineZotcAnualMsu: 232399860 }),
+  ],
+};
+const CONSUMO_MLC = {};
+{
+  let y = 2024; let m = 6;
+  for (let i = 0; i < 20; i++) { // 12 meses do Ano 1 + 8 do Ano 2 (ano em curso)
+    CONSUMO_MLC[`${y}-${String(m).padStart(2, '0')}`] = 17000000 + i * 200000;
+    m += 1; if (m > 12) { m = 1; y += 1; }
+  }
+}
+const VIEW_MLC = computeMlcView(CONTRATO_MLC, CONSUMO_MLC);
+const VISOES = montarVisoes(VIEW_MLC, CONTRATO_MLC, { lag: 2, baselinePadraoAnual: 232399860, ano: 1 });
+const DADOS_MLC = { client: { name: 'ACME S/A' }, views: VISOES };
+
+console.log('\nDeck de MLC:');
+check('escolha de slides aceita lista e cai nos três quando vazia/inválida', () => {
+  assert.deepStrictEqual(slidesEscolhidos('1,3'), [1, 3]);
+  assert.deepStrictEqual(slidesEscolhidos([2]), [2]);
+  assert.deepStrictEqual(slidesEscolhidos('3,1,3'), [1, 3], 'ordena e tira repetido');
+  for (const v of ['', null, undefined, '9', 'abc']) assert.deepStrictEqual(slidesEscolhidos(v), [1, 2, 3], `entrada ${v}`);
+});
+check('os três slides saem, com o rodapé numerado certo', () => {
+  const p = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);
+  assert.ok(p['ppt/slides/slide3.xml'] && !p['ppt/slides/slide4.xml']);
+  assert.ok(p['ppt/slides/slide1.xml'].includes('1/3'));
+  assert.ok(p['ppt/slides/slide3.xml'].includes('3/3'));
+});
+check('escolhendo um slide só, ele vira 1/1', () => {
+  const p = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '2' }).buffer);
+  assert.ok(!p['ppt/slides/slide2.xml'], 'deveria ter um slide só');
+  const s = p['ppt/slides/slide1.xml'];
+  assert.ok(s.includes('1/1'));
+  assert.ok(/Compara/.test(s), 'o slide escolhido tem de ser o comparativo');
+});
+check('slide 1 traz o par Med/Inv e o CAP com o saldo', () => {
+  const s = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '1' }).buffer)['ppt/slides/slide1.xml'];
+  assert.ok(s.includes('Med/ Jun/25') && s.includes('Inv/ Ago/25'), 'faltou a defasagem no cabeçalho');
+  assert.ok(s.includes('273.721.090,24'), 'faltou o CAP contratado');
+  assert.ok(/CAP.{0,20}(Ago\/25 a Jul\/26)/s.test(s) || s.includes('Ago/25 a Jul/26'), 'faltou a janela de inventário do CAP');
+});
+check('ano sem CAP cadastrado não imprime saldo negativo', () => {
+  const semCap = montarVisoes(VIEW_MLC, CONTRATO_MLC, { lag: 2, ano: 0 });
+  const s = abrir(deckMlc({ ...DADOS_MLC, views: semCap }, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '1' }).buffer)['ppt/slides/slide1.xml'];
+  assert.ok(/Sem CAP contratado cadastrado/.test(s), 'deveria explicar a ausência');
+  assert.ok(!/Saldo CAP/.test(s));
+});
+check('slide 3 traz a conclusão gerada e a nota de rodapé', () => {
+  const s = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '3' }).buffer)['ppt/slides/slide1.xml'];
+  assert.ok(s.includes('Conclus'), 'faltou o bloco de conclusão');
+  assert.ok(VISOES.planejado.conclusoes.length > 0, 'o cenário deveria gerar conclusão');
+  assert.ok(s.includes('<a:buChar char="•"/>'), 'a conclusão sai em marcadores');
+});
+check('nome do arquivo é legível e sem acento', () => {
+  const { fileName } = deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z') });
+  assert.strictEqual(fileName, 'consumo-software-acme-s-a-2026-08-07.pptx');
+});
+check('nome de cliente com & e < não quebra o XML', () => {
+  const p = abrir(deckMlc({ ...DADOS_MLC, client: { name: 'A & B <Ltda>' } }, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);
+  assert.ok(p['ppt/slides/slide1.xml'].includes('A &amp; B &lt;Ltda&gt;'));
+});
+check('preço absurdo no contrato não gera .pptx inválido', () => {
+  // 1e308 passa pela validação (é finito e positivo), mas o R$ do mês estoura
+  // para Infinity. O deck tem de sair abrindo, mesmo que o gráfico fique vazio.
+  const absurdo = { startPeriodKey: '2024-06', years: [ANO_MLC({ label: 'Ano 1', valorPorMsu: 1e308 })] };
+  const v = montarVisoes(computeMlcView(absurdo, CONSUMO_MLC), absurdo, { lag: 2, ano: 0 });
+  const p = abrir(deckMlc({ client: { name: 'X' }, views: v }, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);
+  for (const nome of Object.keys(p).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))) {
+    assert.ok(!/NaN|Infinity/.test(p[nome]), `${nome} saiu com coordenada inválida`);
+  }
+});
+check('o ajuste de fonte da tabela do ano cabe na caixa ÚTIL da célula', () => {
+  // celula() escreve marL E marR: descontar só uma margem estoura a coluna, e o
+  // PowerPoint quebra o número no meio em vez de recortar.
+  const slide = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z'), slides: '1' }).buffer)['ppt/slides/slide1.xml'];
+  // Só a PRIMEIRA tabela (a dos 12 meses); as mini-tabelas de CAP têm colunas
+  // muito mais largas e diluiriam o teste.
+  const s = slide.slice(slide.indexOf('<a:tbl>'), slide.indexOf('</a:tbl>'));
+  const larguraCol = [...s.matchAll(/<a:gridCol w="(\d+)"\/>/g)].map((m) => Number(m[1]) / 12700)[1];
+  const margem = Number((s.match(/<a:tcPr marL="(\d+)"/) || [])[1] || 0) / 12700;
+  const util = larguraCol - margem * 2;
+  // Cada run traz o próprio sz: medir o valor com a fonte DELE, não com a do
+  // cabeçalho (que é maior e faria o teste passar de graça).
+  const runs = [...s.matchAll(/<a:rPr[^>]*sz="(\d+)"[^>]*b="(\d)"[\s\S]*?<a:t>([^<]*)<\/a:t>/g)];
+  const monetarios = runs.filter((m) => /^\d[\d.]*,\d\d$/.test(m[3]));
+  // 2 linhas (consumo e com CBA) × (meses com SCRT + a coluna de total).
+  const esperados = 2 * (VISOES.anoMlc.totais.mesesComScrt + 1);
+  assert.strictEqual(monetarios.length, esperados,
+    `esperava ${esperados} valores na tabela do ano, achei ${monetarios.length}`);
+  for (const m of monetarios) {
+    const [, sz, bold, txt] = m;
+    const larg = larguraTexto(txt, Number(sz) / 100, { bold: bold === '1' });
+    assert.ok(larg <= util + 0.01,
+      `"${txt}" a ${Number(sz) / 100}pt mede ${larg.toFixed(2)}pt numa caixa de ${util.toFixed(2)}pt`);
+  }
+});
+check('sem visões, recusa em vez de gerar deck vazio', () => {
+  assert.throws(() => deckMlc({ client: { name: 'X' }, views: null }, {}), /Sem visões/);
+});
+check('todo XML do deck de MLC continua bem formado e com as relações fechadas', () => {
+  const p = abrir(deckMlc(DADOS_MLC, { hoje: new Date('2026-08-07T12:00:00Z') }).buffer);
+  const alvos = [...p['[Content_Types].xml'].matchAll(/PartName="\/([^"]+)"/g)].map((m) => m[1]);
+  for (const a of alvos) assert.ok(p[a], `declarado mas ausente: ${a}`);
+  for (const nome of Object.keys(p).filter((n) => n.endsWith('.rels'))) {
+    const base = nome.replace(/(^|.*\/)_rels\/[^/]*$/, '$1');
+    for (const m of p[nome].matchAll(/Target="([^"]+)"/g)) {
+      const pilha = [];
+      for (const parte of (base + m[1]).split('/')) {
+        if (parte === '..') pilha.pop(); else if (parte !== '.' && parte !== '') pilha.push(parte);
+      }
+      assert.ok(p[pilha.join('/')], `${nome} aponta para ${pilha.join('/')}, que não existe`);
+    }
+  }
+});
+
 console.log(failures === 0 ? '\nDECK: TODOS OS TESTES PASSARAM' : `\nDECK: ${failures} FALHA(S)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -60,6 +60,27 @@ const mlcYearSchema = new mongoose.Schema(
     cbaPct: { type: Number, default: 0 }, // desconto CBA (0.19 = 19%)
     encargos: { type: [mlcEncargoSchema], default: [] },
     vigencias: { type: [mlcVigenciaSchema], default: [] },
+
+    /* TETOS E METAS DO ANO — tudo opcional (0 = não cadastrado, e a visão
+       correspondente simplesmente não aparece em vez de mostrar saldo negativo).
+
+       capAnualRs e capCbaRs são DOIS valores negociados, não um derivado do outro:
+       na CAIXA o CAP é 273.721.090,24 e a disponibilidade CBA é 221.713.323,43,
+       enquanto 273.721.090,24 × (1 − 0,19) daria 221.714.083,09 — R$ 759,66 a mais.
+       É dessa diferença que sai o "19,0002775335774%" que aparece no relatório. */
+    capAnualRs: { type: Number, default: 0 },   // teto financeiro do ano (MLC)
+    capCbaRs: { type: Number, default: 0 },     // teto de disponibilidade com CBA
+
+    /* Consumo que o CLIENTE planejou para o ano, em MSU. Não é a projeção
+       estatística do capacity planning (src/forecast.js) — aquela o sistema
+       calcula; esta é número que o cliente entrega e ninguém recalcula. */
+    plannedAnnualMsu: { type: Number, default: 0 },
+
+    /* Baseline zOTC contratado do ano, em MSU. É OUTRO baseline: o do MLC
+       (baselineAnnualMsu acima) é o volume que o preço de software cobre; este é
+       o teto de consumo do contrato zOTC. Na CAIXA são 173.439.316 e 232.399.860.
+       Vazio = cai no client.monthlyBaselineMsu × 12. */
+    baselineZotcAnualMsu: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -141,6 +162,11 @@ const clientSchema = new mongoose.Schema(
     // LEGADO: contrato MLC único. Migrado para contractPeriods[0]; mantido para
     // não quebrar leitura antiga enquanto a migração roda.
     mlcContract: { type: mlcContractSchema, default: null },
+    /* Defasagem entre o mês MEDIDO (o do SCRT) e o mês em que ele aparece no
+       inventário/fatura. O relatório que vai ao cliente rotula as duas coisas:
+       "Med/Jun 25" em cima e "Inv/Ago 25" embaixo. É rótulo, não conta — o valor
+       do mês continua sendo o do mês medido; ver src/mlcViews.js. */
+    inventoryLagMonths: { type: Number, default: 2 },
     notes: { type: String, default: '' },
   },
   { timestamps: true }

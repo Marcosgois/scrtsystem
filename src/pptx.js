@@ -20,13 +20,23 @@
  * Primitivas aceitas em `slide.shapes` (coordenadas em pt, origem no canto
  * superior esquerdo):
  *
- *   { t:'rect',  x,y,w,h, fill?, alpha?, line?, lineW? }
+ *   { t:'rect',  x,y,w,h, fill?, alpha?, line?, lineW?, text|lines[]?, … }
  *   { t:'line',  x1,y1,x2,y2, color?, w?, dash? }
- *   { t:'text',  x,y,w,h, text|lines[], size?, bold?, color?, align?, valign?, spacing? }
+ *   { t:'text',  x,y,w,h, text|lines[], size?, bold?, color?, align?, valign?,
+ *                padX?, padY?, vert? ('vert270' escreve de baixo para cima) }
  *   { t:'poly',  pts:[[x,y]…], color?, w?, dash?, close?, fill?, fillAlpha? }
- *   { t:'table', x,y, cols:[larguras], rows:[[célula…]], rowH?, headH? }
+ *   { t:'table', x,y, cols:[larguras], rows:[[célula…]], rowH?, headH?, headRows? }
  *
- * Célula de tabela: string ou { text, bold?, color?, align?, fill? }.
+ * Parágrafo (em `lines[]`): { text, size?, bold?, color?, align?, spaceBefore?,
+ * lineHeight?, bullet? }.
+ *
+ * Célula de tabela: string, ou { text|lines[], bold?, color?, align?, fill?,
+ * size?, padX?, borderBottom? }.
+ *
+ * `rect` com texto é a barra de gráfico com o valor dentro — uma forma só, o
+ * rótulo anda junto se alguém mexer no slide. Como o PowerPoint NÃO recorta
+ * texto que não cabe, use `larguraTexto`/`tamanhoQueCabe` antes de decidir onde
+ * o número vai: transbordar aqui é silencioso.
  */
 
 const { zipSync, strToU8 } = require('fflate');
@@ -36,8 +46,14 @@ const LARGURA_PT = 960;
 const ALTURA_PT = 540;
 const FONTE = 'Arial'; // presente no Windows, no macOS e no Office Online
 
-const emu = (pt) => Math.round(pt * EMU_POR_PT);
-const cem = (pt) => Math.round(pt * 100); // sz / spcPts são centésimos de ponto
+/* Valor não finito vira 0, e não "NaN".
+   Math.round(NaN * 12700) é NaN, e o atributo sairia literalmente y="NaN" — que
+   não é um ST_Coordinate. O PowerPoint então recusa o SLIDE INTEIRO com "o
+   PowerPoint encontrou um problema com o conteúdo", sem dizer qual forma. Como
+   isto é o único ponto por onde toda coordenada passa, o piso fica aqui: um
+   retângulo no canto é um defeito que se vê; um pacote inválido, não. */
+const emu = (pt) => (Number.isFinite(pt) ? Math.round(pt * EMU_POR_PT) : 0);
+const cem = (pt) => (Number.isFinite(pt) ? Math.round(pt * 100) : 0); // sz / spcPts são centésimos de ponto
 
 const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -103,14 +119,72 @@ function paragrafo(l, padrao) {
   return `<a:p>${pPr}${corpo}</a:p>`;
 }
 
+/* Texto na vertical: `vert270` sobe da base para o topo (o rótulo dentro de uma
+   barra estreita), `vert` desce. É o bodyPr que gira o TEXTO — girar a forma
+   (xfrm rot) mexeria também na posição, porque a rotação é em torno do centro. */
+const VERTICAL = { vert270: 'vert270', vert: 'vert', up: 'vert270', down: 'vert' };
+
+const temTexto = (o) => Boolean(String(o.text || '') !== '' || (o.lines && o.lines.length));
+
 /* O corpo de texto de uma FORMA é <p:txBody>; o de uma CÉLULA de tabela é
    <a:txBody> — mesmo conteúdo, prefixo diferente. */
 function txBody(o, { vazio = false, ns = 'p' } = {}) {
   const anchor = ANCORA[o.valign || 'top'] || 't';
-  const bodyPr = `<a:bodyPr wrap="square" lIns="${emu(o.padX || 0)}" tIns="0" rIns="${emu(o.padX || 0)}" bIns="0"`
+  const vert = VERTICAL[o.vert] ? ` vert="${VERTICAL[o.vert]}"` : '';
+  const bodyPr = `<a:bodyPr wrap="square" lIns="${emu(o.padX || 0)}" tIns="${emu(o.padY || 0)}"`
+    + ` rIns="${emu(o.padX || 0)}" bIns="${emu(o.padY || 0)}"${vert}`
     + ` anchor="${anchor}"><a:noAutofit/></a:bodyPr><a:lstStyle/>`;
   const conteudo = vazio ? '<a:p/>' : (o.lines || [{ text: o.text }]).map((l) => paragrafo(l, o)).join('');
   return `<${ns}:txBody>${bodyPr}${conteudo}</${ns}:txBody>`;
+}
+
+/* ── Medição de texto ────────────────────────────────────────────────────── */
+
+/*
+ * Larguras de avanço da Arial, em milésimos de em. Só os caracteres que aparecem
+ * em número, data e rótulo curto — o resto cai no padrão.
+ *
+ * Existe porque o PowerPoint NÃO recorta texto que não cabe (`<a:noAutofit/>`):
+ * um rótulo maior que a barra transborda por cima do vizinho, em silêncio. Com a
+ * medida na mão, o deck decide entre pôr o número dentro ou fora da barra, e
+ * encolhe a fonte da tabela até caber em vez de estourar a coluna.
+ */
+const AVANCO = {
+  ' ': 278, '.': 278, ',': 278, ':': 278, ';': 278, '!': 278, '|': 260, "'": 191, '"': 355,
+  '(': 333, ')': 333, '[': 278, ']': 278, '-': 333, '–': 556, '—': 1000, '/': 278, '\\': 278,
+  '%': 889, '+': 584, '=': 584, '×': 584, '·': 278, '*': 389, '$': 556, '&': 667, '#': 556, '@': 1015,
+  a: 556, b: 556, c: 500, d: 556, e: 556, f: 278, g: 556, h: 556, i: 222, j: 222, k: 500, l: 222,
+  m: 833, n: 556, o: 556, p: 556, q: 556, r: 333, s: 500, t: 278, u: 556, v: 500, w: 722, x: 500,
+  y: 500, z: 500,
+  A: 667, B: 667, C: 722, D: 722, E: 667, F: 611, G: 778, H: 722, I: 278, J: 500, K: 667, L: 556,
+  M: 833, N: 722, O: 778, P: 667, Q: 778, R: 722, S: 667, T: 611, U: 722, V: 667, W: 944, X: 667,
+  Y: 667, Z: 611,
+};
+const AVANCO_DIGITO = 556;   // todos os dígitos da Arial têm a mesma largura
+const AVANCO_PADRAO = 556;
+
+/**
+ * Largura aproximada de um texto, em pontos. Exata para números (dígito, ponto,
+ * vírgula e sinal têm largura fixa na Arial); aproximada para o resto.
+ */
+function larguraTexto(txt, size, { bold = false } = {}) {
+  let mil = 0;
+  for (const ch of String(txt || '')) {
+    if (ch >= '0' && ch <= '9') mil += AVANCO_DIGITO;
+    else mil += AVANCO[ch] !== undefined ? AVANCO[ch] : AVANCO_PADRAO;
+  }
+  // A Arial Bold é ~6% mais larga que a regular nos mesmos caracteres.
+  return (mil / 1000) * Number(size || 12) * (bold ? 1.06 : 1);
+}
+
+/**
+ * O maior tamanho de fonte (partindo de `size`) em que o texto cabe na largura
+ * dada. Nunca desce do piso — texto ilegível não é solução para texto que estoura.
+ */
+function tamanhoQueCabe(txt, size, largura, { bold = false, piso = 6 } = {}) {
+  let s = Number(size);
+  while (s > piso && larguraTexto(txt, s, { bold }) > largura) s -= 0.25;
+  return Math.max(piso, s);
 }
 
 /* ── Formas ─────────────────────────────────────────────────────────────── */
@@ -122,12 +196,14 @@ function spTexto(id, o) {
     + '</p:sp>';
 }
 
+/* Retângulo — e, quando tem texto, a barra do gráfico com o valor DENTRO dela.
+   Uma forma só: o rótulo acompanha a barra se alguém mexer no slide depois. */
 function spRect(id, o) {
   const fill = o.fill ? solidFill(o.fill, o.alpha) : '<a:noFill/>';
   return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Retângulo ${id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>`
     + `<p:spPr>${xfrm(o.x, o.y, o.w, o.h)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`
     + fill + traco(o.line ? { color: o.line, w: o.lineW } : null) + '</p:spPr>'
-    + txBody(o, { vazio: true })
+    + txBody(o, { vazio: !temTexto(o) })
     + '</p:sp>';
 }
 
@@ -180,20 +256,31 @@ function spPoly(id, o) {
     + '</p:sp>';
 }
 
+/* Célula. Aceita `lines: [{text, …}]` para o cabeçalho de duas alturas do
+   relatório de MLC ("Med/ Jun 25" em cima, "Inv/ Ago 25" embaixo) — dois
+   parágrafos na MESMA célula, sem mesclagem: gridSpan/hMerge exigiria emitir as
+   células engolidas com corpo vazio, e esquecer uma delas faz o PowerPoint pedir
+   reparo sem dizer onde. */
 function celula(c, opts) {
   const o = typeof c === 'object' && c !== null ? c : { text: c };
-  const linhas = [{
-    text: o.text,
-    size: o.size || opts.size,
-    bold: o.bold ?? opts.bold,
-    color: o.color || opts.color,
-    align: o.align || opts.align,
-  }];
+  const herda = (l) => ({
+    text: l.text,
+    size: l.size || o.size || opts.size,
+    bold: l.bold ?? o.bold ?? opts.bold,
+    color: l.color || o.color || opts.color,
+    align: l.align || o.align || opts.align,
+    spaceBefore: l.spaceBefore,
+  });
+  const linhas = (o.lines && o.lines.length ? o.lines : [{ text: o.text }]).map(herda);
   const fill = o.fill ? solidFill(o.fill) : '<a:noFill/>';
+  const borda = o.borderBottom === false
+    ? ''
+    : `<a:lnB w="${emu(0.75)}">${solidFill(o.border || opts.border || 'E0E0E0')}</a:lnB>`;
   return '<a:tc>'
-    + txBody({ lines: linhas, valign: 'middle', align: o.align || opts.align }, { ns: 'a' })
-    + `<a:tcPr marL="${emu(6)}" marR="${emu(6)}" marT="${emu(2)}" marB="${emu(2)}" anchor="ctr">`
-    + `<a:lnB w="${emu(0.75)}">${solidFill(opts.border || 'E0E0E0')}</a:lnB>${fill}</a:tcPr>`
+    + txBody({ lines: linhas, valign: o.valign || 'middle', align: o.align || opts.align }, { ns: 'a' })
+    + `<a:tcPr marL="${emu(o.padX ?? 6)}" marR="${emu(o.padX ?? 6)}" marT="${emu(2)}" marB="${emu(2)}" anchor="ctr">`
+    // Ordem obrigatória dentro de a:tcPr: linhas de borda e SÓ ENTÃO o preenchimento.
+    + borda + fill + '</a:tcPr>'
     + '</a:tc>';
 }
 
@@ -202,11 +289,20 @@ function gfTabela(id, o) {
   const larguraTotal = cols.reduce((a, b) => a + b, 0);
   const headH = o.headH || 22;
   const rowH = o.rowH || 21;
-  const alturaTotal = headH + rowH * Math.max(0, o.rows.length - 1);
+  const headRows = Math.max(1, Math.min(o.headRows || 1, o.rows.length));
+  const alturaTotal = headH * headRows + rowH * Math.max(0, o.rows.length - headRows);
+
+  // Linha com mais (ou menos) células que colunas vira tabela torta no PowerPoint,
+  // sem aviso. Melhor estourar aqui, com o número da linha.
+  o.rows.forEach((linha, i) => {
+    if (linha.length !== cols.length) {
+      throw new Error(`Tabela: a linha ${i} tem ${linha.length} células para ${cols.length} colunas.`);
+    }
+  });
 
   const grid = `<a:tblGrid>${cols.map((w) => `<a:gridCol w="${emu(w)}"/>`).join('')}</a:tblGrid>`;
   const linhas = o.rows.map((linha, i) => {
-    const cabecalho = i === 0;
+    const cabecalho = i < headRows;
     const padrao = {
       size: cabecalho ? (o.headSize || 11) : (o.size || 11.5),
       bold: cabecalho,
@@ -420,4 +516,4 @@ function buildPptx(deck) {
   return Buffer.from(zipSync(arquivos, { level: 6, mtime: deck.createdAt || new Date() }));
 }
 
-module.exports = { buildPptx, LARGURA_PT, ALTURA_PT, esc };
+module.exports = { buildPptx, larguraTexto, tamanhoQueCabe, LARGURA_PT, ALTURA_PT, FONTE, esc };

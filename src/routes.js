@@ -16,8 +16,10 @@ const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
 const { serieUnificada, porAnoCalendario, porAnoContratual } = require('./forecastYears');
 const { deckCapacityPlanning } = require('./deckCapacity');
+const { deckMlc } = require('./deckMlc');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
 const { computeMlcView, addMonths } = require('./mlc');
+const { montarVisoes } = require('./mlcViews');
 const auth = require('./auth');
 
 const router = express.Router();
@@ -437,6 +439,13 @@ router.patch('/clients/:id', asyncHandler(async (req, res) => {
     } else {
       return res.status(400).json({ error: 'Início do ano contratual deve ser AAAA-MM (ex.: 2024-06).' });
     }
+  }
+  if (req.body.inventoryLagMonths !== undefined) {
+    const lag = Number(req.body.inventoryLagMonths);
+    if (!Number.isFinite(lag) || lag < 0 || lag > 12) {
+      return res.status(400).json({ error: 'A defasagem do inventário deve ser de 0 a 12 meses.' });
+    }
+    update.inventoryLagMonths = Math.round(lag);
   }
   if (req.body.notes !== undefined) update.notes = String(req.body.notes);
   if (req.body.lparGroups !== undefined) {
@@ -1237,6 +1246,19 @@ function sanitizeMlcContract(body) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   };
+  /* Valor de dinheiro/volume não pode ser negativo: um CAP negativo passaria por
+     num() sem um pio e o relatório sairia com "Saldo CAP: −266 milhões" como se
+     fosse conta. Vazio continua sendo 0 = "não cadastrado", e a visão some. */
+  let erroCampo = null;
+  const naoNegativo = (v, campo, i) => {
+    if (v === undefined || v === null || v === '') return 0;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) {
+      erroCampo = erroCampo || `Ano ${i + 1}: "${campo}" precisa ser um número maior ou igual a zero.`;
+      return 0;
+    }
+    return n;
+  };
   const start = String((body && body.startPeriodKey) || '').trim();
   if (!PERIOD_KEY_RE.test(start)) {
     return { error: 'Informe o mês inicial do contrato ("startPeriodKey") no formato AAAA-MM.' };
@@ -1289,10 +1311,43 @@ function sanitizeMlcContract(body) {
       cbaPct: num(y && y.cbaPct),
       encargos: listaEncargos(y && y.encargos),
       vigencias,
+      // Tetos e metas do ano (opcionais). Ver mlcYearSchema em src/models.js.
+      capAnualRs: naoNegativo(y && y.capAnualRs, 'CAP anual (R$)', i),
+      capCbaRs: naoNegativo(y && y.capCbaRs, 'CAP com CBA (R$)', i),
+      plannedAnnualMsu: naoNegativo(y && y.plannedAnnualMsu, 'Consumo planejado (MSU)', i),
+      baselineZotcAnualMsu: naoNegativo(y && y.baselineZotcAnualMsu, 'Baseline zOTC do ano (MSU)', i),
     };
   });
-  if (erro) return { error: erro };
+  if (erro || erroCampo) return { error: erro || erroCampo };
+  /* Teto com CBA maior que o teto cheio é erro de digitação com cara de número
+     válido: o "saldo CBA" sairia maior que o saldo total e ninguém notaria. */
+  for (let i = 0; i < years.length; i++) {
+    const y = years[i];
+    if (y.capCbaRs > 0 && y.capAnualRs > 0 && y.capCbaRs > y.capAnualRs) {
+      return { error: `Ano ${i + 1}: o CAP com CBA (${y.capCbaRs}) não pode ser maior que o CAP anual (${y.capAnualRs}).` };
+    }
+    if (y.capCbaRs > 0 && y.capAnualRs === 0) {
+      return { error: `Ano ${i + 1}: informe o CAP anual antes do CAP com CBA.` };
+    }
+  }
   return { contract: { startPeriodKey: start, years } };
+}
+
+/* Defasagem entre o mês medido e o mês de inventário. Cliente antigo não tem o
+   campo: 2 meses é o que a IBM pratica e o que a planilha da CAIXA mostra. */
+function lagDeInventario(client) {
+  const v = Number(client && client.inventoryLagMonths);
+  return Number.isFinite(v) && v >= 0 && v <= 12 ? Math.round(v) : 2;
+}
+
+/** Opções das três visões: ano escolhido na query, defasagem e baseline do cliente. */
+function opcoesDeVisao(client, query) {
+  const anoRaw = query && query.ano !== undefined ? Number(query.ano) : NaN;
+  return {
+    lag: lagDeInventario(client),
+    baselinePadraoAnual: (Number(client.monthlyBaselineMsu) || 0) * 12,
+    ano: Number.isInteger(anoRaw) ? anoRaw : null,
+  };
 }
 
 /** Devolve o contrato MLC do cliente e a visão calculada mês a mês. */
@@ -1311,15 +1366,55 @@ router.get('/clients/:id/mlc', asyncHandler(async (req, res) => {
   const scrtMonths = Object.keys(consumo).sort();
 
   res.json({
-    client: { _id: client._id, name: client.name },
+    client: {
+      _id: client._id,
+      name: client.name,
+      monthlyBaselineMsu: client.monthlyBaselineMsu || null,
+      inventoryLagMonths: lagDeInventario(client),
+    },
     contract,
     view,
+    // As três visões da reunião, fechadas a partir da MESMA view mês a mês.
+    views: view ? montarVisoes(view, contract, opcoesDeVisao(client, req.query)) : null,
     scrt: {
       monthCount: scrtMonths.length,
       firstPeriodKey: scrtMonths[0] || null,
       lastPeriodKey: scrtMonths[scrtMonths.length - 1] || null,
     },
   });
+}));
+
+/**
+ * As três visões do MLC em .pptx, para levar à reunião.
+ * ?ano=N (índice do ano) &slides=1,2,3
+ *
+ * GET, como o forecast.pptx: o guard trata verbo que não é de leitura como
+ * escrita e exigiria permissão de EDIÇÃO — gerar apresentação é leitura.
+ */
+router.get('/clients/:id/mlc.pptx', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const stored = client.mlcContract || null;
+  const effStart = client.contractYearStart || (stored && stored.startPeriodKey) || null;
+  const contract = stored ? { ...stored, startPeriodKey: effStart } : null;
+  if (!contract || !effStart || !(contract.years || []).length) {
+    return res.status(422).json({ error: 'Este cliente ainda não tem contrato de MLC configurado.' });
+  }
+
+  const consumo = await scrtConsumoByPeriod(client);
+  const view = computeMlcView(contract, consumo);
+  const views = montarVisoes(view, contract, opcoesDeVisao(client, req.query));
+
+  const { buffer, fileName } = deckMlc(
+    { client: { _id: client._id, name: client.name }, views },
+    { slides: req.query.slides, autor: (req.user && req.user.name) || 'IBM Z Control Desk' }
+  );
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+  res.send(buffer);
 }));
 
 /** Salva (ou substitui) o contrato MLC do cliente. */
@@ -1337,7 +1432,12 @@ router.put('/clients/:id/mlc', asyncHandler(async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
 
   const consumo = await scrtConsumoByPeriod(client);
-  res.json({ contract: client.mlcContract, view: computeMlcView(client.mlcContract, consumo) });
+  const view = computeMlcView(client.mlcContract, consumo);
+  res.json({
+    contract: client.mlcContract,
+    view,
+    views: montarVisoes(view, client.mlcContract, opcoesDeVisao(client, req.query)),
+  });
 }));
 
 /** Remove o contrato MLC do cliente. */

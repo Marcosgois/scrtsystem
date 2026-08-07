@@ -112,6 +112,15 @@ async function main() {
   check('pptx do próprio cliente passa pelo guard (422 por falta de histórico, não 403)',
     pptxComAcesso.status === 422, pptxComAcesso.status);
 
+  /* ── Exportação do MLC em .pptx ──
+     Mesma armadilha do forecast.pptx: o caminho termina em ".pptx" e o guard casa
+     por regex. Gerar apresentação é LEITURA. */
+  const mlcSemAcesso = await editor.req(`/clients/${B._id}/mlc.pptx`);
+  check('pptx de MLC de outro cliente é negado (403)', mlcSemAcesso.status === 403, mlcSemAcesso.status);
+  const mlcComAcesso = await editor.req(`/clients/${A._id}/mlc.pptx`);
+  check('pptx de MLC do próprio cliente passa pelo guard (422 sem contrato, não 403)',
+    mlcComAcesso.status === 422, mlcComAcesso.status);
+
   // ── CSV formula injection na auditoria ──
   await admin.req(`/clients/${A._id}`, { method: 'PATCH', json: { name: '=1+2 CLIENTE' } });
   await new Promise((r) => setTimeout(r, 300)); // deixa a auditoria assíncrona cair
