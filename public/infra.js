@@ -217,7 +217,16 @@ function triagem(m) {
     return { nivel: 'crit', peso: 1, texto: `dormente, mas consumiu em ${m.scrt.periodLabel || 'SCRT'}` };
   }
   if (m.migrations && m.migrations.pendentes) {
-    return { nivel: 'info', peso: 2, texto: `${fmt(m.migrations.pendentes)} MO/MES em aberto` };
+    const n = m.migrations.pendentes;
+    /* O selo é o atalho para a proposta: `data-mo` desvia o clique do card (que
+       abre os detalhes) direto para o histórico da máquina, onde a MO/MES pode
+       ser editada, contratada, executada ou excluída. Não pode ser um <button>:
+       o card inteiro já é um, e botão dentro de botão é HTML inválido. */
+    return {
+      nivel: 'info', peso: 2, texto: `${fmt(n)} MO/MES em aberto`,
+      html: `<span class="imc-link" data-mo="${m._id}" role="link" tabindex="0"`
+        + ` title="Abrir a${n > 1 ? 's' : ''} MO/MES desta máquina">${fmt(n)} MO/MES em aberto →</span>`,
+    };
   }
   // As pendências de cadastro viram UMA frase, com o nome do que falta — quem lê
   // já sabe o que abrir. Três selos separados seriam três vezes o mesmo recado.
@@ -385,7 +394,12 @@ function renderOverview() {
 }
 
 function wireOverview(el) {
-  el.querySelectorAll('[data-open-lpars]').forEach((b) => b.addEventListener('click', () => abrirDetalhes(b.dataset.openLpars)));
+  // O selo de MO/MES leva direto à proposta; o resto do card, aos detalhes.
+  el.querySelectorAll('[data-open-lpars]').forEach((b) => b.addEventListener('click', (e) => {
+    const mo = e.target.closest('[data-mo]');
+    if (mo) { e.preventDefault(); abrirMoDaMaquina(mo.dataset.mo); return; }
+    abrirDetalhes(b.dataset.openLpars);
+  }));
   el.querySelectorAll('[data-edit-site]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); openSiteModal(b.dataset.editSite); }));
 }
 
@@ -465,7 +479,7 @@ function renderMachineRows() {
       <td class="num">${m.year || '—'}</td>
       <td>${lsprCell}</td>
       <td>${scrtCell}</td>
-      <td class="small">${m.contractRef ? `<span class="badge badge-neutral">${esc(m.contractRef.number)}</span>` : '<span class="muted">—</span>'}${m.migrations && m.migrations.pendentes ? ` <span class="badge" style="background:#0f62fe1a;color:#0f62fe">${m.migrations.pendentes} em aberto</span>` : ''}</td>
+      <td class="small">${m.contractRef ? `<span class="badge badge-neutral">${esc(m.contractRef.number)}</span>` : '<span class="muted">—</span>'}${m.migrations && m.migrations.pendentes ? ` <button type="button" class="badge badge-acao" data-mo="${m._id}" title="Abrir a MO/MES desta máquina">${m.migrations.pendentes} em aberto</button>` : ''}</td>
       <td class="infra-actions">
         <button class="row-action" data-lpars="${m._id}" title="LPARs (${lpc})">${iconCpu()}</button>
         <button class="row-action" data-config="${m._id}" title="Arquivos de configuração">${iconFile()}</button>
@@ -482,6 +496,7 @@ function renderMachineRows() {
   tbody.querySelectorAll('[data-config]').forEach((b) => b.addEventListener('click', () => openConfigModal(b.dataset.config)));
   tbody.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openMachineModal(b.dataset.edit)));
   tbody.querySelectorAll('[data-migrate]').forEach((b) => b.addEventListener('click', () => openMigrar(b.dataset.migrate)));
+  tbody.querySelectorAll('[data-mo]').forEach((b) => b.addEventListener('click', () => abrirMoDaMaquina(b.dataset.mo)));
   tbody.querySelectorAll('[data-detail]').forEach((b) => b.addEventListener('click', () =>
     abrirDetalhes(b.dataset.detail)));
   tbody.querySelectorAll('[data-ct]').forEach((b) => b.addEventListener('click', () => {
@@ -682,8 +697,6 @@ async function importFromScrt() {
   }
 }
 
-/* Abre a proposta de MO/MES. Na visão geral o card da máquina já é um <button>,
-   então os botões de migrar/histórico vivem no cabeçalho do modal de LPARs. */
 /** Detalhes da máquina, com atalho para LPARs e para a migração. */
 function abrirDetalhes(machineId) {
   window.openMachineDetailModal({
@@ -693,6 +706,12 @@ function abrirDetalhes(machineId) {
     onOpenLpars: (id) => openLparsModal(id),
     onMigrate: (id) => openMigrar(id),
   });
+}
+
+/* A MO/MES da máquina, direto na linha do tempo — é lá que estão as ações de
+   editar, contratar, executar e excluir, as mesmas da aba MO/MES em Contratos. */
+function abrirMoDaMaquina(machineId) {
+  window.openMachineHistoryModal({ clientId: state.clientId, machineId, onChanged: loadInfra });
 }
 
 function openMigrar(machineId) {

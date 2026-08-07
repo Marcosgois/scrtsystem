@@ -10,6 +10,12 @@
  *   window.openMigrationModal({ clientId, machines, machine, contracts, event, onSaved })
  *   window.openMigrationExecModal({ clientId, event, sites, onDone })
  *   window.openMachineHistoryModal({ clientId, machineId })
+ *   window.migrationActions.html(ev) / .wire(root, { clientId, onChanged })
+ *
+ * As AÇÕES de um evento (contratar, executar, desfazer, editar, excluir) também
+ * moram aqui, e não na tela de Contratos: elas aparecem nos dois lugares — na
+ * lista de MO/MES e no histórico da máquina, aberto pela Infraestrutura — e
+ * duplicá-las garantiria que uma regra de transição ficasse diferente da outra.
  */
 (function () {
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
@@ -335,11 +341,17 @@
   }
 
   /* ── Histórico da máquina ───────────────────────────────── */
-  async function openMachineHistoryModal({ clientId, machineId }) {
+  async function openMachineHistoryModal({ clientId, machineId, onChanged }) {
     let data;
     try {
       data = await api(`/clients/${clientId}/infra/machines/${machineId}/historico`);
     } catch (e) { toast(e.message, 'error'); return; }
+    // Reabre no mesmo lugar depois de agir, e avisa a tela de trás — quem chamou
+    // pode estar mostrando "1 MO/MES em aberto", que acabou de deixar de ser verdade.
+    const apósAgir = async () => {
+      if (onChanged) await onChanged();
+      openMachineHistoryModal({ clientId, machineId, onChanged });
+    };
 
     const m = data.machine;
     const itens = [];
@@ -359,6 +371,8 @@
         head: `${kindBadge(ev.kind)} ${esc(ev.title || (ev.kind === 'MO' ? 'Troca de máquina' : 'Upgrade'))} ${statusBadge(ev.status)}`,
         meta: partes.join(' · '),
         specs: ev.status === 'executado' ? ev : null,
+        // As mesmas ações da lista de Contratos, aqui na linha do tempo.
+        acoes: acoesHtml(ev),
       });
     }
     if (m.replacedAt) itens.push({ at: m.replacedAt, dot: 'done', head: 'Máquina substituída', meta: 'saiu do parque' });
@@ -371,16 +385,19 @@
     (data.chain.replaces || []).slice().reverse().forEach((c) => chain.push({ c, rel: 'antes' }));
     (data.chain.replacedBy || []).forEach((c) => chain.push({ c, rel: 'depois' }));
 
-    mount(`
+    const wrap = mount(`
       <div class="modal modal-compare" role="dialog" aria-modal="true">
         <div class="modal-forecast-top">
           <div>
             <h2>Histórico · ${esc(m.model || 'Máquina')}</h2>
             <p class="muted small">${esc(m.serial || 's/ serial')}${m.contractRef ? ` · contrato ${esc(m.contractRef.number)}` : ''} · ${data.lparCount} LPAR(s)</p>
           </div>
-          <button class="row-action" type="button" data-mig-close aria-label="Fechar">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          </button>
+          <div class="modal-compare-head">
+            <button class="btn btn-ghost btn-sm" type="button" id="hist-novo" data-requires-edit>Nova MO/MES</button>
+            <button class="row-action" type="button" data-mig-close aria-label="Fechar">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+          </div>
         </div>
         <div class="modal-forecast-scroll">
           ${chain.length ? `<div class="card" style="margin-bottom:12px"><div class="card-header"><h2>Gerações</h2></div>
@@ -389,7 +406,7 @@
             ${itens.length ? itens.map((i) => `
               <div class="tl-item">
                 <span class="tl-dot ${i.dot}"></span>
-                <div class="tl-head">${i.head}</div>
+                <div class="tl-head">${i.head}${i.acoes ? `<span class="tl-acoes">${i.acoes}</span>` : ''}</div>
                 <div class="tl-meta">${dt(i.at)}${i.meta ? ' · ' + i.meta : ''}</div>
                 ${i.specs ? specDiff(i.specs) : ''}
               </div>`).join('') : '<div class="empty-inline">Sem eventos registrados.</div>'}
@@ -399,6 +416,20 @@
             <div class="table-responsive"><table class="infra-table"><tbody>${scrtRows}</tbody></table></div></div>` : ''}
         </div>
       </div>`);
+
+    wireAcoes(wrap, { clientId, onChanged: apósAgir });
+    wrap.querySelector('#hist-novo').addEventListener('click', async () => {
+      try {
+        const [machines, contracts] = await Promise.all([
+          api(`/clients/${clientId}/infra/machines`),
+          api(`/clients/${clientId}/contracts`),
+        ]);
+        const maq = machines.find((x) => String(x._id) === String(machineId));
+        closeAll();
+        openMigrationModal({ clientId, machines, machine: maq, contracts, onSaved: apósAgir });
+      } catch (e) { toast(e.message, 'error'); }
+    });
+    if (window.__authApplyViewOnly) window.__authApplyViewOnly();
   }
 
 
@@ -479,12 +510,14 @@
               <td>${statusBadge(e.status)}</td>
               <td class="small">${dt(e.executedAt || e.plannedDate)}</td>
               <td class="small">${e.contract ? esc(e.contract.number) : '—'}</td>
+              <td class="infra-actions">${acoesHtml(e)}</td>
             </tr>`).join('')}</tbody></table></div></div>` : ''}
         </div>
       </div>`);
 
+    wireAcoes(wrap, { clientId, onChanged: async () => { if (onChanged) await onChanged(); openMachineDetailModal({ clientId, machineId, onChanged, onOpenLpars, onMigrate }); } });
     wrap.querySelector('#md-hist').addEventListener('click', () =>
-      openMachineHistoryModal({ clientId, machineId }));
+      openMachineHistoryModal({ clientId, machineId, onChanged }));
     const bl = wrap.querySelector('#md-lpars');
     if (onOpenLpars) bl.addEventListener('click', () => { wrap.remove(); onOpenLpars(machineId); });
     else bl.style.display = 'none';
@@ -550,11 +583,134 @@
     return cells.length ? `<div class="cap-delta">${cells.join('')}</div>` : '';
   }
 
+  /* ── Ações de um evento MO/MES ──────────────────────────
+     As mesmas na lista de Contratos e no histórico da máquina que a Infra abre.
+     Que ação existe depende do STATUS, e essa regra vive só aqui — no servidor
+     ela é reforçada de novo (executar exige 'contratado', excluir só aceita
+     'proposta'/'cancelada'), então o botão a menos é conveniência, não a trava. */
+
+  const ICONES = {
+    contratar: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    executar: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4.5 3.5v9l8-4.5-8-4.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    desfazer: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 1 1 1.6 3.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M3 4.5V8h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    editar: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5 13.5 4.5 5.5 12.5 2.5 13.5 3.5 10.5 11.5 2.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+    excluir: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5 5 13h6l.5-8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    historico: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v3.2l2 1.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  };
+
+  /** Que ações o evento aceita no estado em que está. */
+  function acoesDe(ev) {
+    const out = [];
+    if (ev.status === 'proposta') out.push({ act: 'contratar', title: 'Marcar como contratado' });
+    if (ev.status === 'contratado') out.push({ act: 'executar', title: 'Executar' });
+    if (ev.status === 'executado') out.push({ act: 'desfazer', title: 'Desfazer execução' });
+    if (ev.status !== 'executado') out.push({ act: 'editar', title: 'Editar' });
+    if (['proposta', 'cancelada'].includes(ev.status)) out.push({ act: 'excluir', title: 'Excluir', danger: true });
+    return out;
+  }
+
+  /**
+   * Botões de ação do evento. `historico` inclui o atalho para a linha do tempo
+   * da máquina — útil na lista de Contratos, redundante dentro dela própria.
+   */
+  function acoesHtml(ev, { historico = false } = {}) {
+    const maquina = String((ev.fromMachine && (ev.fromMachine._id || ev.fromMachine)) || '');
+    const extra = historico && maquina
+      ? [{ act: 'historico', title: 'Histórico da máquina', semEdicao: true }]
+      : [];
+    return [...extra, ...acoesDe(ev)].map((a) =>
+      `<button class="row-action${a.danger ? ' danger' : ''}" type="button"`
+      + `${a.semEdicao ? '' : ' data-requires-edit'}`
+      + ` data-mig-act="${a.act}" data-mig-ev="${esc(ev._id)}" data-mig-maq="${esc(maquina)}"`
+      + ` title="${esc(a.title)}" aria-label="${esc(a.title)}">${ICONES[a.act]}</button>`).join('');
+  }
+
+  /**
+   * Liga as ações dentro de `root`. Um listener só, delegado — o HTML pode ser
+   * redesenhado à vontade sem religar nada.
+   *
+   * Máquinas e contratos são buscados SOB DEMANDA: assim a Infra não precisa
+   * carregar a lista de contratos só para o caso de alguém clicar em "editar".
+   */
+  function wireAcoes(root, { clientId, onChanged }) {
+    if (!root || root.dataset.migWired === '1') return;
+    root.dataset.migWired = '1';
+    const recarrega = async () => { if (onChanged) await onChanged(); };
+
+    root.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-mig-act]');
+      if (!b || !root.contains(b)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const { migAct: act, migEv: id, migMaq: maq } = b.dataset;
+
+      try {
+        if (act === 'historico') { openMachineHistoryModal({ clientId, machineId: maq }); return; }
+
+        if (act === 'excluir') {
+          if (!confirm('Excluir esta proposta? O histórico da máquina perde o registro dela.')) return;
+          await api(`/clients/${clientId}/migrations/${id}`, { method: 'DELETE' });
+          toast('Proposta excluída.');
+          closeAll();
+          await recarrega();
+          return;
+        }
+
+        if (act === 'desfazer') {
+          if (!confirm('Desfazer a execução e restaurar a configuração anterior da máquina?')) return;
+          await jsonPost(`/clients/${clientId}/migrations/${id}/desfazer`, {});
+          toast('Execução desfeita.');
+          closeAll();
+          await recarrega();
+          return;
+        }
+
+        const ev = await api(`/clients/${clientId}/migrations/${id}`);
+
+        if (act === 'contratar') {
+          const contratos = await api(`/clients/${clientId}/contracts`);
+          let contractId = ev.contract ? (ev.contract._id || ev.contract) : '';
+          if (!contractId) {
+            if (!contratos.length) { toast('Cadastre o contrato assinado antes.', 'error'); return; }
+            const opcoes = contratos.map((c, i) => `${i + 1}) ${c.number}${c.name ? ' · ' + c.name : ''}`).join('\n');
+            const escolha = prompt(`Qual contrato assinado cobre este ${ev.kind}?\n\n${opcoes}\n\nDigite o número:`);
+            const idx = Number(escolha) - 1;
+            if (!(idx >= 0 && idx < contratos.length)) return;
+            contractId = contratos[idx]._id;
+          }
+          await jsonPost(`/clients/${clientId}/migrations/${id}/status`, { status: 'contratado', contract: contractId });
+          toast('Marcado como contratado.');
+          closeAll();
+          await recarrega();
+          return;
+        }
+
+        if (act === 'executar') {
+          const sites = await api(`/clients/${clientId}/infra/sites`);
+          closeAll();
+          openMigrationExecModal({ clientId, event: ev, sites, onDone: recarrega });
+          return;
+        }
+
+        if (act === 'editar') {
+          const [machines, contracts] = await Promise.all([
+            api(`/clients/${clientId}/infra/machines`),
+            api(`/clients/${clientId}/contracts`),
+          ]);
+          closeAll();
+          openMigrationModal({ clientId, machines, contracts, event: ev, onSaved: recarrega });
+          return;
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    });
+  }
+
   window.openMigrationModal = openMigrationModal;
   window.openMigrationExecModal = openMigrationExecModal;
   window.openMachineHistoryModal = openMachineHistoryModal;
   window.openMachineDetailModal = openMachineDetailModal;
   window.openMachineContractModal = openMachineContractModal;
   window.migrationBadges = { statusBadge, kindBadge, STATUS };
+  window.migrationActions = { html: acoesHtml, wire: wireAcoes, disponiveis: acoesDe };
   window.closeMigrationModals = closeAll;
 })();

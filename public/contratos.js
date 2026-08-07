@@ -231,61 +231,15 @@ function renderMigrations() {
             <td class="small">${dt(e.executedAt || e.plannedDate)}</td>
             <td class="small">${e.contract ? esc(e.contract.number) : '<span class="muted">—</span>'}</td>
             <td class="num">${money(e.value, e.currency)}</td>
-            <td class="infra-actions">
-              ${e.status === 'proposta' ? `<button class="row-action" data-requires-edit data-contratar="${e._id}" title="Marcar como contratado">${iconCheck()}</button>` : ''}
-              ${e.status === 'contratado' ? `<button class="row-action" data-requires-edit data-executar="${e._id}" title="Executar">${iconPlay()}</button>` : ''}
-              ${e.status === 'executado' ? `<button class="row-action" data-requires-edit data-desfazer="${e._id}" title="Desfazer execução">${iconUndo()}</button>` : ''}
-              <button class="row-action" data-hist="${String((e.fromMachine || {})._id || '')}" title="Histórico da máquina">${iconClock()}</button>
-              ${e.status !== 'executado' ? `<button class="row-action" data-requires-edit data-edite="${e._id}" title="Editar">${iconEdit()}</button>` : ''}
-              ${['proposta', 'cancelada'].includes(e.status) ? `<button class="row-action danger" data-requires-edit data-dele="${e._id}" title="Excluir">${iconTrash()}</button>` : ''}
-            </td>
+            <td class="infra-actions">${window.migrationActions.html(e, { historico: true })}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>
     </div></div>`;
 
-  const reload = async () => { await loadAll(); };
-  el.querySelectorAll('[data-contratar]').forEach((b) => b.addEventListener('click', () => contratar(b.dataset.contratar)));
-  el.querySelectorAll('[data-executar]').forEach((b) => b.addEventListener('click', async () => {
-    const ev = await api(`/clients/${state.clientId}/migrations/${b.dataset.executar}`);
-    const sites = await api(`/clients/${state.clientId}/infra/sites`);
-    window.openMigrationExecModal({ clientId: state.clientId, event: ev, sites, onDone: reload });
-  }));
-  el.querySelectorAll('[data-desfazer]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('Desfazer a execução e restaurar a configuração anterior da máquina?')) return;
-    try { await jsonPost(`/clients/${state.clientId}/migrations/${b.dataset.desfazer}/desfazer`, {}); toast('Execução desfeita.'); await loadAll(); }
-    catch (e) { toast(e.message, 'error'); }
-  }));
-  el.querySelectorAll('[data-hist]').forEach((b) => b.addEventListener('click', () => {
-    if (b.dataset.hist) window.openMachineHistoryModal({ clientId: state.clientId, machineId: b.dataset.hist });
-  }));
-  el.querySelectorAll('[data-edite]').forEach((b) => b.addEventListener('click', async () => {
-    const ev = await api(`/clients/${state.clientId}/migrations/${b.dataset.edite}`);
-    window.openMigrationModal({ clientId: state.clientId, machines: state.machines, contracts: state.contracts, event: ev, onSaved: reload });
-  }));
-  el.querySelectorAll('[data-dele]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('Excluir esta proposta?')) return;
-    try { await api(`/clients/${state.clientId}/migrations/${b.dataset.dele}`, { method: 'DELETE' }); toast('Proposta excluída.'); await loadAll(); }
-    catch (e) { toast(e.message, 'error'); }
-  }));
-}
-
-async function contratar(eventId) {
-  const ev = state.events.find((e) => e._id === eventId);
-  let contractId = ev && ev.contract ? (ev.contract._id || ev.contract) : '';
-  if (!contractId) {
-    if (!state.contracts.length) { toast('Cadastre o contrato assinado antes.', 'error'); return; }
-    const opcoes = state.contracts.map((c, i) => `${i + 1}) ${c.number}${c.name ? ' · ' + c.name : ''}`).join('\n');
-    const escolha = prompt(`Qual contrato assinado cobre este ${ev.kind}?\n\n${opcoes}\n\nDigite o número:`);
-    const idx = Number(escolha) - 1;
-    if (!(idx >= 0 && idx < state.contracts.length)) return;
-    contractId = state.contracts[idx]._id;
-  }
-  try {
-    await jsonPost(`/clients/${state.clientId}/migrations/${eventId}/status`, { status: 'contratado', contract: contractId });
-    toast('Marcado como contratado.');
-    await loadAll();
-  } catch (e) { toast(e.message, 'error'); }
+  /* As ações vivem em migration-modal.js, compartilhadas com o histórico da
+     máquina que a Infraestrutura abre — mesma regra de transição nos dois. */
+  window.migrationActions.wire(el, { clientId: state.clientId, onChanged: () => loadAll() });
 }
 
 /* ── Modal de contrato ────────────────────────────────── */
@@ -619,10 +573,6 @@ function openLinkSoftware(contractId) {
 const iconEdit = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M11 2.5l2.5 2.5L6 12.5l-3 .5.5-3L11 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const iconTrash = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const iconOpen = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M6 4h6v6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const iconCheck = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const iconPlay = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4.5 3.5v9l7-4.5-7-4.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-const iconUndo = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 7h7a3 3 0 1 1 0 6H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 4.5 3 7l2.5 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const iconClock = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3.2l2 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 const iconUnlink = () => '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5 4 12M9.5 6.5 12 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9 11l-1 1a2.5 2.5 0 0 1-3.5-3.5l1-1M7 5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 
 /* ── Eventos ──────────────────────────────────────────── */
