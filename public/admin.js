@@ -276,11 +276,15 @@ async function saveUser() {
     const btnOk = $('btn-save-user');
     btnOk.disabled = true;
     try {
-      await api(`/admin/access-requests/${state.aprovando._id}/aprovar`, {
+      const r = await api(`/admin/access-requests/${state.aprovando._id}/aprovar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, role: state.role, access: state.role === 'admin' ? [] : accessPayload() }),
       });
-      toast(`Acesso aprovado para ${state.aprovando.email}.`);
+      // Diz o que REALMENTE aconteceu: "aprovado" genérico escondia o caso da
+      // conta que já existia e deixava o admin achar que concedeu o que não concedeu.
+      toast(r.ajustado
+        ? `${state.aprovando.email} já tinha conta — papel e acessos atualizados.`
+        : `Acesso aprovado para ${state.aprovando.email}.`);
       closeModals();
       await Promise.all([load(), loadRequests()]);
     } catch (e) { fail(e.message); } finally { btnOk.disabled = false; }
@@ -410,11 +414,21 @@ function renderRequests() {
 async function vincularPedido(p) {
   const alvo = p.parecida;
   if (!alvo) return;
-  if (!confirm(`Vincular ao cadastro existente?\n\n${alvo.name} (${alvo.email})\npassa a ter o e-mail ${p.email}.\n\nO papel e os acessos por cliente dessa conta são preservados, e a sessão dela não cai.`)) return;
+  const elevado = ['admin', 'manager'].includes(alvo.role);
+  const papel = alvo.role === 'admin' ? 'ADMINISTRADOR' : 'GERENTE';
+  // Vincular não tem desfazer: o e-mail é a chave de login e é imutável na edição.
+  // Quando o papel da conta é elevado, quem pede acesso HERDA esse papel — então o
+  // aviso precisa dizer isso com todas as letras antes do clique.
+  const aviso = `Vincular ao cadastro existente?\n\n${alvo.name} (${alvo.email})\npassa a ter o e-mail ${p.email}.\n\n`
+    + (elevado
+      ? `ATENÇÃO: essa conta é ${papel}. Quem pediu acesso passa a entrar com esse papel.\nSó continue se tiver certeza de que é a mesma pessoa.\n\n`
+      : '')
+    + 'O papel e os acessos por cliente dessa conta são preservados, e a sessão dela não cai.\nNão há como desfazer: o e-mail é a chave de login.';
+  if (!confirm(aviso)) return;
   try {
     const r = await api(`/admin/access-requests/${p._id}/aprovar`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vincularA: alvo._id }),
+      body: JSON.stringify({ vincularA: alvo._id, confirmarPapelElevado: elevado }),
     });
     toast(`Vinculado: ${r.emailAnterior} → ${p.email}.`);
     await Promise.all([load(), loadRequests()]);

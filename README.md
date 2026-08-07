@@ -107,6 +107,8 @@ Pedir e-mail e senha de novo seria redundante, então o app aproveita essa ident
    acesso por cliente na mesma tela de sempre. Aprovar cria o usuário; a pessoa passa a entrar
    pelo SSO, sem senha nenhuma.
 
+**Cortar o acesso de alguém** é excluir o usuário (ou tirá-lo da política do Access) — **não** trocar a senha. Com o SSO ligado a senha deixa de ser o que sustenta a sessão: quem o w3id identifica e tem cadastro entra, com cookie ou sem.
+
 **Mesma pessoa, outro domínio.** Boa parte das contas está em `@br.ibm.com` e o resto em
 `@ibm.com`, e o e-mail que o admin digitou nem sempre é o que o w3id devolve. Quando o pedido
 tem um homônimo (mesmo nome antes do `@`), a fila avisa e oferece **Vincular**: em vez de criar

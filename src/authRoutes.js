@@ -443,6 +443,24 @@ adminRouter.post('/access-requests/:id/aprovar', asyncHandler(async (req, res) =
     if (await User.exists({ email: pedido.email, _id: { $ne: alvo._id } })) {
       return res.status(409).json({ error: `Já existe outra conta com ${pedido.email}.` });
     }
+    /* O servidor NÃO aceita qualquer conta só porque veio um id no corpo. Vincular
+       reescreve o e-mail — que é a chave de login e é imutável na edição —, então
+       um id errado transferiria a conta de outra pessoa para quem pediu acesso, e
+       o único conserto seria apagar e recriar (perdendo o _id e o vínculo da
+       auditoria inteira dela). Repete aqui a mesma regra que a tela usa. */
+    if (String(alvo.email).split('@')[0].toLowerCase() !== String(pedido.email).split('@')[0].toLowerCase()) {
+      return res.status(422).json({ error: `${alvo.email} não parece a mesma pessoa de ${pedido.email}. Vincular só vale quando o nome antes do @ é igual.` });
+    }
+    /* Herdar conta de admin ou gerente é escalada de privilégio a um clique de
+       distância — e a semelhança de e-mail é heurística, não prova (msilva da
+       Maria e msilva do Marcos casam). Exige que a tela tenha dito o papel em voz
+       alta e que o admin tenha confirmado sabendo disso. */
+    if (['admin', 'manager'].includes(alvo.role) && b.confirmarPapelElevado !== true) {
+      return res.status(422).json({
+        error: `A conta ${alvo.email} é ${alvo.role === 'admin' ? 'ADMINISTRADOR' : 'GERENTE'}. Vincular entrega esse papel a quem pediu acesso — confirme na tela que é mesmo a mesma pessoa.`,
+        exigeConfirmacao: true, papelDoAlvo: alvo.role,
+      });
+    }
     const antigo = alvo.email;
     alvo.email = pedido.email;
     await alvo.save();
@@ -461,11 +479,29 @@ adminRouter.post('/access-requests/:id/aprovar', asyncHandler(async (req, res) =
     return res.json({ ok: true, criado: false, vinculado: true, emailAnterior: antigo, user: publicUser(alvo.toObject()), request: pedido.toObject() });
   }
 
-  // O usuário pode já ter sido criado à mão enquanto o pedido esperava. Nesse
-  // caso o pedido só é fechado e apontado para a conta existente — recriar daria
-  // 11000 no índice único de e-mail e travaria a fila num pedido insolúvel.
+  /* O usuário pode já ter sido criado à mão enquanto o pedido esperava. Recriar
+     daria 11000 no índice único de e-mail e travaria a fila num pedido insolúvel,
+     então o pedido é fechado sobre a conta que já existe — MAS aplicando o papel e
+     os acessos que o admin acabou de escolher. Descartá-los era o pior desfecho
+     possível: silencioso e irreversível. O admin escolhia "gerente + 3 clientes",
+     a tela dizia "acesso aprovado", o pedido saía da fila, e a pessoa continuava
+     sem acesso a cliente nenhum — sem nada que lembrasse de refazer. */
   let user = await User.findOne({ email: pedido.email }).lean();
   let criado = false;
+  let ajustado = false;
+  if (user) {
+    // A mesma trava do PUT /users/:id: aprovar um pedido não pode ser o caminho
+    // torto para deixar o sistema sem administrador.
+    if (user.role === 'admin' && role !== 'admin' && (await User.countDocuments({ role: 'admin' })) <= 1) {
+      return res.status(422).json({ error: 'Essa conta é o último administrador — aprove como Administrador ou promova outra pessoa antes.' });
+    }
+    user = await User.findByIdAndUpdate(
+      user._id,
+      { $set: { role, access: role === 'admin' ? [] : parseAccess(b.access) } },
+      { new: true }
+    ).lean();
+    ajustado = true;
+  }
   if (!user) {
     // Senha aleatória que ninguém conhece nem precisa: a entrada é pelo SSO. Se um
     // dia essa pessoa precisar de senha (produção sem Access, p.ex.), o admin
@@ -488,9 +524,9 @@ adminRouter.post('/access-requests/:id/aprovar', asyncHandler(async (req, res) =
 
   audit.event(req, {
     action: 'acesso-aprovado', entityType: 'Pedido de acesso', entityLabel: pedido.email, status: 200,
-    summary: criado ? `usuário criado como ${role}` : 'usuário já existia; pedido encerrado',
+    summary: criado ? `usuário criado como ${role}` : `a conta já existia; papel e acessos atualizados para ${role}`,
   });
-  res.json({ ok: true, criado, user: publicUser(user), request: pedido.toObject() });
+  res.json({ ok: true, criado, ajustado, user: publicUser(user), request: pedido.toObject() });
 }));
 
 adminRouter.post('/access-requests/:id/recusar', asyncHandler(async (req, res) => {

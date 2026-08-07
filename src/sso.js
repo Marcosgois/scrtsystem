@@ -97,14 +97,23 @@ async function chavePorKid(kid) {
   const achada = cache.chaves.get(kid);
   if (achada && agora - cache.at < JWKS_TTL) return achada;
 
-  // Rebaixar o JWKS custa uma ida à rede, e um `kid` inventado no cabeçalho
-  // faria isso a CADA requisição — um jeito barato de nos usar para martelar o
-  // Cloudflare. O piso transforma a tentativa em, no máximo, duas buscas por
-  // minuto; enquanto isso vale o que já está em cache (e o token cai por falta
-  // de chave, que é o desfecho certo para um kid inventado).
-  if (agora - ultimaBusca < JWKS_PISO) return achada || null;
-  ultimaBusca = agora;
-  if (!emVoo) emVoo = baixarJwks().finally(() => { emVoo = null; });
+  // Se JÁ existe uma busca em voo, espere por ela — sempre, mesmo dentro do piso.
+  // Esta ordem importa e o inverso já mordeu: logo depois de um restart o cache
+  // está vazio, a primeira requisição dispara a busca, e todas as que chegam
+  // durante a ida ao Cloudflare cairiam no piso, voltariam null e recusariam um
+  // token perfeitamente válido — mandando para /login justamente quem o SSO
+  // deveria deixar passar. O piso existe para não DISPARAR buscas demais, não
+  // para impedir que se aproveite a que já está acontecendo.
+  if (!emVoo) {
+    // Rebaixar o JWKS custa uma ida à rede, e um `kid` inventado no cabeçalho
+    // faria isso a CADA requisição — um jeito barato de nos usar para martelar o
+    // Cloudflare. O piso transforma a tentativa em, no máximo, duas buscas por
+    // minuto; enquanto isso vale o que já está em cache (e o token cai por falta
+    // de chave, que é o desfecho certo para um kid inventado).
+    if (agora - ultimaBusca < JWKS_PISO) return achada || null;
+    ultimaBusca = agora;
+    emVoo = baixarJwks().finally(() => { emVoo = null; });
+  }
   const m = await emVoo.catch((e) => {
     console.warn('[sso] JWKS indisponível:', e.message);
     return cache.chaves;    // segue com o que houver: uma queda do Cloudflare não desloga todo mundo
@@ -158,14 +167,28 @@ async function verificar(token) {
   return { email, sub: String(c.sub || ''), nome: String(c.name || c.given_name || '').trim() || nomeDoEmail(email) };
 }
 
-// Falha de verificação é ruído esperado (token vencido, aba velha). Loga uma vez
-// por motivo a cada minuto para não afogar o journal num incidente.
+/*
+ * Falha de verificação é ruído esperado (token vencido, aba velha). Loga uma vez
+ * por motivo a cada minuto para não afogar o journal num incidente.
+ *
+ * A chave é a CATEGORIA do motivo, não o motivo inteiro. Metade das mensagens
+ * interpola um valor que veio do token — `kid desconhecido: <kid>`, `algoritmo
+ * não aceito: <alg>` —, e usar a mensagem inteira dava dois problemas de uma vez:
+ * cada valor inédito era uma chave nova, então o teto de 60s nunca casava e o
+ * journal levava uma linha por requisição; e o Map guardava essas chaves para
+ * sempre, crescendo com dado escolhido por quem manda o token. O teto de tamanho
+ * é o cinto de segurança para qualquer categoria que eu não tenha previsto.
+ */
 const vistos = new Map();
+const TETO_VISTOS = 100;
 function avisa(motivo) {
+  const texto = String(motivo || '').slice(0, 200);
+  const categoria = texto.split(':')[0];
   const agora = Date.now();
-  if (agora - (vistos.get(motivo) || 0) < 60000) return;
-  vistos.set(motivo, agora);
-  console.warn('[sso] token recusado:', motivo);
+  if (agora - (vistos.get(categoria) || 0) < 60000) return;
+  if (vistos.size >= TETO_VISTOS) vistos.clear();
+  vistos.set(categoria, agora);
+  console.warn('[sso] token recusado:', texto);
 }
 
 /**
@@ -194,4 +217,12 @@ const resumo = () => (ATIVO
   ? `SSO: Cloudflare Access em ${TEAM} (aud ${AUD.slice(0, 8)}…)`
   : 'SSO: desligado (defina SSO_TEAM_DOMAIN e SSO_AUD) — login por senha');
 
-module.exports = { ATIVO, TEAM, AUD, identidade, verificar, urlDeLogout, resumo, normalizaTeam, nomeDoEmail, CABECALHO };
+// Só para o teste alcançar o estado interno (cache de chaves e anti-flood) sem
+// precisar reimportar o módulo. Nada no app chama estas duas.
+const __zerarCacheParaTeste = () => { cache = { at: 0, chaves: new Map() }; ultimaBusca = 0; emVoo = null; };
+const __tamanhoDoAntiFlood = () => vistos.size;
+
+module.exports = {
+  ATIVO, TEAM, AUD, identidade, verificar, urlDeLogout, resumo, normalizaTeam, nomeDoEmail, CABECALHO,
+  __zerarCacheParaTeste, __tamanhoDoAntiFlood,
+};

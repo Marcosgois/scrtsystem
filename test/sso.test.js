@@ -142,6 +142,40 @@ async function main() {
   await sso.identidade(reqCom(token({}, { kid: 'inventado-3' })));
   check('kid desconhecido não dispara uma busca de JWKS por requisição', buscasJwks - antes <= 1, buscasJwks - antes);
 
+  /* Corrida do primeiro JWKS: logo depois de um restart o cache está vazio e a
+     primeira requisição sai buscando. Todas as outras que chegarem durante essa
+     ida têm de ESPERAR a busca em voo — antes elas caíam no piso de 30s, voltavam
+     null e recusavam token válido, mandando para /login justamente quem o SSO
+     deveria deixar passar. É o cenário exato do restart do deploy. */
+  sso.__zerarCacheParaTeste();
+  let liberaJwks;
+  const represa = new Promise((r) => { liberaJwks = r; });
+  const fetchJwksNormal = global.fetch;
+  global.fetch = async (url, opts) => {
+    const u = String((url && url.url) || url);
+    if (u.startsWith(TEAM)) { await represa; }
+    return fetchJwksNormal(url, opts);
+  };
+  const concorrentes = Promise.all([1, 2, 3, 4].map(() => sso.identidade(reqCom(token()))));
+  await new Promise((r) => setTimeout(r, 60));   // todas já bateram no cache vazio
+  liberaJwks();
+  const resultado = await concorrentes;
+  global.fetch = fetchJwksNormal;
+  check('4 requisições concorrentes no cache vazio: TODAS identificam (nenhuma cai no piso)',
+    resultado.every((x) => x && x.email === 'fulano@br.ibm.com'),
+    resultado.map((x) => (x ? 'ok' : 'RECUSADO')).join(', '));
+
+  /* O anti-flood guardava a mensagem INTEIRA como chave, e metade das mensagens
+     interpola valor vindo do token. Cada kid novo virava chave nova: o Map crescia
+     para sempre com dado do atacante e o teto de 60s nunca casava. */
+  const linhas = [];
+  const warnReal = console.warn;
+  console.warn = (...a) => { linhas.push(a.join(' ')); };
+  for (let i = 0; i < 60; i++) await sso.identidade(reqCom(token({}, { kid: `lixo-${i}` })));
+  console.warn = warnReal;
+  check('60 kids distintos não geram 60 linhas de log', linhas.length <= 2, linhas.length);
+  check('o valor do token não vira chave permanente em memória', sso.__tamanhoDoAntiFlood() <= 100, sso.__tamanhoDoAntiFlood());
+
   // ── Integração ──
   console.log('\n── Entrada, pedido de acesso e aprovação ──');
   const mongod = await MongoMemoryServer.create();
@@ -260,6 +294,61 @@ async function main() {
 
     r = await outroDominio.req('/auth/me');
     check('vinculado entra pelo SSO com o e-mail do w3id', r.status === 200 && r.body._id === antigo._id, r.body);
+
+    /* Vincular reescreve o e-mail, que é a chave de login e é imutável na edição —
+       então um id errado no corpo transferiria a conta de OUTRA pessoa, sem desfazer. */
+    const alheia = (await admin.req('/admin/users', {
+      method: 'POST', json: { name: 'Sicrano', email: 'sicrano@ibm.com', password: 'senha123456', role: 'user' },
+    })).body;
+    const terceiro = session(token({ email: 'zezinho@br.ibm.com' }));
+    await terceiro.req('/auth/solicitar-acesso', { method: 'POST', json: {} });
+    const pedidoZezinho = (await admin.req('/admin/access-requests')).body.items.find((x) => x.email === 'zezinho@br.ibm.com');
+
+    r = await admin.req(`/admin/access-requests/${pedidoZezinho._id}/aprovar`, { method: 'POST', json: { vincularA: String(alheia._id) } });
+    check('vincular a uma conta que não é a mesma pessoa -> 422', r.status === 422, { status: r.status, erro: r.body && r.body.error });
+
+    r = await admin.req('/admin/users');
+    check('a conta alheia continua com o e-mail dela', r.body.some((u) => u.email === 'sicrano@ibm.com'), r.body.map((u) => u.email));
+
+    // Herdar conta de admin/gerente é escalada a um clique: exige confirmação explícita.
+    const chefe = (await admin.req('/admin/users', {
+      method: 'POST', json: { name: 'Zezinho Chefe', email: 'zezinho@ibm.com', password: 'senha123456', role: 'manager' },
+    })).body;
+    r = await admin.req(`/admin/access-requests/${pedidoZezinho._id}/aprovar`, { method: 'POST', json: { vincularA: String(chefe._id) } });
+    check('vincular a conta de gerente sem confirmar -> 422 avisando do papel',
+      r.status === 422 && r.body.exigeConfirmacao === true && r.body.papelDoAlvo === 'manager', r.body);
+
+    r = await admin.req(`/admin/access-requests/${pedidoZezinho._id}/aprovar`, { method: 'POST', json: { vincularA: String(chefe._id), confirmarPapelElevado: true } });
+    check('com a confirmação explícita, o vínculo acontece', r.status === 200 && r.body.vinculado === true, r.body);
+
+    /* Aprovar quem JÁ tem conta precisa aplicar o que o admin escolheu. Descartar
+       em silêncio deixava a pessoa com menos acesso do que o admin acreditava ter
+       concedido, e o pedido saía da fila sem nada que lembrasse de refazer. */
+    // A ordem é a do mundo real: o pedido nasce PRIMEIRO (quem já tem conta nem
+    // consegue pedir), e a conta aparece à mão enquanto o pedido espera na fila.
+    const quarto = session(token({ email: 'fulaninho@br.ibm.com' }));
+    r = await quarto.req('/auth/solicitar-acesso', { method: 'POST', json: {} });
+    check('pedido de fulaninho registrado antes de a conta existir', r.status === 201, r.body);
+    const pedidoFulaninho = (await admin.req('/admin/access-requests')).body.items.find((x) => x.email === 'fulaninho@br.ibm.com');
+
+    const jaExistia = (await admin.req('/admin/users', {
+      method: 'POST', json: { name: 'Fulaninho', email: 'fulaninho@br.ibm.com', password: 'senha123456', role: 'user', access: [] },
+    })).body;
+
+    r = await admin.req(`/admin/access-requests/${pedidoFulaninho._id}/aprovar`, {
+      method: 'POST', json: { role: 'manager', access: [{ client: String(cliente._id), level: 'edit' }] },
+    });
+    check('aprovar conta existente aplica o papel escolhido (não descarta em silêncio)',
+      r.status === 200 && r.body.ajustado === true && r.body.user.role === 'manager'
+      && r.body.user.access.length === 1 && r.body.user._id === jaExistia._id, r.body);
+
+    r = await admin.req('/admin/users');
+    check('o estado gravado bate com o que o admin escolheu',
+      r.body.find((u) => u.email === 'fulaninho@br.ibm.com').role === 'manager', r.body.find((u) => u.email === 'fulaninho@br.ibm.com'));
+
+    r = await quarto.req('/auth/me');
+    check('fulaninho entra pelo SSO já com o papel que o admin concedeu',
+      r.status === 200 && r.body.role === 'manager', r.body);
 
     // ── Aprovado: agora entra direto, sem senha ──
     const aprovado = session(token({ email: 'fulano@br.ibm.com' }));
