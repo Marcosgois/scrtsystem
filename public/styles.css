@@ -1238,6 +1238,22 @@ tr.machine-ignored td:nth-child(6) { text-decoration: line-through; }
 .imc.lvl-info .imc-rail { background: var(--primary); }
 .imc-off { opacity: .7; }
 
+/* A máquina em NEGOCIAÇÃO, logo abaixo da atual.
+   Borda tracejada e recuo: ela ainda não está no parque, e o desenho tem de
+   dizer isso antes de qualquer texto — senão o site parece ter uma máquina a
+   mais do que tem. */
+.imc-proposta {
+  border-style: dashed;
+  background: transparent;
+  margin-top: -2px;
+  margin-left: 16px;
+  width: calc(100% - 16px);
+}
+.imc-proposta:hover { background: var(--surface-subtle); }
+.imc-proposta .imc-rail { background: var(--primary); opacity: .45; }
+.imc-seta { color: var(--ink-muted); font-size: 13px; line-height: 1; }
+.imc-state-prop { color: var(--primary); border-color: currentColor; }
+
 .imc-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 /* O serial lidera: é o identificador da máquina em todo o sistema, e é por ele
    que o SCRT, a infra e o contrato se encontram. */

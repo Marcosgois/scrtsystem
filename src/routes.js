@@ -1571,11 +1571,13 @@ async function attachContracts(machines) {
 }
 
 /** Anexa um resumo dos eventos de MO/MES de cada máquina (m.migrations). */
+const EM_ABERTO = ['proposta', 'contratado'];
+
 async function attachMigrations(machines) {
   const ids = machines.map((m) => m._id);
   const evs = ids.length
     ? await MigrationEvent.find({ $or: [{ fromMachine: { $in: ids } }, { toMachine: { $in: ids } }] })
-      .select('fromMachine toMachine kind status').lean()
+      .select('fromMachine toMachine kind status title plannedDate before after').lean()
     : [];
   const acc = new Map();
   for (const e of evs) {
@@ -1585,11 +1587,40 @@ async function attachMigrations(machines) {
       if (!acc.has(k)) acc.set(k, { total: 0, pendentes: 0, ultimoKind: null });
       const a = acc.get(k);
       a.total++;
-      if (e.status === 'proposta' || e.status === 'contratado') a.pendentes++;
+      if (EM_ABERTO.includes(e.status)) a.pendentes++;
       a.ultimoKind = e.kind;
     }
   }
   for (const m of machines) m.migrations = acc.get(String(m._id)) || { total: 0, pendentes: 0, ultimoKind: null };
+
+  /* A máquina que está sendo negociada, para a tela poder desenhá-la ao lado da
+     atual — no site da origem, mesmo que ela ainda não exista no cadastro.
+     Só MO em aberto: MES não traz máquina nova (é a mesma, com upgrade), e
+     evento executado já materializou a máquina de verdade. */
+  const porOrigem = new Map();
+  const destinos = new Map();
+  for (const e of evs) {
+    if (e.kind !== 'MO' || !EM_ABERTO.includes(e.status)) continue;
+    const origem = String(e.fromMachine);
+    if (!porOrigem.has(origem)) porOrigem.set(origem, []);
+    porOrigem.get(origem).push({
+      _id: e._id,
+      kind: e.kind,
+      status: e.status,
+      title: e.title || '',
+      plannedDate: e.plannedDate || null,
+      after: e.after || null,
+      // Quando a máquina de destino já está cadastrada, é ELA que a tela mostra —
+      // e some do lugar onde estava, para não aparecer duas vezes.
+      toMachine: e.toMachine ? String(e.toMachine) : null,
+    });
+    if (e.toMachine) destinos.set(String(e.toMachine), origem);
+  }
+  for (const m of machines) {
+    const k = String(m._id);
+    m.propostas = porOrigem.get(k) || [];
+    m.propostaDe = destinos.get(k) || null;
+  }
   return machines;
 }
 
@@ -2096,6 +2127,37 @@ router.get('/clients/:id/migrations', asyncHandler(async (req, res) => {
   res.json(events);
 }));
 
+/**
+ * Valida a máquina de DESTINO de um MO: aquela que entra no lugar.
+ * Vazio é legítimo — a máquina nova costuma não existir ainda no cadastro, e aí
+ * a proposta é desenhada a partir do snapshot `after`.
+ * @returns {{ id: mongoose.Types.ObjectId|null } | { error: string }}
+ */
+async function destinoDoMo({ valor, clientId, kind, fromMachineId, eventId = null }) {
+  if (valor === undefined) return { id: undefined };            // campo não veio: não mexe
+  if (!valor) return { id: null };                              // veio vazio: desvincula
+  if (kind !== 'MO') return { error: 'Só um MO tem máquina de destino — um MES é a mesma máquina.' };
+  if (!isValidId(valor)) return { error: 'Máquina de destino inválida.' };
+  if (String(valor) === String(fromMachineId)) {
+    return { error: 'A máquina de destino precisa ser diferente da de origem.' };
+  }
+  const alvo = await InfraMachine.findOne({ _id: valor, client: clientId }).select('_id status').lean();
+  if (!alvo) return { error: 'Máquina de destino não encontrada neste cliente.' };
+  if (['substituida', 'desativada'].includes(alvo.status)) {
+    return { error: 'Essa máquina já saiu do parque e não pode ser o destino de um MO.' };
+  }
+  // Duas propostas apontando para a mesma máquina nova é sinal de erro de cadastro:
+  // na execução, a segunda sobrescreveria a configuração deixada pela primeira.
+  const ocupada = await MigrationEvent.findOne({
+    client: clientId, toMachine: valor, status: { $in: EM_ABERTO },
+    ...(eventId ? { _id: { $ne: eventId } } : {}),
+  }).select('title').lean();
+  if (ocupada) {
+    return { error: `Essa máquina já é o destino de outra proposta em aberto${ocupada.title ? ` ("${ocupada.title}")` : ''}.` };
+  }
+  return { id: alvo._id };
+}
+
 router.post('/clients/:id/migrations', asyncHandler(async (req, res) => {
   if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
   const client = await Client.findById(req.params.id).lean();
@@ -2129,10 +2191,15 @@ router.post('/clients/:id/migrations', asyncHandler(async (req, res) => {
     contract = b.contract;
   }
 
+  const destino = await destinoDoMo({
+    valor: b.toMachine, clientId: client._id, kind: b.kind, fromMachineId: machine._id,
+  });
+  if (destino.error) return res.status(422).json({ error: destino.error });
+
   const event = await MigrationEvent.create({
     client: client._id, kind: b.kind, status: 'proposta',
     title: String(b.title || '').trim(), notes: String(b.notes || ''), proposalRef: String(b.proposalRef || '').trim(),
-    fromMachine: machine._id, contract, before, after,
+    fromMachine: machine._id, toMachine: destino.id || null, contract, before, after,
     plannedDate: dateOrNull(b.plannedDate), value: moneyOrNull(b.value),
     currency: CURRENCIES.includes(b.currency) ? b.currency : 'BRL',
     createdBy: (req.user && req.user._id) || null,
@@ -2157,7 +2224,9 @@ router.put('/clients/:id/migrations/:eid', asyncHandler(async (req, res) => {
   if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
   const b = req.body || {};
   const travado = event.status === 'executado';
-  if (travado && (b.after !== undefined || b.kind !== undefined || b.fromMachine !== undefined)) {
+  // toMachine entra na trava: trocá-lo depois da execução deixaria órfã a máquina
+  // que a execução criou, e o desfazer não saberia mais o que restaurar.
+  if (travado && (b.after !== undefined || b.kind !== undefined || b.fromMachine !== undefined || b.toMachine !== undefined)) {
     return res.status(422).json({ error: 'Evento já executado: desfaça antes de mudar a configuração.' });
   }
   if (b.title !== undefined) event.title = String(b.title || '').trim();
@@ -2178,6 +2247,14 @@ router.put('/clients/:id/migrations/:eid', asyncHandler(async (req, res) => {
     if (event.kind === 'MES') after.serial = event.before.serial;
     else if (!after.serial) return res.status(422).json({ error: 'Num MO informe o serial da máquina nova.' });
     event.after = after;
+  }
+  if (!travado && b.toMachine !== undefined) {
+    const destino = await destinoDoMo({
+      valor: b.toMachine, clientId: req.params.id, kind: event.kind,
+      fromMachineId: event.fromMachine, eventId: event._id,
+    });
+    if (destino.error) return res.status(422).json({ error: destino.error });
+    event.toMachine = destino.id;
   }
   await event.save();
   res.json(event);

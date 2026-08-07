@@ -107,6 +107,9 @@
     const editando = Boolean(event);
     let kind = event ? event.kind : 'MES';
     let fromId = event ? String(event.fromMachine && (event.fromMachine._id || event.fromMachine)) : (machine ? String(machine._id) : (machines[0] && String(machines[0]._id)) || '');
+    // Máquina de destino já cadastrada (opcional). Fica fora de `after` porque não
+    // é configuração: é um vínculo, e o servidor valida contra o cliente.
+    let toId = event && event.toMachine ? String(event.toMachine._id || event.toMachine) : '';
     const after = Object.assign({}, event ? event.after : {});
 
     const wrap = mount(`
@@ -189,6 +192,13 @@
               <datalist id="mig-lspr-list"></datalist></label>
             ${kind === 'MO' ? `<label class="field"><span>Serial da máquina nova *</span><input type="text" id="mig-serial" value="${esc(after.serial || '')}" placeholder="obrigatório no MO"></label>` : ''}
           </div>
+          ${kind === 'MO' ? `<label class="field" style="padding:0 0 10px">
+            <span>Máquina de destino já cadastrada</span>
+            <select id="mig-to"></select>
+            <span class="muted small">Opcional. Vinculando, ela aparece no site ao lado da máquina atual e
+            sai dos totais do parque — porque ainda não chegou. Sem vínculo, a proposta é desenhada a partir
+            dos campos acima.</span>
+          </label>` : ''}
           <div class="table-responsive">
             <table class="infra-table">
               <thead><tr><th>Recurso</th><th class="num">Antes</th><th class="num">Depois</th><th class="num">Δ</th></tr></thead>
@@ -196,6 +206,18 @@
             </table>
           </div>
         </div>`;
+
+      const selTo = $('mig-to');
+      if (selTo) {
+        // Candidatas: qualquer máquina viva do cliente que não seja a origem.
+        const cand = machines.filter((m) => String(m._id) !== String(fromId)
+          && !['substituida', 'desativada'].includes(m.status));
+        selTo.innerHTML = ['<option value="">(nenhuma — usar os campos acima)</option>']
+          .concat(cand.map((m) => `<option value="${m._id}" ${String(m._id) === toId ? 'selected' : ''}>`
+            + `${esc(m.model || 'Máquina')} · ${esc(m.serial || 's/ serial')}</option>`)).join('');
+        selTo.value = toId;
+        selTo.addEventListener('change', (e) => { toId = e.target.value; });
+      }
 
       wrap.querySelectorAll('[data-spec]').forEach((i) => i.addEventListener('input', () => {
         after[i.dataset.spec] = i.value === '' ? 0 : Number(i.value);
@@ -269,6 +291,9 @@
           lsprModel: $('mig-lspr').value.trim(),
           serial: $('mig-serial') ? $('mig-serial').value.trim() : '',
         }),
+        // MES não tem destino: é a mesma máquina. Manda null para desvincular
+        // caso a proposta tenha nascido como MO e o usuário tenha trocado.
+        toMachine: kind === 'MO' ? (toId || null) : null,
       };
       try {
         if (editando) await jsonPut(`/clients/${clientId}/migrations/${event._id}`, payload);

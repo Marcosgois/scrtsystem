@@ -325,6 +325,61 @@ async function runMigrationTests(admin, C, m1, site, mkMachine, ct1) {
   r = await admin.req(`${C}/migrations`, { method: 'POST', json: { kind: 'MO', fromMachine: m1._id, after: { ...alvo, serial: 'AA-1111' } } });
   check('MO com serial igual ao atual -> 422', r.status === 422, r.status);
 
+  /* ── Máquina de DESTINO já cadastrada ──
+     A máquina nova costuma ser cadastrada à mão antes de chegar. Vinculá-la à
+     proposta é o que faz a tela desenhá-la no site ao lado da atual — e o que a
+     tira dos totais do parque, porque ela ainda não existe fisicamente. */
+  const mDest = (await admin.req(`${C}/infra/machines`, {
+    method: 'POST', json: { model: 'IBM z17', serial: 'DEST-1', cps: 8, memoryTB: 8 },
+  })).body;
+
+  r = await admin.req(`${C}/migrations`, {
+    method: 'POST', json: { kind: 'MO', fromMachine: m1._id, after: { ...alvo, serial: 'DEST-1' }, toMachine: m1._id },
+  });
+  check('destino igual à origem -> 422', r.status === 422, r.status);
+  r = await admin.req(`${C}/migrations`, {
+    method: 'POST', json: { kind: 'MES', fromMachine: m1._id, after: alvo, toMachine: mDest._id },
+  });
+  check('MES com máquina de destino -> 422 (MES é a mesma máquina)', r.status === 422, r.body);
+  r = await admin.req(`${C}/migrations`, {
+    method: 'POST', json: { kind: 'MO', fromMachine: m1._id, after: { ...alvo, serial: 'DEST-1' }, toMachine: '507f1f77bcf86cd799439011' },
+  });
+  check('destino de outro cliente/inexistente -> 422', r.status === 422, r.status);
+
+  const moDest = (await admin.req(`${C}/migrations`, {
+    method: 'POST',
+    json: { kind: 'MO', title: 'Troca com destino', fromMachine: m1._id, after: { ...alvo, serial: 'DEST-1' }, toMachine: mDest._id },
+  })).body;
+  check('MO aceita a máquina de destino', String(moDest.toMachine) === String(mDest._id), moDest.toMachine);
+
+  // Duas propostas para a MESMA máquina nova: na execução a segunda apagaria a
+  // configuração deixada pela primeira.
+  r = await admin.req(`${C}/migrations`, {
+    method: 'POST', json: { kind: 'MO', fromMachine: m1._id, after: { ...alvo, serial: 'DEST-1' }, toMachine: mDest._id },
+  });
+  check('duas propostas para o mesmo destino -> 422', r.status === 422, r.body);
+
+  r = await admin.req(`${C}/infra/machines`);
+  const origem = r.body.find((x) => String(x._id) === String(m1._id));
+  const destino = r.body.find((x) => String(x._id) === String(mDest._id));
+  check('a origem carrega a proposta, com o snapshot para desenhar o card',
+    origem && (origem.propostas || []).length === 1 && origem.propostas[0].after
+    && String(origem.propostas[0].toMachine) === String(mDest._id),
+    origem && origem.propostas);
+  check('o destino é marcado como "em negociação", apontando a origem',
+    destino && String(destino.propostaDe) === String(m1._id), destino && destino.propostaDe);
+  check('a máquina de destino NÃO carrega proposta própria',
+    destino && (destino.propostas || []).length === 0, destino && destino.propostas);
+
+  // Desvincula e confere que os dois lados voltam ao normal.
+  r = await admin.req(`${C}/migrations/${moDest._id}`, { method: 'PUT', json: { toMachine: null } });
+  check('PUT com toMachine null desvincula', r.status === 200 && !r.body.toMachine, r.body.toMachine);
+  r = await admin.req(`${C}/infra/machines`);
+  check('desvinculada, a máquina volta a ser uma máquina comum',
+    !r.body.find((x) => String(x._id) === String(mDest._id)).propostaDe);
+  await admin.req(`${C}/migrations/${moDest._id}`, { method: 'DELETE' });
+  await admin.req(`${C}/infra/machines/${mDest._id}`, { method: 'DELETE' });
+
   // ── MES completo ──
   r = await admin.req(`${C}/migrations`, {
     method: 'POST',

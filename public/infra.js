@@ -9,6 +9,15 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
 const nf = new Intl.NumberFormat('pt-BR');
 const fmt = (n) => (n == null ? '–' : nf.format(n));
 const num1 = (n) => (n == null ? '–' : nf.format(Math.round(n * 10) / 10));
+// Data de contrato é "dia", não instante: formata o AAAA-MM-DD direto, senão o
+// fuso derruba um dia (new Date('2026-12-31') é meia-noite UTC).
+const dataBr = (d) => {
+  const s = String(d || '');
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const dd = new Date(s);
+  return Number.isNaN(dd.getTime()) ? '—' : dd.toLocaleDateString('pt-BR');
+};
 
 const ROLES = {
   prod: { label: 'Produção', color: '#0f62fe' },
@@ -132,11 +141,16 @@ function drStatus() {
 }
 
 function renderStats() {
-  // Máquina substituída (saiu num MO) não entra em nenhum somatório — senão o
-  // parque apareceria dobrado depois de cada troca.
-  const noParque = state.machines.filter((m) => m.status !== 'substituida');
+  /* Fora dos somatórios:
+     - a máquina SUBSTITUÍDA (saiu num MO) — senão o parque apareceria dobrado
+       depois de cada troca;
+     - a máquina de DESTINO de uma proposta em aberto — ela ainda não chegou.
+       Somá-la daria MIPS e processadores que o cliente não tem, e é justamente
+       o que acontecia com a máquina cadastrada à mão antes de ser vinculada. */
+  const emNegociacao = state.machines.filter((m) => m.propostaDe);
+  const noParque = state.machines.filter((m) => m.status !== 'substituida' && !m.propostaDe);
   const ativas = noParque.filter((m) => m.status === 'ativa');
-  const substituidas = state.machines.length - noParque.length;
+  const substituidas = state.machines.filter((m) => m.status === 'substituida').length;
   const sum = (k) => noParque.reduce((a, m) => a + (m[k] || 0), 0);
   const cps = sum('cps'); const ziips = sum('ziips'); const ifls = sum('iflsActive'); const icfs = sum('icfs');
   const engines = cps + ziips + ifls + icfs;
@@ -152,7 +166,11 @@ function renderStats() {
       : `${fmt(msu)} MSU · ${comLspr.length} máquina(s)`;
   const dr = drStatus();
   const dormentes = noParque.length - ativas.length;
-  const legenda = [dormentes ? `${dormentes} dormente(s)` : 'nenhuma dormente', substituidas ? `${substituidas} substituída(s)` : ''].filter(Boolean).join(' · ');
+  const legenda = [
+    dormentes ? `${dormentes} dormente(s)` : 'nenhuma dormente',
+    substituidas ? `${substituidas} substituída(s)` : '',
+    emNegociacao.length ? `${emNegociacao.length} em negociação, fora do total` : '',
+  ].filter(Boolean).join(' · ');
   const cards = [
     { h: 'Sites', v: fmt(state.sites.length) },
     { h: 'Máquinas ativas', v: fmt(ativas.length), s: legenda },
@@ -304,6 +322,72 @@ function machineRow(m) {
   </button>`;
 }
 
+/*
+ * Card da máquina que está em NEGOCIAÇÃO, desenhado logo abaixo da atual.
+ *
+ * Ele não é uma máquina do parque: é a proposta. Por isso vem do snapshot
+ * `after` do evento (ou da máquina de destino, quando ela já está cadastrada) e
+ * NÃO entra em soma nenhuma — nem no rodapé do site, nem nos KPIs, nem na
+ * tabela. Um parque que já conta a máquina que ainda está sendo negociada é um
+ * parque que mente.
+ */
+function propostaRow(m, p) {
+  const dest = p.toMachine ? state.machines.find((x) => x._id === p.toMachine) : null;
+  const cfg = dest || p.after || {};
+  const serial = cfg.serial || (p.after && p.after.serial) || 's/ serial';
+  const modelo = dest
+    ? (dest.lsprModel || [dest.model, dest.featureModel].filter(Boolean).join('-') || '')
+    : (cfg.lsprModel || cfg.model || '');
+
+  const fatos = [];
+  if (cfg.msu) fatos.push(`${fmt(cfg.msu)} MSU`);
+  else if (dest && dest.lspr && dest.lspr.msu) fatos.push(`${fmt(dest.lspr.msu)} MSU`);
+  if (cfg.cps) fatos.push(`${fmt(cfg.cps)} CP`);
+  if (cfg.ziips) fatos.push(`${fmt(cfg.ziips)} zIIP`);
+  if (cfg.iflsActive) fatos.push(`${fmt(cfg.iflsActive)} IFL`);
+  if (cfg.memoryTB) fatos.push(`${num1(cfg.memoryTB)} TB`);
+
+  // O que muda em relação à máquina de hoje — é a razão de a proposta existir.
+  const antes = m.lspr && m.lspr.msu ? m.lspr.msu : null;
+  const depois = cfg.msu || (dest && dest.lspr && dest.lspr.msu) || null;
+  const dMsu = antes != null && depois != null ? depois - antes : null;
+  const delta = dMsu ? `<span class="${dMsu > 0 ? 'cap-up' : 'cap-down'}">${dMsu > 0 ? '+' : ''}${fmt(dMsu)} MSU</span>` : '';
+
+  const quando = p.plannedDate ? ` · prevista para ${dataBr(p.plannedDate)}` : '';
+  const situacao = p.status === 'contratado' ? 'contratado' : 'em negociação';
+
+  /* Proposta sem vínculo, mas existe uma máquina cadastrada com o mesmo serial:
+     é a mesma coisa aparecendo duas vezes na tela — uma como proposta e outra
+     como máquina de verdade, contando nos totais. O serial é a identidade da
+     máquina em todo o sistema, então dá para apontar isso com segurança. */
+  const gemea = !p.toMachine && serial
+    ? state.machines.find((x) => String(x.serial || '').toUpperCase() === String(serial).toUpperCase())
+    : null;
+  const aviso = gemea
+    ? `<div class="imc-todo warn">Já existe a máquina <b>${esc(gemea.serial)}</b> cadastrada.
+        Vincule-a à proposta (em Editar) para ela sair dos totais do parque.</div>`
+    : '';
+
+  return `<button type="button" class="imc imc-proposta" data-mo="${m._id}"
+          title="Abrir a proposta ${esc(p.title || '')}">
+    <span class="imc-rail" aria-hidden="true"></span>
+    <div class="imc-top">
+      <span class="imc-seta" aria-hidden="true">↳</span>
+      <span class="imc-serial-forte">${esc(serial)}</span>
+      ${modelo ? `<span class="imc-tm">${esc(modelo)}</span>` : ''}
+      <span class="imc-state imc-state-prop">${esc(situacao)}</span>
+    </div>
+    <div class="imc-facts">${fatos.length ? esc(fatos.join(' · ')) : '<span class="nil">configuração não informada</span>'}</div>
+    <div class="imc-todo info">${esc(p.kind)}${p.title ? ` · ${esc(p.title)}` : ''}${quando} ${delta}</div>
+    ${aviso}
+  </button>`;
+}
+
+/** A máquina e, logo abaixo, as propostas de troca que ela tem em aberto. */
+function machineComPropostas(m) {
+  return machineRow(m) + (m.propostas || []).map((p) => propostaRow(m, p)).join('');
+}
+
 /* Ordena a coluna pela gravidade: o que exige ação sobe. Empate mantém a ordem
    de chegada, para a lista não dançar a cada render. */
 function porGravidade(ms) {
@@ -311,6 +395,11 @@ function porGravidade(ms) {
     .sort((a, b) => ((a.t ? a.t.peso : 9) - (b.t ? b.t.peso : 9)) || (a.i - b.i))
     .map((x) => x.m);
 }
+
+/* A máquina de destino de uma proposta em aberto sai da lista onde estaria:
+   ela é desenhada junto da origem, e aparecer nos dois lugares faria o site
+   parecer ter uma máquina a mais. */
+const semDestinosDeProposta = (ms) => ms.filter((m) => !m.propostaDe);
 
 /* Rodapé do site: a linha de totais da mesma tabela. Só soma o que dá para
    somar — se metade das máquinas não tem LSPR, o total de MSU diz de quantas. */
@@ -363,7 +452,7 @@ function renderOverview() {
   }
   const bySite = new Map(state.sites.map((s) => [s._id, []]));
   const semSite = [];
-  for (const m of state.machines) {
+  for (const m of semDestinosDeProposta(state.machines)) {
     const sid = m.site && (m.site._id || m.site);
     if (sid && bySite.has(sid)) bySite.get(sid).push(m);
     else semSite.push(m);
@@ -378,14 +467,14 @@ function renderOverview() {
         <button type="button" class="btn-link" data-edit-site="${s._id}">editar</button>
         ${sitePilula(ms)}
       </div>
-      ${ms.length ? `<div class="imc-list">${porGravidade(ms).map(machineRow).join('')}</div>` : '<div class="empty-inline small">sem máquinas neste site</div>'}
+      ${ms.length ? `<div class="imc-list">${porGravidade(ms).map(machineComPropostas).join('')}</div>` : '<div class="empty-inline small">sem máquinas neste site</div>'}
       ${siteFoot(ms)}
     </div>`;
   }).join('');
   const semSiteBlock = semSite.length
     ? `<div class="site-block site-block-nosite">
         <div class="site-block-head"><span class="badge badge-neutral">Sem site</span><strong>Máquinas sem site definido</strong></div>
-        <div class="imc-list">${porGravidade(semSite).map(machineRow).join('')}</div>
+        <div class="imc-list">${porGravidade(semSite).map(machineComPropostas).join('')}</div>
         ${siteFoot(semSite)}
       </div>`
     : '';
@@ -394,6 +483,10 @@ function renderOverview() {
 }
 
 function wireOverview(el) {
+  // O card da proposta é ele próprio um [data-mo] — clicar em qualquer parte
+  // dele abre a MO/MES. Vem antes por não ter data-open-lpars.
+  el.querySelectorAll('.imc-proposta[data-mo]').forEach((b) =>
+    b.addEventListener('click', () => abrirMoDaMaquina(b.dataset.mo)));
   // O selo de MO/MES leva direto à proposta; o resto do card, aos detalhes.
   el.querySelectorAll('[data-open-lpars]').forEach((b) => b.addEventListener('click', (e) => {
     const mo = e.target.closest('[data-mo]');
