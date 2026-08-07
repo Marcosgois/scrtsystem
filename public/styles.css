@@ -89,12 +89,29 @@ svg { flex-shrink: 0; }
   max-width: 1600px;
   margin: 0 auto;
   padding: 0 20px;
-  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * DUAS LINHAS, de propósito.
+ *
+ * Com uma linha só a conta não fechava em tela nenhuma: a nav pede 756px, a
+ * direita (cliente + ações + usuário) pede 778px, e o container trava em 1600 —
+ * faltavam 46px mesmo num monitor 4K. O que sobrava era cortado em silêncio,
+ * porque a nav tem overflow-x com a barra de rolagem escondida. "Contratos" e
+ * "Painel gerencial" simplesmente não existiam para quem não soubesse arrastar.
+ *
+ * Agora a linha 1 responde "onde estou e em que cliente" e a linha 2 é só
+ * navegação, em largura inteira. Custa 40px de altura e resolve para valer:
+ * o próximo módulo entra sem espremer nada.
+ */
+.topbar-linha {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: nowrap; /* nada de segunda linha: a nav encolhe/rola no lugar */
+  min-height: 48px;
 }
 
 .brand { display: flex; align-items: stretch; gap: 14px; min-width: 0; flex: 1 1 auto; }
@@ -121,8 +138,9 @@ svg { flex-shrink: 0; }
 
 .brand p { display: none; } /* o subtítulo vive no cabeçalho da página, não no shell */
 
-/* Navegação entre módulos: abas do shell, sem cápsulas nem ícones decorativos */
-/* A nav é a peça elástica: rola na horizontal quando o espaço aperta. */
+/* Navegação entre módulos: abas do shell, na segunda linha, largura inteira.
+   Em telas realmente estreitas ela ainda rola — mas com o degrade da direita
+   avisando que há mais coisa, em vez de cortar calada. */
 .module-nav {
   display: flex;
   align-items: stretch;
@@ -130,6 +148,7 @@ svg { flex-shrink: 0; }
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 .module-nav::-webkit-scrollbar { display: none; }
 
@@ -137,7 +156,7 @@ svg { flex-shrink: 0; }
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
+  padding: 10px 14px;
   font-size: 13px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.72);
@@ -146,6 +165,9 @@ svg { flex-shrink: 0; }
   transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
   white-space: nowrap;
 }
+/* O último item ganha um respiro à direita: colado na borda ele parece cortado
+   mesmo quando não está. */
+.module-nav a:last-child { margin-right: 12px; }
 
 .module-nav a:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
 
@@ -1540,14 +1562,23 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
 .topbar .home-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.6); }
 .tfp-topbar-actions .home-btn { color: #fff; border-color: rgba(255, 255, 255, 0.35); text-decoration: none; }
 /* O topbar cede em etapas, na ordem do que menos faz falta.
-   Medido: com tudo visível são ~1470px; sem o título, ~1325px; sem os rótulos
-   do Home e do usuário, ~1175px. Abaixo disso a nav rola. */
-@media (max-width: 1500px) {
+   Com a nav na segunda linha, a linha 1 pede ~960px — então o título do produto
+   pode ficar bem mais tempo do que ficava antes (escondia em 1500px). */
+@media (max-width: 1020px) {
   .brand > div:not(.brand-mark) { display: none; } /* título do produto (a marca "Z" fica) */
 }
-@media (max-width: 1400px) {
+@media (max-width: 880px) {
   .home-btn-text { display: none; }
   .user-chip-text { display: none; }
+}
+/* Abaixo de ~860px a nav (≈790px) não cabe mais e volta a rolar. Aí o degrade
+   da direita avisa que há mais módulos — o problema original era exatamente
+   sumir sem avisar. */
+@media (max-width: 860px) {
+  .module-nav {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+  }
 }
 
 /* Termos aditivos: selo que expande a lista dentro da própria linha */
