@@ -97,6 +97,31 @@
     .login-credits strong { color: rgba(255,255,255,0.68); font-weight: 600; }
     .login-credits svg { flex: none; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255,255,255,0.16); }
     .lc-loading { color: rgba(255,255,255,0.5); font-size: 13px; }
+
+    /* Identidade que veio do SSO (w3id via Cloudflare Access) */
+    .sso-id {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 22px; padding: 12px 14px;
+      border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); border-radius: var(--radius);
+    }
+    .sso-avatar {
+      width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center;
+      background: linear-gradient(135deg, #0f62fe, #6929c4); color: #fff; font-weight: 600; font-size: 13px;
+    }
+    .sso-id .sso-who { flex: 1; min-width: 0; }
+    .sso-id strong { display: block; font-size: 13.5px; font-weight: 600; }
+    .sso-id .sso-mail { display: block; font-size: 12px; color: rgba(255,255,255,0.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sso-badge {
+      flex: none; font-size: 10.5px; letter-spacing: 0.4px; text-transform: uppercase; color: #78a9ff;
+      border: 1px solid rgba(120,169,255,0.4); border-radius: 999px; padding: 3px 9px;
+    }
+    .setup-note.sso-ok { border-color: rgba(36,161,72,0.42); background: rgba(36,161,72,0.13); }
+    .setup-note.sso-no { border-color: rgba(255,122,130,0.42); background: rgba(218,30,40,0.12); }
+    .sso-alt { margin-top: 18px; text-align: center; }
+    .sso-alt button {
+      background: none; border: none; padding: 0; color: rgba(255,255,255,0.5); font-size: 12.5px;
+      font-family: var(--font); cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+    }
+    .sso-alt button:hover { color: #78a9ff; }
   </style>
   <script src="/i18n-dict.js"></script>
   <script src="/i18n.js"></script>
@@ -188,6 +213,90 @@
       if (e) { e.textContent = msg; e.classList.add('show'); }
     }
 
+    /* ── SSO (w3id via Cloudflare Access) ────────────────────────────────────
+     * Chegar aqui com identidade do SSO significa uma coisa só: o e-mail é
+     * confiável, mas não tem cadastro no sistema (se tivesse, o servidor já
+     * teria emitido a sessão e nem passaríamos por esta tela). Então não há
+     * senha a pedir — o que cabe é registrar o pedido e esperar um admin.
+     */
+    const esc = (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const iniciais = (nome, email) => {
+      const base = String(nome || email || '?').trim();
+      const p = base.split(/\s+/).filter(Boolean);
+      return (p.length >= 2 ? p[0][0] + p[p.length - 1][0] : base.slice(0, 2)).toUpperCase();
+    };
+
+    const dataBr = (v) => { const d = new Date(v); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR'); };
+
+    const cartaoSso = (s) => `
+      <div class="sso-id">
+        <span class="sso-avatar">${esc(iniciais(s.nome, s.email))}</span>
+        <span class="sso-who"><strong>${esc(s.nome || '')}</strong><span class="sso-mail">${esc(s.email)}</span></span>
+        <span class="sso-badge">w3id</span>
+      </div>`;
+
+    const linkSenha = '<p class="sso-alt"><button type="button" id="lc-senha">Entrar com e-mail e senha</button></p>';
+
+    function ssoPanel(s) {
+      const pedido = s.solicitacao;
+      if (pedido && pedido.status === 'pendente') {
+        return `
+          <h2>Pedido enviado</h2>
+          <p class="sub">Falta a aprovação de um administrador.</p>
+          ${cartaoSso(s)}
+          <div class="setup-note sso-ok"><span>Seu pedido de ${esc(dataBr(pedido.criadoEm))} está na fila. Assim que for aprovado, basta recarregar esta página — você entra direto, sem senha.</span></div>
+          ${linkSenha}`;
+      }
+      const recusado = pedido && pedido.status === 'recusado';
+      return `
+        <h2>${recusado ? 'Pedido recusado' : 'Solicitar acesso'}</h2>
+        <p class="sub">Você já está autenticado no w3id, mas este e-mail ainda não tem cadastro aqui.</p>
+        ${cartaoSso(s)}
+        ${recusado ? `<div class="setup-note sso-no"><span>Um administrador recusou o pedido anterior${pedido.motivo ? `: <strong>${esc(pedido.motivo)}</strong>` : ''}. Você pode pedir de novo explicando melhor.</span></div>` : ''}
+        <div class="login-error" id="lc-error"></div>
+        <form id="lc-form">
+          <label class="field-dark"><span>Por que você precisa de acesso? (opcional)</span>
+            <input type="text" id="f-note" maxlength="300" placeholder="Ex.: sou o arquiteto da conta CAIXA" autofocus></label>
+          <button type="submit" class="btn-login" id="lc-submit">${recusado ? 'Pedir novamente' : 'Pedir acesso'} ${arrow}</button>
+        </form>
+        ${linkSenha}`;
+    }
+
+    async function pedirAcesso(s, e) {
+      e.preventDefault();
+      const btn = $('lc-submit');
+      btn.disabled = true;
+      $('lc-error').classList.remove('show');
+      try {
+        const res = await fetch('/api/auth/solicitar-acesso', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: $('f-note').value.trim() }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Não foi possível registrar o pedido.');
+        montarSso({ ...s, solicitacao: { status: 'pendente', criadoEm: body.criadoEm || Date.now() } });
+      } catch (err) {
+        showError(err.message);
+        btn.disabled = false;
+      }
+    }
+
+    function montarSso(s) {
+      $('lc-body').innerHTML = ssoPanel(s);
+      const form = $('lc-form');
+      if (form) form.addEventListener('submit', (e) => pedirAcesso(s, e));
+      // Escotilha de saída: com o SSO ligado ninguém precisa de senha, mas um
+      // admin com conta local (ou alguém depurando) ainda consegue chegar no
+      // formulário — a rota de login continua existindo.
+      $('lc-senha').addEventListener('click', () => {
+        $('lc-body').innerHTML = loginForm();
+        $('lc-form').addEventListener('submit', (e) => submit('login', e));
+      });
+    }
+
     async function submit(mode, e) {
       e.preventDefault();
       const btn = $('lc-submit');
@@ -222,6 +331,11 @@
         return;
       }
       if (status.user) { location.href = nextUrl; return; }
+      // Identidade do SSO sem cadastro: em vez de um formulário que ninguém pode
+      // preencher, a tela do pedido de acesso. O primeiro admin (needsSetup) vem
+      // antes, senão um sistema vazio nunca sairia do lugar.
+      const s = status.sso;
+      if (!status.needsSetup && s && s.ativo && s.email) { montarSso(s); return; }
       const mode = status.needsSetup ? 'setup' : 'login';
       $('lc-body').innerHTML = status.needsSetup ? setupForm() : loginForm();
       $('lc-form').addEventListener('submit', (e) => submit(mode, e));

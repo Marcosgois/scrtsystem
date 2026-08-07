@@ -146,9 +146,36 @@
     document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) toggle(false); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggle(false); });
     wrap.querySelector('#ac-logout').addEventListener('click', async () => {
-      try { await origFetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
-      location.href = '/';
+      let destino = '/';
+      try {
+        const r = await origFetch('/api/auth/logout', { method: 'POST' });
+        const body = await r.json().catch(() => ({}));
+        // Com o Cloudflare Access na frente, apagar o cookie do app não desloga
+        // ninguém: o próximo GET reautentica pelo w3id na hora. O servidor manda
+        // junto a URL que encerra a sessão do Access — é para lá que se vai.
+        if (body && body.redirect) destino = body.redirect;
+      } catch (_) { /* ignora: sair não pode travar por causa da rede */ }
+      location.href = destino;
     });
+
+    // Pedido de acesso novo é inútil se ninguém repara nele. O contador vem do
+    // /status (só preenchido para admin) e vira um selo no atalho de Administração.
+    if (me.role === 'admin') {
+      origFetch('/api/auth/status')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((s) => {
+          const n = Number(s && s.pendentes) || 0;
+          const item = wrap.querySelector('.user-pop-item[href="/admin"]');
+          if (!n || !item) return;
+          const selo = document.createElement('span');
+          selo.className = 'pop-badge';
+          selo.textContent = String(n);
+          selo.title = `${n} pedido(s) de acesso aguardando aprovação`;
+          item.appendChild(selo);
+          chip.classList.add('has-alert');
+        })
+        .catch(() => { /* selo é enfeite: falhou, segue sem ele */ });
+    }
   }
 
   async function init() {

@@ -11,6 +11,7 @@ const state = {
   users: [],
   clients: [],
   editingId: null,      // id do usuário em edição (null = novo)
+  aprovando: null,      // pedido de acesso sendo aprovado (reusa o mesmo modal)
   role: 'user',         // papel selecionado no modal
   access: new Map(),    // clientId -> 'view' | 'edit'
 };
@@ -198,10 +199,12 @@ document.querySelectorAll('[data-bulk]').forEach((b) =>
 
 function openUserModal(id) {
   state.editingId = id || null;
+  state.aprovando = null;
   const u = id ? state.users.find((x) => String(x._id) === String(id)) : null;
   const me = window.__me || {};
   const isSelf = u && String(u._id) === String(me._id);
 
+  campoSenha(true);
   $('modal-user-title').textContent = u ? 'Editar usuário' : 'Novo usuário';
   $('u-name').value = u ? u.name : '';
   $('u-email').value = u ? u.email : '';
@@ -225,6 +228,34 @@ function openUserModal(id) {
   setTimeout(() => $('u-name').focus(), 40);
 }
 
+const campoSenha = (mostrar) => { $('u-password').closest('label').style.display = mostrar ? '' : 'none'; };
+
+/* Aprovar um pedido é a MESMA decisão de criar um usuário — papel e acesso por
+   cliente —, então reusa o modal em vez de ter uma segunda tela que divergiria
+   na primeira manutenção. O que muda: nome e e-mail vêm do pedido (o e-mail é o
+   do token do SSO, não se digita) e não há senha, porque a entrada é pelo w3id. */
+function abrirAprovacao(p) {
+  state.editingId = null;
+  state.aprovando = p;
+
+  campoSenha(false);
+  $('modal-user-title').textContent = 'Aprovar acesso';
+  $('u-name').value = p.name || '';
+  $('u-email').value = p.email;
+  $('u-email').disabled = true;
+  $('u-password').value = '';
+
+  state.role = 'user';
+  state.access = new Map();
+
+  $('btn-delete-user').style.display = 'none';
+  $('u-error').classList.add('hidden');
+  renderRolePicker();
+  renderAccessBlock();
+  openModal('modal-user');
+  setTimeout(() => $('u-name').focus(), 40);
+}
+
 function accessPayload() {
   const out = [];
   state.access.forEach((level, client) => out.push({ client, level }));
@@ -240,6 +271,22 @@ async function saveUser() {
 
   const fail = (msg) => { err.textContent = msg; err.classList.remove('hidden'); };
   if (!name) return fail('Informe o nome.');
+
+  if (state.aprovando) {
+    const btnOk = $('btn-save-user');
+    btnOk.disabled = true;
+    try {
+      await api(`/admin/access-requests/${state.aprovando._id}/aprovar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, role: state.role, access: state.role === 'admin' ? [] : accessPayload() }),
+      });
+      toast(`Acesso aprovado para ${state.aprovando.email}.`);
+      closeModals();
+      await Promise.all([load(), loadRequests()]);
+    } catch (e) { fail(e.message); } finally { btnOk.disabled = false; }
+    return;
+  }
+
   if (!state.editingId && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('E-mail inválido.');
   if (!state.editingId && password.length < 6) return fail('A senha precisa de ao menos 6 caracteres.');
   if (state.editingId && password && password.length < 6) return fail('A nova senha precisa de ao menos 6 caracteres.');
@@ -286,10 +333,91 @@ async function deleteUser(u) {
 $('btn-new-user').addEventListener('click', () => openUserModal(null));
 $('btn-save-user').addEventListener('click', saveUser);
 
+/* ── Pedidos de acesso ───────────────────────────────────────────────────────
+   A fila de quem chegou pelo SSO (w3id) e ainda não tem cadastro. O e-mail já
+   veio verificado pelo Cloudflare Access — o que falta aqui é a decisão humana:
+   esta pessoa entra, com que papel e em quais clientes. */
+const reqState = { items: [], pendentes: 0, ssoAtivo: false, loaded: false };
+const REQ_TAG = {
+  pendente: ['warn', 'Pendente'],
+  aprovado: ['ok', 'Aprovado'],
+  recusado: ['danger', 'Recusado'],
+};
+
+async function loadRequests() {
+  try {
+    const r = await api('/admin/access-requests');
+    reqState.items = r.items || [];
+    reqState.pendentes = r.pendentes || 0;
+    reqState.ssoAtivo = !!(r.sso && r.sso.ativo);
+    reqState.loaded = true;
+    renderRequests();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function renderRequests() {
+  const badge = $('req-badge');
+  badge.textContent = reqState.pendentes ? String(reqState.pendentes) : '';
+  badge.classList.toggle('hidden', !reqState.pendentes);
+
+  $('req-sso-off').classList.toggle('hidden', reqState.ssoAtivo);
+  const body = $('requests-body');
+  $('requests-empty').classList.toggle('hidden', reqState.items.length > 0);
+  body.innerHTML = reqState.items.map((p) => {
+    const [cls, rotulo] = REQ_TAG[p.status] || ['', p.status];
+    const acoes = p.status === 'pendente'
+      ? `<button class="btn btn-sm btn-primary" data-aprovar="${p._id}">Aprovar</button>
+         <button class="btn btn-sm btn-danger-ghost" data-recusar="${p._id}">Recusar</button>`
+      : `<span class="muted small">por ${esc(p.decidedByEmail || '—')}</span>`;
+    return `
+      <tr>
+        <td>
+          <div class="user-cell">
+            <span class="user-avatar">${esc(initials(p.name, p.email))}</span>
+            <div><strong>${esc(p.name || '—')}</strong><div class="muted small mono">${esc(p.email)}</div></div>
+          </div>
+        </td>
+        <td>${p.note ? esc(p.note) : '<span class="muted">—</span>'}</td>
+        <td>${esc(fmtWhen(p.createdAt))}</td>
+        <td>
+          <span class="role-tag ${cls}">${rotulo}</span>
+          ${p.status === 'recusado' && p.reason ? `<div class="muted small">${esc(p.reason)}</div>` : ''}
+        </td>
+        <td class="col-actions">${acoes}</td>
+      </tr>`;
+  }).join('');
+
+  body.querySelectorAll('[data-aprovar]').forEach((b) => b.addEventListener('click', () => {
+    const p = reqState.items.find((x) => String(x._id) === b.getAttribute('data-aprovar'));
+    if (p) abrirAprovacao(p);
+  }));
+  body.querySelectorAll('[data-recusar]').forEach((b) => b.addEventListener('click', () => {
+    const p = reqState.items.find((x) => String(x._id) === b.getAttribute('data-recusar'));
+    if (p) recusarPedido(p);
+  }));
+}
+
+async function recusarPedido(p) {
+  const motivo = prompt(`Recusar o acesso de ${p.email}?\n\nMotivo (opcional, aparece para a pessoa):`, '');
+  if (motivo === null) return;   // cancelou
+  try {
+    await api(`/admin/access-requests/${p._id}/recusar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: motivo.trim() }),
+    });
+    toast('Pedido recusado.');
+    await loadRequests();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
 /* ── Auditoria ──────────────────────────────────────── */
 const auditState = { page: 1, limit: 100, hasMore: false, loading: false, loaded: false };
-const ACTION_LABEL = { create: 'Criou', update: 'Editou', delete: 'Excluiu', login: 'Entrou', logout: 'Saiu', 'login-falho': 'Login falho', negado: 'Negado', setup: 'Setup' };
-const ACTION_CLASS = { create: 'ok', update: 'info', delete: 'danger', 'login-falho': 'warn', negado: 'warn' };
+const ACTION_LABEL = { create: 'Criou', update: 'Editou', delete: 'Excluiu', login: 'Entrou', logout: 'Saiu', 'login-falho': 'Login falho', negado: 'Negado', setup: 'Setup', 'acesso-solicitado': 'Pediu acesso', 'acesso-aprovado': 'Aprovou acesso', 'acesso-recusado': 'Recusou acesso' };
+const ACTION_CLASS = { create: 'ok', update: 'info', delete: 'danger', 'login-falho': 'warn', negado: 'warn', 'acesso-solicitado': 'info', 'acesso-aprovado': 'ok', 'acesso-recusado': 'warn' };
 
 function fmtWhen(iso) {
   const d = new Date(iso);
@@ -379,9 +507,11 @@ function populateAuditFilters() {
 function showView(view) {
   document.querySelectorAll('#admin-tabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   $('admin-view').classList.toggle('hidden', view !== 'users');
+  $('requests-view').classList.toggle('hidden', view !== 'requests');
   $('audit-view').classList.toggle('hidden', view !== 'audit');
   $('lifecycle-view').classList.toggle('hidden', view !== 'lifecycle');
   $('btn-new-user').style.display = view === 'users' ? '' : 'none';
+  if (view === 'requests') loadRequests();   // recarrega sempre: a fila muda por fora
   if (view === 'audit' && !auditState.loaded) { populateAuditFilters(); loadAudit(true); }
   if (view === 'lifecycle' && !lifecycleState.loaded) loadLifecycle();
 }
@@ -498,4 +628,8 @@ $('btn-new-lifecycle').addEventListener('click', () => abrirLifecycle(null));
 $('btn-save-lifecycle').addEventListener('click', salvarLifecycle);
 $('btn-delete-lifecycle').addEventListener('click', excluirLifecycle);
 
-load().catch((e) => toast(`Falha ao carregar: ${e.message}`, 'error'));
+// A fila de pedidos é carregada já no start (e não só ao abrir a aba) porque é
+// o selo com o número que avisa o admin de que chegou alguém esperando.
+load()
+  .then(loadRequests)
+  .catch((e) => toast(`Falha ao carregar: ${e.message}`, 'error'));

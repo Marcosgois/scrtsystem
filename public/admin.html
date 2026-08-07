@@ -63,6 +63,7 @@
 <main class="container" id="main">
   <div class="segmented admin-tabs" id="admin-tabs" role="group" aria-label="Visões da administração">
     <button type="button" class="seg-btn active" data-view="users">Usuários</button>
+    <button type="button" class="seg-btn" data-view="requests">Pedidos de acesso<span class="seg-badge hidden" id="req-badge"></span></button>
     <button type="button" class="seg-btn" data-view="audit">Auditoria</button>
     <button type="button" class="seg-btn" data-view="lifecycle">Ciclo de vida IBM Z</button>
   </div>
@@ -94,6 +95,35 @@
     <div class="empty-inline hidden" id="users-empty">Nenhum usuário cadastrado ainda.</div>
   </section>
 
+  <section id="requests-view" class="hidden">
+    <div class="client-header">
+      <div>
+        <h2>Pedidos de acesso</h2>
+        <p class="muted">Quem entra pelo login corporativo (w3id) e ainda não tem cadastro aparece aqui. Aprovar cria o usuário — e a pessoa passa a entrar direto, sem senha nenhuma.</p>
+      </div>
+    </div>
+
+    <div class="empty-inline hidden" id="req-sso-off">
+      O login corporativo não está configurado neste ambiente (faltam <code>SSO_TEAM_DOMAIN</code> e <code>SSO_AUD</code>). Sem ele ninguém consegue registrar pedidos — cadastre as pessoas pela aba <strong>Usuários</strong>.
+    </div>
+
+    <div class="table-responsive">
+      <table class="infra-table" id="requests-table">
+        <thead>
+          <tr>
+            <th>Pessoa</th>
+            <th>Justificativa</th>
+            <th>Quando</th>
+            <th>Situação</th>
+            <th class="col-actions"></th>
+          </tr>
+        </thead>
+        <tbody id="requests-body"></tbody>
+      </table>
+    </div>
+    <div class="empty-inline hidden" id="requests-empty">Nenhum pedido de acesso registrado.</div>
+  </section>
+
   <section id="audit-view" class="hidden">
     <div class="client-header">
       <div>
@@ -116,6 +146,9 @@
           <option value="login-falho">Login falho</option>
           <option value="negado">Acesso negado</option>
           <option value="setup">Setup</option>
+          <option value="acesso-solicitado">Pediu acesso</option>
+          <option value="acesso-aprovado">Aprovou acesso</option>
+          <option value="acesso-recusado">Recusou acesso</option>
         </select>
       </label>
       <label class="field"><span>De</span><input type="date" id="af-from"></label>

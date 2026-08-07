@@ -5,11 +5,13 @@
  * autorização (login obrigatório, admin, acesso por cliente). Sem deps externas.
  */
 
+const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
-const { User, ScrtReport, AuditLog, MachineLifecycle, Region, Client } = require('./models');
+const { User, ScrtReport, AuditLog, MachineLifecycle, Region, Client, AccessRequest } = require('./models');
 const regioes = require('./regions');
 const auth = require('./auth');
+const sso = require('./sso');
 const log = require('./logger');
 const audit = require('./audit');
 const guardaLogin = require('./loginGuard');
@@ -34,18 +36,45 @@ function publicUser(u) {
   };
 }
 
-/** Carrega req.user (ou null) a partir do cookie de sessão. */
+/**
+ * Quem está falando nesta requisição — o cookie de sessão primeiro, o SSO depois.
+ *
+ * A ordem importa. O cookie é a sessão que o app emitiu e sabe revogar
+ * (tokenVersion); o SSO é a identidade que o Cloudflare Access garante. Só se
+ * não houver sessão válida é que vale a pena verificar o token do Access, e
+ * quando ele identifica alguém JÁ CADASTRADO a sessão é emitida ali mesmo — daí
+ * em diante o custo por requisição volta a ser um HMAC, sem verificar assinatura
+ * de JWT nem falar com o Cloudflare a cada clique.
+ *
+ * Identidade do SSO SEM cadastro não autentica: fica em `req.sso` para a tela de
+ * login oferecer o pedido de acesso, e a requisição segue anônima. É a diferença
+ * entre "o w3id sabe quem você é" e "este sistema te conhece".
+ */
+async function usuarioDaRequisicao(req, res) {
+  const payload = auth.sessionPayload(req);
+  if (payload && isValidId(payload.uid)) {
+    const u = await User.findById(payload.uid).lean().catch(() => null);
+    // Revogação: o token carrega a versão; se não bate com a do usuário (senha
+    // trocada / "sair de todos os dispositivos"), a sessão é considerada inválida.
+    if (u && Number(payload.tv || 0) === Number(u.tokenVersion || 0)) return u;
+  }
+
+  const id = await sso.identidade(req);
+  if (!id) return null;
+  req.sso = id;
+  const u = await User.findOne({ email: id.email }).lean().catch(() => null);
+  if (!u) return null;
+  if (res && !res.headersSent) auth.setSessionCookie(res, u);
+  log.lembrarUsuario(u);
+  log.auth.login(req, u.email, true);
+  audit.event(req, { action: 'login', actor: u, entityType: 'Sessão', status: 200, summary: 'SSO (Cloudflare Access / w3id)' });
+  return u;
+}
+
+/** Carrega req.user (ou null): cookie de sessão, com o SSO como segunda via. */
 async function attachUser(req, res, next) {
-  try {
-    const payload = auth.sessionPayload(req);
-    const uid = payload && payload.uid;
-    if (uid && isValidId(uid)) {
-      const u = await User.findById(uid).lean();
-      // Revogação: o token carrega a versão; se não bate com a do usuário (senha
-      // trocada / "sair de todos os dispositivos"), a sessão é considerada inválida.
-      req.user = u && Number(payload.tv || 0) === Number(u.tokenVersion || 0) ? u : null;
-    } else req.user = null;
-  } catch (e) { req.user = null; }
+  try { req.user = await usuarioDaRequisicao(req, res); }
+  catch (e) { req.user = null; }
   next();
 }
 
@@ -140,7 +169,59 @@ const authRouter = express.Router();
 
 authRouter.get('/status', asyncHandler(async (req, res) => {
   const count = await User.countDocuments();
-  res.json({ needsSetup: count === 0, user: publicUser(req.user) });
+  const out = { needsSetup: count === 0, user: publicUser(req.user), sso: { ativo: sso.ATIVO } };
+
+  // `req.sso` só existe quando o attachUser precisou olhar o token do Access —
+  // ou seja, quando não havia sessão. É exatamente o caso da tela de login, que
+  // usa isto para decidir entre "entrando como fulano" e "pedir acesso".
+  if (req.sso) {
+    out.sso.email = req.sso.email;
+    out.sso.nome = req.sso.nome;
+    const pedido = await AccessRequest.findOne({ email: req.sso.email }).sort({ createdAt: -1 }).lean();
+    out.sso.solicitacao = pedido
+      ? { status: pedido.status, criadoEm: pedido.createdAt, motivo: pedido.reason || '' }
+      : null;
+  }
+  if (req.user && req.user.role === 'admin') out.pendentes = await AccessRequest.countDocuments({ status: 'pendente' });
+  res.json(out);
+}));
+
+/*
+ * Pedido de acesso de quem chegou pelo SSO e ainda não é usuário.
+ *
+ * O e-mail vem SEMPRE do token verificado e NUNCA do corpo da requisição. Aceitar
+ * do corpo deixaria qualquer um registrar um pedido em nome de outra pessoa — e o
+ * admin aprovaria, de boa-fé, um cadastro que ninguém pediu.
+ */
+authRouter.post('/solicitar-acesso', asyncHandler(async (req, res) => {
+  if (!sso.ATIVO) return res.status(404).json({ error: 'Pedido de acesso indisponível: o login corporativo não está configurado.' });
+  const id = req.sso || (await sso.identidade(req));
+  if (!id) return res.status(403).json({ error: 'Entre pelo login corporativo para pedir acesso.' });
+  if (req.user) return res.status(409).json({ error: 'Você já tem acesso ao sistema.' });
+  if (await User.exists({ email: id.email })) return res.status(409).json({ error: 'Esse e-mail já está cadastrado — recarregue a página.' });
+
+  const note = String((req.body && req.body.note) || '').trim().slice(0, 500);
+  const aberto = await AccessRequest.findOne({ email: id.email, status: 'pendente' }).lean();
+  if (aberto) return res.json({ ok: true, status: 'pendente', criadoEm: aberto.createdAt, jaHavia: true });
+
+  let pedido;
+  try {
+    pedido = await AccessRequest.create({ email: id.email, name: id.nome, note, ip: ipOf(req), source: 'sso' });
+  } catch (e) {
+    // Dois cliques no mesmo instante colidem no índice parcial único. O desfecho
+    // certo é o mesmo do caminho acima: já existe pedido aberto, e está tudo bem.
+    if (e && e.code === 11000) {
+      const existente = await AccessRequest.findOne({ email: id.email, status: 'pendente' }).lean();
+      return res.json({ ok: true, status: 'pendente', criadoEm: existente && existente.createdAt, jaHavia: true });
+    }
+    throw e;
+  }
+  audit.event(req, {
+    action: 'acesso-solicitado', actor: { email: id.email, name: id.nome },
+    entityType: 'Pedido de acesso', entityLabel: id.email, status: 201,
+    summary: note || 'sem justificativa',
+  });
+  res.status(201).json({ ok: true, status: 'pendente', criadoEm: pedido.createdAt });
 }));
 
 authRouter.get('/me', (req, res) => {
@@ -206,7 +287,10 @@ authRouter.post('/logout', (req, res) => {
   log.auth.logout(req, req.user);
   if (req.user) audit.event(req, { action: 'logout', entityType: 'Sessão', status: 200 });
   auth.clearSessionCookie(res);
-  res.json({ ok: true });
+  // Apagar só o cookie do app não faz ninguém sair quando o Access está na
+  // frente: o próximo GET reautentica pelo token e a pessoa fica presa "logada".
+  // Quem encerra a sessão do Access é esta URL, e é o front que navega até ela.
+  res.json({ ok: true, redirect: sso.urlDeLogout() });
 });
 
 // ── Rotas de administração de usuários ──
@@ -299,6 +383,83 @@ adminRouter.delete('/users/:id', asyncHandler(async (req, res) => {
   }
   await User.deleteOne({ _id: req.params.id });
   res.json({ ok: true });
+}));
+
+/* ── Pedidos de acesso: a fila que o administrador aprova ──────────────────
+ *
+ * Quem chega pelo SSO sem cadastro registra um pedido; aqui o admin decide.
+ * Aprovar CRIA o usuário — é o mesmo caminho do POST /users, menos a senha:
+ * quem entra por SSO não usa senha nenhuma, e o schema exige o campo.
+ */
+adminRouter.get('/access-requests', asyncHandler(async (req, res) => {
+  const status = ['pendente', 'aprovado', 'recusado'].includes(String(req.query.status)) ? String(req.query.status) : null;
+  const [items, pendentes] = await Promise.all([
+    AccessRequest.find(status ? { status } : {}).sort({ createdAt: -1 }).limit(500).lean(),
+    AccessRequest.countDocuments({ status: 'pendente' }),
+  ]);
+  res.json({ items, pendentes, sso: { ativo: sso.ATIVO } });
+}));
+
+adminRouter.post('/access-requests/:id/aprovar', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const pedido = await AccessRequest.findById(req.params.id);
+  if (!pedido) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  if (pedido.status !== 'pendente') return res.status(409).json({ error: `Este pedido já foi ${pedido.status}.` });
+
+  const b = req.body || {};
+  const role = papelValido(b.role);
+  const name = String(b.name || pedido.name || '').trim() || sso.nomeDoEmail(pedido.email);
+
+  // O usuário pode já ter sido criado à mão enquanto o pedido esperava. Nesse
+  // caso o pedido só é fechado e apontado para a conta existente — recriar daria
+  // 11000 no índice único de e-mail e travaria a fila num pedido insolúvel.
+  let user = await User.findOne({ email: pedido.email }).lean();
+  let criado = false;
+  if (!user) {
+    // Senha aleatória que ninguém conhece nem precisa: a entrada é pelo SSO. Se um
+    // dia essa pessoa precisar de senha (produção sem Access, p.ex.), o admin
+    // define uma pela tela de usuários.
+    const { salt, hash, params } = auth.hashPassword(crypto.randomBytes(48).toString('base64url'));
+    user = (await User.create({
+      name, email: pedido.email,
+      passwordHash: hash, passwordSalt: salt, passwordParams: params,
+      role, access: role === 'admin' ? [] : parseAccess(b.access),
+    })).toObject();
+    criado = true;
+  }
+
+  pedido.status = 'aprovado';
+  pedido.decidedAt = new Date();
+  pedido.decidedBy = req.user._id;
+  pedido.decidedByEmail = req.user.email;
+  pedido.createdUser = user._id;
+  await pedido.save();
+
+  audit.event(req, {
+    action: 'acesso-aprovado', entityType: 'Pedido de acesso', entityLabel: pedido.email, status: 200,
+    summary: criado ? `usuário criado como ${role}` : 'usuário já existia; pedido encerrado',
+  });
+  res.json({ ok: true, criado, user: publicUser(user), request: pedido.toObject() });
+}));
+
+adminRouter.post('/access-requests/:id/recusar', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const pedido = await AccessRequest.findById(req.params.id);
+  if (!pedido) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  if (pedido.status !== 'pendente') return res.status(409).json({ error: `Este pedido já foi ${pedido.status}.` });
+
+  pedido.status = 'recusado';
+  pedido.reason = String((req.body && req.body.reason) || '').trim().slice(0, 300);
+  pedido.decidedAt = new Date();
+  pedido.decidedBy = req.user._id;
+  pedido.decidedByEmail = req.user.email;
+  await pedido.save();
+
+  audit.event(req, {
+    action: 'acesso-recusado', entityType: 'Pedido de acesso', entityLabel: pedido.email, status: 200,
+    summary: pedido.reason || 'sem motivo informado',
+  });
+  res.json({ ok: true, request: pedido.toObject() });
 }));
 
 // ── Consulta da trilha de auditoria (só admin) ──
@@ -535,4 +696,7 @@ adminRouter.delete('/regions/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-module.exports = { attachUser, requireAuth, requireAdmin, requireManager, clientAccessGuard, authRouter, adminRouter };
+module.exports = {
+  attachUser, usuarioDaRequisicao, requireAuth, requireAdmin, requireManager,
+  clientAccessGuard, authRouter, adminRouter,
+};

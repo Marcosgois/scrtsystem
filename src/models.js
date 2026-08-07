@@ -730,6 +730,40 @@ auditLogSchema.index({ 'client.id': 1, at: -1 });
 auditLogSchema.index({ 'actor.id': 1, at: -1 });
 auditLogSchema.index({ action: 1, at: -1 });
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Pedido de acesso — a porta de entrada de quem chega pelo SSO sem cadastro.
+
+   Com o Cloudflare Access na frente, quem abre o sistema já é IBMer autenticado
+   no w3id: o e-mail é confiável (src/sso.js verifica a assinatura do token),
+   mas ninguém vira usuário sozinho. A pessoa registra o pedido, um admin decide,
+   e só então nasce o User com papel e acessos por cliente.
+
+   O e-mail NUNCA vem do corpo da requisição: é sempre o do token verificado.
+   Aceitar do corpo permitiria pedir acesso em nome de outra pessoa — e o admin
+   aprovaria um cadastro com o e-mail de quem nunca pediu.
+   ────────────────────────────────────────────────────────────────────────── */
+const accessRequestSchema = new mongoose.Schema(
+  {
+    email: { type: String, required: true, lowercase: true, trim: true },
+    name: { type: String, default: '', trim: true },
+    note: { type: String, default: '', trim: true },      // justificativa de quem pede
+    status: { type: String, enum: ['pendente', 'aprovado', 'recusado'], default: 'pendente', index: true },
+    source: { type: String, default: 'sso' },
+    ip: { type: String, default: '' },
+    decidedAt: { type: Date, default: null },
+    decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    decidedByEmail: { type: String, default: '' },
+    reason: { type: String, default: '' },               // motivo da recusa
+    createdUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: true }
+);
+// Um pedido PENDENTE por e-mail. O índice parcial é o que permite pedir de novo
+// depois de uma recusa (ou de uma exclusão de conta) sem liberar o acúmulo de
+// dezenas de pedidos abertos da mesma pessoa enquanto o admin não olha.
+accessRequestSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { status: 'pendente' } });
+accessRequestSchema.index({ status: 1, createdAt: -1 });
+
 const Client = mongoose.model('Client', clientSchema);
 const ScrtReport = mongoose.model('ScrtReport', scrtReportSchema);
 const Inventory = mongoose.model('Inventory', inventorySchema);
@@ -743,9 +777,10 @@ const MigrationEvent = mongoose.model('MigrationEvent', migrationEventSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 const MachineLifecycle = mongoose.model('MachineLifecycle', machineLifecycleSchema);
 const Region = mongoose.model('Region', regionSchema);
+const AccessRequest = mongoose.model('AccessRequest', accessRequestSchema);
 const AppMeta = mongoose.model('AppMeta', appMetaSchema);
 
 module.exports = {
   Client, ScrtReport, Inventory, InfraSite, InfraMachine, InfraLpar, User, LsprModel, AppMeta,
-  Contract, MigrationEvent, AuditLog, MachineLifecycle, Region,
+  Contract, MigrationEvent, AuditLog, MachineLifecycle, Region, AccessRequest,
 };

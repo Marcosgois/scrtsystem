@@ -7,9 +7,9 @@ const express = require('express');
 const { connectDb } = require('./src/db');
 const { startLocalMongo, stopLocalMongo } = require('./src/localDb');
 const apiRoutes = require('./src/routes');
-const { attachUser, requireAuth, requireAdmin, requireManager, clientAccessGuard, authRouter, adminRouter } = require('./src/authRoutes');
+const { attachUser, usuarioDaRequisicao, requireAuth, requireAdmin, requireManager, clientAccessGuard, authRouter, adminRouter } = require('./src/authRoutes');
 const { sessionUserId } = require('./src/auth');
-const { User } = require('./src/models');
+const sso = require('./src/sso');
 
 const PORT = process.env.PORT || 3000;
 // Atrás de um proxy reverso, HOST=127.0.0.1 impede que a aplicação seja alcançada
@@ -142,18 +142,26 @@ const sendPage = (file) => (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.send(cache.html);
 };
-const pageGuard = (req, res, next) => (sessionUserId(req) ? next() : res.redirect('/login'));
+/*
+ * Guardas das PÁGINAS. Antes bastava conferir a assinatura do cookie; agora a
+ * resposta passa pelo mesmo caminho da API (usuarioDaRequisicao), porque com o
+ * SSO ligado a primeira visita chega SEM cookie nenhum — e mandar essa pessoa
+ * para /login só para ela ser devolvida seria o "login duplo" que queremos tirar.
+ * Resolvendo aqui, ela cai direto na tela pedida e a sessão nasce no caminho.
+ */
+const usuarioDaPagina = async (req, res) => {
+  try { return await usuarioDaRequisicao(req, res); } catch (e) { return null; }
+};
+const pageGuard = async (req, res, next) => ((await usuarioDaPagina(req, res)) ? next() : res.redirect('/login'));
 const adminPageGuard = async (req, res, next) => {
-  const uid = sessionUserId(req);
-  const u = uid ? await User.findById(uid).select('role').lean().catch(() => null) : null;
+  const u = await usuarioDaPagina(req, res);
   if (!u) return res.redirect('/login');
   if (u.role !== 'admin') return res.redirect('/consumo');
   next();
 };
 // Painel gerencial: gerente OU admin.
 const managerPageGuard = async (req, res, next) => {
-  const uid = sessionUserId(req);
-  const u = uid ? await User.findById(uid).select('role').lean().catch(() => null) : null;
+  const u = await usuarioDaPagina(req, res);
   if (!u) return res.redirect('/login');
   if (!['admin', 'manager'].includes(u.role)) return res.redirect('/consumo');
   next();
@@ -185,8 +193,8 @@ app.get('/admin.html', adminPageGuard, sendPage('admin.html'));
 
 // Bloqueia acesso direto aos demais HTMLs protegidos pelo estático.
 const PROTECTED_HTML = new Set(['/index.html', '/mlc.html', '/inventario.html', '/infra.html', '/contratos.html', '/admin.html', '/regional.html']);
-app.use((req, res, next) => {
-  if (PROTECTED_HTML.has(req.path) && !sessionUserId(req)) return res.redirect('/login');
+app.use(async (req, res, next) => {
+  if (PROTECTED_HTML.has(req.path) && !(await usuarioDaPagina(req, res))) return res.redirect('/login');
   next();
 });
 // Estático. Quem chega carimbado (?v=<versão>) pode ser guardado para sempre: a
@@ -263,6 +271,7 @@ async function main() {
   const server = app.listen(PORT, HOST, () => {
     console.log(`IBM Z Control Desk rodando em http://${HOST || 'localhost'}:${PORT}`);
     console.log(`[log] ${log.resumo()}`);
+    console.log(`[auth] ${sso.resumo()}`);
   });
 
   // Encerramento limpo: fecha o HTTP, desconecta e para o mongod SEM apagar os dados.

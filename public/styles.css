@@ -1441,6 +1441,28 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
 .role-tag.admin { background: var(--accent-light); color: var(--accent); border-color: #d9c9f0; }
 .role-tag.user { background: var(--surface-hover); color: var(--ink-secondary); border-color: var(--border); }
 .role-tag.manager { background: #d0e2ff; color: #0043ce; border-color: #a6c8ff; }
+/* Situação de um pedido de acesso — mesma pílula, outra tinta. */
+.role-tag.warn { background: var(--warning-light); color: var(--warning); border-color: #e4d08a; }
+.role-tag.ok { background: var(--success-light); color: var(--success); border-color: #bfe3cb; }
+.role-tag.danger { background: var(--danger-light); color: var(--danger); border-color: #ffc2c5; }
+
+/* Contador de pendências: na aba da administração e no atalho do menu do usuário.
+   Os dois existem porque um pedido de acesso que ninguém vê é um pedido perdido —
+   o selo do menu avisa de qualquer página, a aba mostra quantos são. */
+.seg-badge {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 7px; padding: 0 5px;
+  border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 600; line-height: 1;
+}
+.seg-btn.active .seg-badge { background: rgba(255, 255, 255, 0.28); }
+.pop-badge {
+  margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px;
+  display: inline-grid; place-items: center; background: var(--danger); color: #fff; font-size: 11px; font-weight: 600;
+}
+.user-chip.has-alert { position: relative; }
+.user-chip.has-alert::after {
+  content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
 .access-summary { display: flex; flex-wrap: wrap; gap: 5px; }
 .access-chip {
   font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);

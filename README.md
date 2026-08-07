@@ -94,6 +94,46 @@ os botões de edição.
 A sessão é um cookie assinado com HMAC (`httpOnly`, `SameSite=Lax`), a senha é guardada com
 `scrypt`, e o segredo fica em `data/auth-secret`. Sem dependência externa de autenticação.
 
+### Entrada pelo w3id (SSO), sem segundo login
+
+Onde a aplicação está atrás do **Cloudflare Access federado ao w3id** — hoje só o ambiente de
+desenvolvimento —, a pessoa já autenticou no w3id ANTES de a requisição chegar no servidor.
+Pedir e-mail e senha de novo seria redundante, então o app aproveita essa identidade:
+
+1. **Já cadastrado** → entra direto, sem ver tela de login. A sessão normal do app é emitida
+   na primeira requisição, e daí em diante tudo segue igual (o cookie sustenta o resto).
+2. **Sem cadastro** → cai numa tela que oferece **pedir acesso**, com uma justificativa opcional.
+3. **Administrador** → aprova ou recusa em `/admin` › **Pedidos de acesso**, escolhendo papel e
+   acesso por cliente na mesma tela de sempre. Aprovar cria o usuário; a pessoa passa a entrar
+   pelo SSO, sem senha nenhuma.
+
+Um selo vermelho com o número de pendências aparece na aba e no menu do usuário — pedido que
+ninguém vê é pedido perdido.
+
+**O que o servidor aceita como prova de identidade.** O Access acrescenta dois cabeçalhos:
+`Cf-Access-Authenticated-User-Email` (texto puro) e `Cf-Access-Jwt-Assertion` (JWT assinado).
+O `src/sso.js` **ignora o primeiro de propósito** e só confia no JWT, conferindo assinatura
+(JWKS do tenant, em cache), `iss`, `aud` da nossa aplicação e validade. Cabeçalho de texto só
+valeria se fosse impossível alcançar a origem por fora do Cloudflare — e não é: o firewall
+libera as faixas do Cloudflare, que são compartilhadas por todos os clientes deles. Sem o JWT,
+qualquer pessoa apontaria um domínio próprio para este IP e escolheria o e-mail que quisesse.
+
+Configuração (duas variáveis; sem as duas, o SSO fica **desligado** e vale só o login por senha):
+
+| Variável | O que é | Onde achar |
+|---|---|---|
+| `SSO_TEAM_DOMAIN` | tenant do Cloudflare Access | Zero Trust › Settings › Custom Pages (ex.: `empresa` ou `https://empresa.cloudflareaccess.com`) |
+| `SSO_AUD` | *Application Audience (AUD) Tag* da aplicação | Zero Trust › Access › Applications › a aplicação › Overview |
+
+O `SSO_AUD` é o que impede um token legítimo de OUTRA aplicação do mesmo tenant de servir aqui.
+
+**O login por senha continua existindo** — é o único caminho da produção enquanto o w3id dela
+não sai do boarding, e é o que permite o primeiro admin num sistema vazio. Na tela de SSO há um
+link discreto "Entrar com e-mail e senha".
+
+Sair pelo menu leva à URL de logout do Access (`/cdn-cgi/access/logout`): apagar só o cookie do
+app não desloga ninguém, porque a requisição seguinte reautentica pelo w3id na hora.
+
 
 ## Consumo zOTC — regra de interpretação do SCRT
 
@@ -508,11 +548,14 @@ Todas as rotas ficam sob `/api`. Exceto `/api/auth/*`, todas exigem login; as qu
 
 | Método | Rota | Descrição |
 |---|---|---|
-| GET | `/auth/status` | Se precisa criar o 1º admin e quem está logado |
+| GET | `/auth/status` | Se precisa criar o 1º admin, quem está logado e a identidade do SSO |
 | POST | `/auth/setup` | Cria o 1º admin (só funciona com o banco sem usuários) |
-| POST | `/auth/login` · `/auth/logout` | Sessão |
+| POST | `/auth/login` · `/auth/logout` | Sessão (o logout devolve a URL de saída do Access) |
 | GET | `/auth/me` | Usuário atual |
+| POST | `/auth/solicitar-acesso` | Pedido de cadastro — o e-mail vem do token do SSO, nunca do corpo |
 | GET POST PUT DELETE | `/admin/users[/:id]` | Gestão de usuários e acessos (admin) |
+| GET | `/admin/access-requests` | Fila de pedidos de acesso (admin) |
+| POST | `/admin/access-requests/:id/aprovar` · `/recusar` | Decide o pedido; aprovar cria o usuário (admin) |
 
 **Clientes e consumo (SCRT)**
 
@@ -580,6 +623,7 @@ src/
   routes.js               # API dos módulos (consumo, inventário, infra, contratos, MO/MES)
   auth.js                 # scrypt + cookie de sessão assinado (sem dependência externa)
   authRoutes.js           # login/setup/logout, gestão de usuários e o guard por cliente
+  sso.js                  # identidade do w3id: verifica o JWT do Cloudflare Access
   logger.js               # log de acesso (terminal + arquivo por dia)
   db.js                   # conexão + migrações automáticas do banco
   localDb.js              # MongoDB local persistente em ./data/mongodb
@@ -621,7 +665,7 @@ SCRT/<CLIENTE>/           # NÃO versionado: arquivos SCRT reais
 ## Testes
 
 ```bash
-npm test                  # roda tudo (17 suítes)
+npm test                  # roda tudo (18 suítes)
 
 npm run test:parser       # parser contra os SCRTs reais + casos sintéticos
 npm run test:forecast     # projeção linear/SARIMA e os limites de histórico
@@ -631,6 +675,7 @@ npm run test:mlc-views    # a visão do ano de MLC: CAP, CBA e defasagem Med/Inv
 npm run test:zotc-views   # consumo por ano contratual, estouro do baseline e conclusão automática
 npm run test:migration    # migração de bancos criados por versões anteriores
 npm run test:auth         # login e a matriz de acesso (view/edit/admin)
+npm run test:sso          # token do Cloudflare Access, pedido de acesso e aprovação
 npm run test:lspr-cheatsheet # conversor do Configuration Summary do zPCR
 npm run test:infra-lspr   # referência LSPR e importação de máquinas do SCRT
 npm run test:contratos    # contratos, aditivos, vínculos, MO/MES e Demo/PoC
