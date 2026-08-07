@@ -14,6 +14,8 @@ const {
 const { typeDaMaquina } = require('./regional');
 const { parseScrt, combineReports } = require('./scrtParser');
 const { forecast } = require('./forecast');
+const { serieUnificada, porAnoCalendario, porAnoContratual } = require('./forecastYears');
+const { deckCapacityPlanning } = require('./deckCapacity');
 const { isXlsx, readXlsxSheets, rowsToCsv } = require('./xlsx');
 const { computeMlcView, addMonths } = require('./mlc');
 const auth = require('./auth');
@@ -924,24 +926,44 @@ router.get('/clients/:id/compare', asyncHandler(async (req, res) => {
   });
 }));
 
-/**
- * Capacity planning: projeta o consumo dos próximos anos.
- * ?method=linear|sarima  &years=1..5  (ou &months=1..60)
- */
-router.get('/clients/:id/forecast', asyncHandler(async (req, res) => {
-  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
-  const client = await Client.findById(req.params.id).lean();
-  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
-
-  const method = req.query.method === 'sarima' ? 'sarima' : 'linear';
-  const years = req.query.years !== undefined ? Number(req.query.years) : null;
-  const monthsRaw = req.query.months !== undefined ? Number(req.query.months) : null;
-  let months = monthsRaw !== null ? monthsRaw : (years !== null ? years * 12 : 12);
+/** Horizonte pedido na query (?years=1..5 ou ?months=1..60), já validado. */
+function horizonteDaQuery(query) {
+  const years = query.years !== undefined ? Number(query.years) : null;
+  const monthsRaw = query.months !== undefined ? Number(query.months) : null;
+  const months = monthsRaw !== null ? monthsRaw : (years !== null ? years * 12 : 12);
   if (!Number.isFinite(months) || months < 1 || months > 60) {
-    return res.status(400).json({ error: 'Horizonte inválido: informe de 1 a 5 anos (até 60 meses).' });
+    const err = new Error('Horizonte inválido: informe de 1 a 5 anos (até 60 meses).');
+    err.status = 400;
+    throw err;
   }
-  months = Math.round(months);
+  return Math.round(months);
+}
 
+/*
+ * Cliente sem `contractPeriods` mas com o mês-âncora do ano contratual (cadastro
+ * antigo, ou definido pelo botão "Ano contratual" da tela) vale como UM contrato
+ * em aberto. É a mesma leitura que o dashboard faz — sem isto o fechamento por
+ * ano contratual apareceria vazio para quem já tem o ano contratual definido.
+ */
+function periodosContratuais(client) {
+  if (client.contractPeriods && client.contractPeriods.length) return client.contractPeriods;
+  const inicio = client.contractYearStart || (client.mlcContract && client.mlcContract.startPeriodKey);
+  if (!inicio || !/^\d{4}-\d{2}$/.test(String(inicio))) return [];
+  return [{
+    _id: null,
+    name: `Contrato ${String(inicio).slice(0, 4)}`,
+    startPeriodKey: String(inicio),
+    endPeriodKey: null,
+    years: [],
+  }];
+}
+
+/**
+ * Payload do capacity planning. A tela e o PowerPoint consomem EXATAMENTE isto —
+ * é o que garante que o slide levado ao cliente não discorde do que está no
+ * navegador.
+ */
+async function montarForecast(client, { method, months }) {
   const monthsData = mergeByMonth(
     await ScrtReport.find({ client: client._id }).sort({ periodKey: 1, createdAt: 1 }).lean(),
     tagContextOf(client)
@@ -953,47 +975,15 @@ router.get('/clients/:id/forecast', asyncHandler(async (req, res) => {
     year: Number(m.periodKey.slice(0, 4)),
   }));
 
-  let result;
-  try {
-    result = forecast(history, { method, months });
-  } catch (err) {
-    if (err.status === 422) return res.status(422).json({ error: err.message });
-    throw err;
-  }
+  const result = forecast(history, { method, months });
 
-  // Consolidação por ano-calendário: o que o cliente precisa para planejar capacidade.
+  // Duas consolidações da MESMA série: ano-calendário (orçamento do cliente) e
+  // ano contratual (janela em que o baseline é apurado). Ver src/forecastYears.js.
   const baseline = client.monthlyBaselineMsu || null;
-  const porAno = new Map();
-  const add = (year, value, tipo) => {
-    if (!porAno.has(year)) porAno.set(year, { year, realMsu: 0, realMonths: 0, projMsu: 0, projMonths: 0 });
-    const a = porAno.get(year);
-    if (tipo === 'real') { a.realMsu += value; a.realMonths++; } else { a.projMsu += value; a.projMonths++; }
-  };
-  for (const h of history) add(h.year, h.totalMsuConsumed, 'real');
-  for (const p of result.points) add(p.year, p.value, 'proj');
+  const serie = serieUnificada(history, result.points);
+  const contratuais = porAnoContratual(serie, periodosContratuais(client), baseline);
 
-  const anos = [...porAno.values()].sort((a, b) => a.year - b.year).map((a) => {
-    const total = a.realMsu + a.projMsu;
-    const meses = a.realMonths + a.projMonths;
-    return {
-      ...a,
-      totalMsu: total,
-      months: meses,
-      complete: meses === 12,
-      annualBaselineMsu: baseline ? baseline * 12 : null,
-      vsBaselinePct: baseline ? (total / (baseline * 12)) * 100 : null,
-    };
-  });
-  // Crescimento ano a ano só entre anos completos (12 meses), para não comparar
-  // um ano cheio com um pedaço de ano.
-  for (let i = 1; i < anos.length; i++) {
-    const ant = anos[i - 1];
-    anos[i].growthPct = ant.complete && anos[i].complete && ant.totalMsu > 0
-      ? ((anos[i].totalMsu - ant.totalMsu) / ant.totalMsu) * 100
-      : null;
-  }
-
-  res.json({
+  return {
     client: { _id: client._id, name: client.name, monthlyBaselineMsu: baseline },
     history,
     forecast: result.points,
@@ -1001,9 +991,68 @@ router.get('/clients/:id/forecast', asyncHandler(async (req, res) => {
     requestedMethod: result.requestedMethod,
     model: result.model,
     notes: result.notes,
-    years: anos,
+    years: porAnoCalendario(serie, baseline),
+    contractYears: contratuais.rows,
+    hasContractPeriods: contratuais.hasContracts,
     horizonMonths: months,
+  };
+}
+
+/**
+ * Capacity planning: projeta o consumo dos próximos anos.
+ * ?method=linear|sarima  &years=1..5  (ou &months=1..60)
+ */
+router.get('/clients/:id/forecast', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const method = req.query.method === 'sarima' ? 'sarima' : 'linear';
+  let months;
+  try { months = horizonteDaQuery(req.query); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+
+  try {
+    res.json(await montarForecast(client, { method, months }));
+  } catch (err) {
+    if (err.status === 422) return res.status(422).json({ error: err.message });
+    throw err;
+  }
+}));
+
+/**
+ * O mesmo capacity planning em .pptx, para levar à reunião com o cliente.
+ *
+ * É GET de propósito: o guard de acesso trata qualquer verbo que não seja de
+ * leitura como escrita e exigiria permissão de EDIÇÃO — gerar apresentação é
+ * leitura. Por isso também o gráfico é desenhado no servidor em vez de vir como
+ * imagem do canvas do navegador (que obrigaria a um POST).
+ */
+router.get('/clients/:id/forecast.pptx', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Id inválido.' });
+  const client = await Client.findById(req.params.id).lean();
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const method = req.query.method === 'sarima' ? 'sarima' : 'linear';
+  let months;
+  try { months = horizonteDaQuery(req.query); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+
+  let payload;
+  try {
+    payload = await montarForecast(client, { method, months });
+  } catch (err) {
+    if (err.status === 422) return res.status(422).json({ error: err.message });
+    throw err;
+  }
+
+  const { buffer, fileName } = deckCapacityPlanning(payload, {
+    autor: (req.user && req.user.name) || 'IBM Z Control Desk',
   });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+  res.send(buffer);
 }));
 
 // ── Inventário de software (módulo Inventário) ──────────────────────────────

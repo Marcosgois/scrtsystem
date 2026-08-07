@@ -168,8 +168,18 @@ em `SCRT/`):
   ao navegar entre meses do mesmo cliente.
 - **Capacity planning** — projeta o consumo de 1 a 5 anos à frente, por dois métodos escolhidos
   na hora: **regressão linear** (tendência) e **SARIMA** (tendência + sazonalidade). Mostra o
-  gráfico de histórico + projeção com intervalo de 95% e a tabela consolidada por ano, com
-  crescimento e % do baseline anual — o material para a conversa de capacidade com o cliente.
+  gráfico de histórico + projeção com intervalo de 95% e o fechamento anual em duas abas:
+  **Consolidado por Ano** (jan–dez, a base de orçamento do cliente) e **Consolidado por Ano
+  Contratual** (a janela em que o baseline é apurado e o consumo é faturado — é só nela que
+  "% do baseline" quer dizer alguma coisa). A mesma série mensal alimenta as duas; cada linha
+  declara quantos meses são reais e quantos são projeção, e o crescimento só é calculado entre
+  anos completos. Meses fora de qualquer contrato — a projeção costuma passar do fim da vigência
+  — aparecem em linha própria em vez de inflar o último ano contratual.
+
+  **Gerar PowerPoint** baixa a projeção como um `.pptx` 16:9 pronto para a reunião: capa, o
+  gráfico (desenhado em **vetor**, não como imagem — dá zoom sem serrilhar), as duas
+  consolidações em tabela e um slide de método e premissas. O deck é montado no servidor a
+  partir do mesmo payload da tela, então slide e navegador nunca discordam de um número.
 
   > **Quanto histórico é preciso:** a sazonalidade de 12 meses só é estimada com **24 meses ou
   > mais** (dois ciclos). Com menos, o SARIMA roda sem a parte sazonal (vira ARIMA) e o sistema
@@ -514,7 +524,8 @@ Todas as rotas ficam sob `/api`. Exceto `/api/auth/*`, todas exigem login; as qu
 | GET DELETE | `/clients/:id/months/:periodKey` | Mês fundido (soma das origens) · exclui |
 | GET | `/clients/:id/dashboard` | Série mensal com MoM/YTY |
 | GET | `/clients/:id/compare?target=&base=` | Variação entre dois meses |
-| GET | `/clients/:id/forecast?method=&years=` | Projeção (`linear`\|`sarima`) |
+| GET | `/clients/:id/forecast?method=&years=` | Projeção (`linear`\|`sarima`) + fechamento por ano-calendário e por ano contratual |
+| GET | `/clients/:id/forecast.pptx?method=&years=` | A mesma projeção como apresentação (16:9) |
 | PUT | `/clients/:id/machine-tags` | Tags de máquina (Produção/DW/Dev-Test) |
 | GET DELETE | `/reports/:id` | Relatório completo · exclui |
 | GET | `/reports/:id/file[?download=1]` | SCRT original guardado |
@@ -573,6 +584,9 @@ src/
   scrtParser.js           # parser do CSV SCRT (latin-1/UTF-8, seções ==B5/==N5/==N7)
   xlsx.js                 # leitura de SCRT em planilha (uma aba por máquina)
   forecast.js             # projeção linear e SARIMA
+  forecastYears.js        # fechamento anual da projeção (calendário e contratual)
+  pptx.js                 # escritor mínimo de .pptx (OOXML) — primitivas em pontos
+  deckCapacity.js         # o deck de capacity planning (gráfico vetorial + tabelas)
   mlc.js                  # cálculo do contrato de MLC (inclui as vigências de preço)
   lsprSeed.js             # carga da referência LSPR no banco
   data/lspr.json          # 3.190 modelos IBM Z (MIPS/MSU/CPs) — dados públicos IBM
@@ -600,10 +614,11 @@ SCRT/<CLIENTE>/           # NÃO versionado: arquivos SCRT reais
 ## Testes
 
 ```bash
-npm test                  # roda tudo (8 suítes)
+npm test                  # roda tudo (15 suítes)
 
 npm run test:parser       # parser contra os SCRTs reais + casos sintéticos
 npm run test:forecast     # projeção linear/SARIMA e os limites de histórico
+npm run test:deck         # fechamento anual (calendário × contratual) e o .pptx gerado
 npm run test:mlc          # cálculo do contrato de MLC
 npm run test:migration    # migração de bancos criados por versões anteriores
 npm run test:auth         # login e a matriz de acesso (view/edit/admin)

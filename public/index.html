@@ -521,22 +521,22 @@
                   aria-label="Gráfico do consumo histórico e projetado. Os mesmos números estão na tabela de anos abaixo."></canvas>
         </div>
 
-        <h3 class="compare-subtitle" style="margin-top: 18px;">Consolidado por ano</h3>
+        <div class="forecast-consol-head">
+          <div class="segmented" id="forecast-consol-tabs" role="tablist">
+            <button type="button" class="seg-btn active" data-consol="calendar">Consolidado por Ano</button>
+            <button type="button" class="seg-btn" data-consol="contract">Consolidado por Ano Contratual</button>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-forecast-pptx" title="Baixa a projeção em PowerPoint (16:9) para levar ao cliente">
+            Gerar PowerPoint
+          </button>
+        </div>
         <div class="table-responsive">
           <table id="forecast-years-table">
-            <thead>
-              <tr>
-                <th>Ano</th>
-                <th>Composição</th>
-                <th class="num">Consumo total (MSU)</th>
-                <th class="num">Crescimento</th>
-                <th class="num">Baseline anual</th>
-                <th class="num">% do baseline</th>
-              </tr>
-            </thead>
+            <thead id="forecast-years-thead"></thead>
             <tbody id="forecast-years-tbody"></tbody>
           </table>
         </div>
+        <div id="forecast-consol-note" class="muted small" style="margin-top: 8px;"></div>
       </div>
     </div>
   </div>

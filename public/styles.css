@@ -879,6 +879,16 @@ th[data-sort].sorted { color: var(--primary); background: var(--primary-light); 
 
 .forecast-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
+/* Cabeçalho da consolidação anual: abas à esquerda, exportação à direita. */
+.forecast-consol-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px 0 10px;
+}
+
 #forecast-method, #forecast-years {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);

@@ -522,6 +522,63 @@ async function main() {
 
       r = await api(`/clients/${caixaId}/forecast?method=linear&years=1`);
       check('forecast: cliente com 1 mês -> 422 explicando o mínimo', r.status === 422, r.status);
+
+      // ── Fechamento por ano contratual + exportação em PowerPoint ────────
+      r = await api(`/clients/${capId}/forecast?method=linear&years=2`);
+      check('forecast: sem ano contratual definido, hasContractPeriods=false',
+        r.body.hasContractPeriods === false && r.body.contractYears.length === 0,
+        { has: r.body.hasContractPeriods, n: r.body.contractYears && r.body.contractYears.length });
+
+      // O mês-âncora do "Ano contratual" já vale como contrato único (a API de
+      // contractPeriods ainda não existe; a leitura tem de funcionar assim mesmo).
+      await api(`/clients/${capId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractYearStart: '2024-06' }),
+      });
+      r = await api(`/clients/${capId}/forecast?method=linear&years=2`);
+      const anosCt = r.body.contractYears || [];
+      check('forecast: ano contratual sai do mês-âncora quando não há contractPeriods',
+        r.body.hasContractPeriods === true && anosCt.length > 0, { n: anosCt.length });
+      const ano1 = anosCt.find((a) => a.inContract && a.label === 'Ano 1');
+      check('forecast: 1º ano contratual vai de jun/24 a mai/25',
+        ano1 && ano1.rangeLabel === 'Jun/24–Mai/25' && ano1.months === 12,
+        ano1 && { faixa: ano1.rangeLabel, meses: ano1.months });
+      check('forecast: os meses antes do contrato ficam numa linha "fora de contrato"',
+        anosCt[0] && anosCt[0].inContract === false && anosCt[0].rangeLabel === 'Jan/24–Mai/24',
+        anosCt[0] && { dentro: anosCt[0].inContract, faixa: anosCt[0].rangeLabel });
+      check('forecast: calendário e contratual fecham o MESMO total de MSU',
+        anosCt.reduce((a, x) => a + x.totalMsu, 0) === r.body.years.reduce((a, x) => a + x.totalMsu, 0),
+        { ct: anosCt.reduce((a, x) => a + x.totalMsu, 0), cal: r.body.years.reduce((a, x) => a + x.totalMsu, 0) });
+
+      // O .pptx é binário: sai do api() (que espera JSON) e vai de fetch cru.
+      const pptxRes = await fetch(`${BASE}/clients/${capId}/forecast.pptx?method=linear&years=2`, {
+        headers: authCookie ? { Cookie: authCookie } : {},
+      });
+      const pptx = Buffer.from(await pptxRes.arrayBuffer());
+      check('pptx: responde 200 com o content-type do PowerPoint',
+        pptxRes.status === 200 &&
+        pptxRes.headers.get('content-type') === 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        { status: pptxRes.status, ct: pptxRes.headers.get('content-type') });
+      check('pptx: baixa como anexo com nome de arquivo',
+        /^attachment; filename="capacity-planning-cliente-capacity-\d{4}-\d{2}-\d{2}\.pptx"/
+          .test(pptxRes.headers.get('content-disposition') || ''),
+        pptxRes.headers.get('content-disposition'));
+      check('pptx: é um ZIP OOXML de verdade, com os slides dentro', (() => {
+        if (pptx.slice(0, 4).toString('binary') !== 'PK\x03\x04') return false;
+        const partes = require('fflate').unzipSync(new Uint8Array(pptx));
+        return !!partes['ppt/presentation.xml'] && !!partes['ppt/slides/slide4.xml'];
+      })(), { bytes: pptx.length });
+
+      const pptxRuim = await fetch(`${BASE}/clients/${capId}/forecast.pptx?years=9`, {
+        headers: authCookie ? { Cookie: authCookie } : {},
+      });
+      check('pptx: horizonte fora do limite -> 400 (não gera arquivo)', pptxRuim.status === 400, pptxRuim.status);
+
+      const pptxCurto = await fetch(`${BASE}/clients/${caixaId}/forecast.pptx?years=1`, {
+        headers: authCookie ? { Cookie: authCookie } : {},
+      });
+      check('pptx: histórico insuficiente -> 422, mesmo erro do JSON', pptxCurto.status === 422, pptxCurto.status);
     }
 
     // ── Módulo de Inventário ──────────────────────────────────────────────

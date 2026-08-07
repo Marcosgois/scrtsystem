@@ -21,6 +21,7 @@ const state = {
   groupEditing: null, // nome do grupo em edição no modal (null = novo grupo)
   forecast: null, // resultado do capacity planning
   forecastChart: null,
+  forecastConsol: 'calendar', // fechamento anual exibido: 'calendar' | 'contract'
 };
 
 const $ = (id) => document.getElementById(id);
@@ -687,6 +688,7 @@ async function loadDashboard() {
   state.selectedPeriodKey = last.periodKey;
   state.compareBaseKey = null; // volta ao padrão (mês anterior) ao trocar de cliente
   state.forecast = null; // projeção é do cliente anterior
+  state.forecastConsol = 'calendar';
   $('forecast-body').classList.add('hidden');
   $('forecast-empty').classList.remove('hidden');
   $('forecast-empty').innerHTML = 'Clique em <strong>Projetar</strong> para estimar o consumo futuro.';
@@ -1862,30 +1864,79 @@ function renderForecastChart(f) {
   });
 }
 
+/* Composição do ano em tags: um ano com 2 meses reais e 10 projetados não pode
+   ser lido com o mesmo peso de um ano fechado. */
+function composicaoDoAno(a) {
+  if (a.projMonths === 0) return `<span class="tag tag-history">real</span> ${a.realMonths} meses`;
+  if (a.realMonths === 0) return `<span class="tag tag-forecast">projetado</span> ${a.projMonths} meses`;
+  return `<span class="tag tag-history">real</span> ${a.realMonths} + <span class="tag tag-forecast">proj.</span> ${a.projMonths}`;
+}
+const celCrescimento = (p) => (p === null || p === undefined
+  ? '<span class="muted">–</span>'
+  : `<span class="delta ${p >= 0 ? 'up' : 'down'}">${fmtPct(p)}</span>`);
+const celBaseline = (p) => (p === null || p === undefined
+  ? '<span class="muted">–</span>'
+  : `<span class="delta ${p > 100 ? 'up' : 'down'}">${p.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</span>`);
+
+/**
+ * Fecha a projeção por ano-calendário (orçamento do cliente) ou por ano
+ * contratual (janela em que o baseline é apurado e o consumo é faturado). É a
+ * MESMA série mensal nos dois — muda só onde o ano começa e termina.
+ */
 function renderForecastYears(f) {
-  $('forecast-years-tbody').innerHTML = f.years.map((a) => {
-    const composicao = a.projMonths === 0
-      ? `<span class="tag tag-history">real</span> ${a.realMonths} meses`
-      : a.realMonths === 0
-        ? `<span class="tag tag-forecast">projetado</span> ${a.projMonths} meses`
-        : `<span class="tag tag-history">real</span> ${a.realMonths} + <span class="tag tag-forecast">proj.</span> ${a.projMonths}`;
-    const incompleto = a.complete ? '' : ' <span class="muted small">(ano parcial)</span>';
-    const growth = a.growthPct === null || a.growthPct === undefined
-      ? '<span class="muted">–</span>'
-      : `<span class="delta ${a.growthPct >= 0 ? 'up' : 'down'}">${fmtPct(a.growthPct)}</span>`;
-    const vsBase = a.vsBaselinePct === null
-      ? '<span class="muted">–</span>'
-      : `<span class="delta ${a.vsBaselinePct > 100 ? 'up' : 'down'}">${a.vsBaselinePct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>`;
-    return `
+  const modo = state.forecastConsol === 'contract' ? 'contract' : 'calendar';
+  document.querySelectorAll('#forecast-consol-tabs .seg-btn').forEach((b) =>
+    b.classList.toggle('active', b.dataset.consol === modo));
+
+  const thead = $('forecast-years-thead');
+  const tbody = $('forecast-years-tbody');
+  const nota = $('forecast-consol-note');
+
+  if (modo === 'contract' && !f.hasContractPeriods) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    nota.innerHTML = 'Este cliente não tem <strong>períodos contratuais</strong> cadastrados. '
+      + 'Defina o início do contrato em <strong>Ano contratual</strong>, no topo da tela, '
+      + 'para fechar a projeção na janela em que o baseline é apurado.';
+    return;
+  }
+
+  if (modo === 'contract') {
+    thead.innerHTML = '<tr><th>Contrato · Ano</th><th>Período</th><th>Composição</th>'
+      + '<th class="num">Consumo total (MSU)</th><th class="num">Crescimento</th><th class="num">% do baseline</th></tr>';
+    tbody.innerHTML = f.contractYears.map((a) => {
+      const titulo = a.inContract
+        ? `<strong>${esc(a.contractName || 'Contrato')}</strong> <span class="muted">·</span> ${esc(a.label)}`
+        : '<span class="muted">Fora de contrato</span>';
+      const parcial = a.inContract && !a.complete
+        ? ` <span class="muted small">(${a.months}/12)</span>` : '';
+      return `
+        <tr>
+          <td>${titulo}</td>
+          <td class="muted">${esc(a.rangeLabel)}</td>
+          <td>${composicaoDoAno(a)}${parcial}</td>
+          <td class="num"><strong>${fmt(a.totalMsu)}</strong></td>
+          <td class="num">${celCrescimento(a.growthPct)}</td>
+          <td class="num">${celBaseline(a.vsBaselinePct)}</td>
+        </tr>`;
+    }).join('');
+    nota.textContent = 'A contagem de anos reinicia a cada contrato. Meses antes do primeiro contrato '
+      + 'ou depois do último — a projeção costuma passar do fim da vigência — aparecem como "Fora de contrato".';
+    return;
+  }
+
+  thead.innerHTML = '<tr><th>Ano</th><th>Composição</th><th class="num">Consumo total (MSU)</th>'
+    + '<th class="num">Crescimento</th><th class="num">Baseline anual</th><th class="num">% do baseline</th></tr>';
+  tbody.innerHTML = f.years.map((a) => `
       <tr>
-        <td><strong>${a.year}</strong>${incompleto}</td>
-        <td>${composicao}</td>
+        <td><strong>${a.year}</strong>${a.complete ? '' : ' <span class="muted small">(ano parcial)</span>'}</td>
+        <td>${composicaoDoAno(a)}</td>
         <td class="num"><strong>${fmt(a.totalMsu)}</strong></td>
-        <td class="num">${growth}</td>
+        <td class="num">${celCrescimento(a.growthPct)}</td>
         <td class="num">${a.annualBaselineMsu ? fmt(a.annualBaselineMsu) : '<span class="muted">–</span>'}</td>
-        <td class="num">${vsBase}</td>
-      </tr>`;
-  }).join('');
+        <td class="num">${celBaseline(a.vsBaselinePct)}</td>
+      </tr>`).join('');
+  nota.textContent = 'Ano-calendário (jan–dez). O crescimento só é calculado entre anos completos.';
 }
 
 $('btn-open-forecast').addEventListener('click', () => {
@@ -1902,6 +1953,24 @@ $('btn-open-compare').addEventListener('click', () => {
 $('btn-forecast').addEventListener('click', runForecast);
 $('forecast-method').addEventListener('change', () => { if (state.forecast) runForecast(); });
 $('forecast-years').addEventListener('change', () => { if (state.forecast) runForecast(); });
+
+$('forecast-consol-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn || !state.forecast) return;
+  state.forecastConsol = btn.dataset.consol;
+  renderForecastYears(state.forecast);
+});
+
+/* O deck é gerado no servidor a partir do MESMO payload da tela — por isso a
+   exportação leva método e horizonte, e não os números já renderizados aqui. */
+$('btn-forecast-pptx').addEventListener('click', () => {
+  if (!state.clientId) return;
+  if (!state.forecast) { toast('Projete antes de gerar a apresentação.', 'error'); return; }
+  const method = $('forecast-method').value;
+  const years = $('forecast-years').value;
+  window.location.assign(`/api/clients/${state.clientId}/forecast.pptx?method=${method}&years=${years}`);
+  toast('Gerando a apresentação…');
+});
 
 /* ── Comparativo mês a mês (atribuição da variação) ──── */
 

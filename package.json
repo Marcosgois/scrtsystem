@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "npm run test:parser && npm run test:forecast && npm run test:mlc && npm run test:contract-periods && npm run test:regions && npm run test:regional && npm run test:migration && npm run test:auth && npm run test:audit && npm run test:security && npm run test:lspr-cheatsheet && npm run test:infra-lspr && npm run test:contratos && npm run test:e2e",
+    "test": "npm run test:parser && npm run test:forecast && npm run test:deck && npm run test:mlc && npm run test:contract-periods && npm run test:regions && npm run test:regional && npm run test:migration && npm run test:auth && npm run test:audit && npm run test:security && npm run test:lspr-cheatsheet && npm run test:infra-lspr && npm run test:contratos && npm run test:e2e",
     "demo": "node scripts/demo.js",
     "test:parser": "node test/parser.test.js",
     "test:e2e": "node test/e2e.test.js",
@@ -17,6 +17,7 @@
     "test:infra-lspr": "node test/infra-lspr.test.js",
     "test:contratos": "node test/contratos.test.js",
     "test:forecast": "node test/forecast.test.js",
+    "test:deck": "node test/deck.test.js",
     "test:mlc": "node test/mlc.test.js",
     "test:contract-periods": "node test/contract-periods.test.js",
     "test:regions": "node test/regions.test.js",

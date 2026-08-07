@@ -102,6 +102,16 @@ async function main() {
   const okPut = await editor.req(`/clients/${A._id}/infra/machines/${maq._id}`, { method: 'PUT', json: { contract: contratoA._id } });
   check('máquina de A aceita contrato de A (200)', okPut.status === 200, okPut.status);
 
+  /* ── Exportação do capacity planning em .pptx ──
+     A rota termina em ".pptx", e o guard casa o caminho por regex: se o ponto
+     escapasse do padrão, o deck de um cliente sairia para quem não tem acesso a
+     ele. Gerar apresentação é LEITURA — quem tem 'view' precisa conseguir. */
+  const pptxSemAcesso = await editor.req(`/clients/${B._id}/forecast.pptx?years=1`);
+  check('pptx de outro cliente é negado (403)', pptxSemAcesso.status === 403, pptxSemAcesso.status);
+  const pptxComAcesso = await editor.req(`/clients/${A._id}/forecast.pptx?years=1`);
+  check('pptx do próprio cliente passa pelo guard (422 por falta de histórico, não 403)',
+    pptxComAcesso.status === 422, pptxComAcesso.status);
+
   // ── CSV formula injection na auditoria ──
   await admin.req(`/clients/${A._id}`, { method: 'PATCH', json: { name: '=1+2 CLIENTE' } });
   await new Promise((r) => setTimeout(r, 300)); // deixa a auditoria assíncrona cair
