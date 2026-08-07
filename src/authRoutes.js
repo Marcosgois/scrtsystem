@@ -391,12 +391,32 @@ adminRouter.delete('/users/:id', asyncHandler(async (req, res) => {
  * Aprovar CRIA o usuário — é o mesmo caminho do POST /users, menos a senha:
  * quem entra por SSO não usa senha nenhuma, e o schema exige o campo.
  */
+/*
+ * Conta parecida = mesmo nome antes do @, domínio diferente.
+ *
+ * Isto não é firula: a IBM tem gente em @ibm.com e gente em @br.ibm.com, e o
+ * e-mail que o admin digitou ao cadastrar nem sempre é o que o w3id devolve.
+ * Sem este aviso, aprovar cria uma SEGUNDA conta para a mesma pessoa — e ela
+ * perde os acessos por cliente que já tinha, sem ninguém notar. Como o e-mail é
+ * imutável na edição, não haveria conserto depois: só sobraria apagar e refazer.
+ */
+function contaParecida(email, usuarios) {
+  const local = String(email).split('@')[0].toLowerCase();
+  if (!local) return null;
+  const u = usuarios.find((x) => String(x.email).split('@')[0].toLowerCase() === local && x.email !== email);
+  return u ? { _id: u._id, name: u.name, email: u.email, role: u.role } : null;
+}
+
 adminRouter.get('/access-requests', asyncHandler(async (req, res) => {
   const status = ['pendente', 'aprovado', 'recusado'].includes(String(req.query.status)) ? String(req.query.status) : null;
-  const [items, pendentes] = await Promise.all([
+  const [items, pendentes, usuarios] = await Promise.all([
     AccessRequest.find(status ? { status } : {}).sort({ createdAt: -1 }).limit(500).lean(),
     AccessRequest.countDocuments({ status: 'pendente' }),
+    User.find().select('name email role').lean(),
   ]);
+  for (const p of items) {
+    if (p.status === 'pendente') p.parecida = contaParecida(p.email, usuarios);
+  }
   res.json({ items, pendentes, sso: { ativo: sso.ATIVO } });
 }));
 
@@ -409,6 +429,37 @@ adminRouter.post('/access-requests/:id/aprovar', asyncHandler(async (req, res) =
   const b = req.body || {};
   const role = papelValido(b.role);
   const name = String(b.name || pedido.name || '').trim() || sso.nomeDoEmail(pedido.email);
+
+  /* VINCULAR: é a mesma pessoa, cadastrada com o outro domínio (@ibm.com ×
+     @br.ibm.com). Em vez de criar uma conta nova — que nasceria sem os acessos
+     por cliente que ela já tem —, corrige o e-mail da conta existente para o que
+     o w3id devolve. Papel e acessos ficam como estão: quem vincula está dizendo
+     "é a mesma pessoa", não "reconfigure esta pessoa".
+     Não mexe no tokenVersion de propósito: a sessão aberta dela continua valendo. */
+  if (b.vincularA) {
+    if (!isValidId(b.vincularA)) return res.status(400).json({ error: 'Conta para vincular inválida.' });
+    const alvo = await User.findById(b.vincularA);
+    if (!alvo) return res.status(404).json({ error: 'A conta que você escolheu não existe mais.' });
+    if (await User.exists({ email: pedido.email, _id: { $ne: alvo._id } })) {
+      return res.status(409).json({ error: `Já existe outra conta com ${pedido.email}.` });
+    }
+    const antigo = alvo.email;
+    alvo.email = pedido.email;
+    await alvo.save();
+
+    pedido.status = 'aprovado';
+    pedido.decidedAt = new Date();
+    pedido.decidedBy = req.user._id;
+    pedido.decidedByEmail = req.user.email;
+    pedido.createdUser = alvo._id;
+    await pedido.save();
+
+    audit.event(req, {
+      action: 'acesso-aprovado', entityType: 'Pedido de acesso', entityLabel: pedido.email, status: 200,
+      summary: `vinculado à conta existente (e-mail ${antigo} → ${pedido.email}); papel e acessos preservados`,
+    });
+    return res.json({ ok: true, criado: false, vinculado: true, emailAnterior: antigo, user: publicUser(alvo.toObject()), request: pedido.toObject() });
+  }
 
   // O usuário pode já ter sido criado à mão enquanto o pedido esperava. Nesse
   // caso o pedido só é fechado e apontado para a conta existente — recriar daria

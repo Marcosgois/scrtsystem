@@ -368,7 +368,8 @@ function renderRequests() {
   body.innerHTML = reqState.items.map((p) => {
     const [cls, rotulo] = REQ_TAG[p.status] || ['', p.status];
     const acoes = p.status === 'pendente'
-      ? `<button class="btn btn-sm btn-primary" data-aprovar="${p._id}">Aprovar</button>
+      ? `${p.parecida ? `<button class="btn btn-sm btn-primary" data-vincular="${p._id}">Vincular</button>` : ''}
+         <button class="btn btn-sm ${p.parecida ? 'btn-ghost' : 'btn-primary'}" data-aprovar="${p._id}">${p.parecida ? 'Criar nova' : 'Aprovar'}</button>
          <button class="btn btn-sm btn-danger-ghost" data-recusar="${p._id}">Recusar</button>`
       : `<span class="muted small">por ${esc(p.decidedByEmail || '—')}</span>`;
     return `
@@ -378,6 +379,7 @@ function renderRequests() {
             <span class="user-avatar">${esc(initials(p.name, p.email))}</span>
             <div><strong>${esc(p.name || '—')}</strong><div class="muted small mono">${esc(p.email)}</div></div>
           </div>
+          ${p.parecida ? `<div class="req-parecida">Já existe <strong>${esc(p.parecida.email)}</strong> — provavelmente a mesma pessoa com o outro domínio. <strong>Vincular</strong> corrige o e-mail dessa conta e preserva os acessos dela.</div>` : ''}
         </td>
         <td>${p.note ? esc(p.note) : '<span class="muted">—</span>'}</td>
         <td>${esc(fmtWhen(p.createdAt))}</td>
@@ -397,6 +399,28 @@ function renderRequests() {
     const p = reqState.items.find((x) => String(x._id) === b.getAttribute('data-recusar'));
     if (p) recusarPedido(p);
   }));
+  body.querySelectorAll('[data-vincular]').forEach((b) => b.addEventListener('click', () => {
+    const p = reqState.items.find((x) => String(x._id) === b.getAttribute('data-vincular'));
+    if (p) vincularPedido(p);
+  }));
+}
+
+/* Vincular não passa pelo modal: não há nada a escolher. O papel e os acessos são
+   os que a conta já tem — a única mudança é o e-mail passar a ser o do w3id. */
+async function vincularPedido(p) {
+  const alvo = p.parecida;
+  if (!alvo) return;
+  if (!confirm(`Vincular ao cadastro existente?\n\n${alvo.name} (${alvo.email})\npassa a ter o e-mail ${p.email}.\n\nO papel e os acessos por cliente dessa conta são preservados, e a sessão dela não cai.`)) return;
+  try {
+    const r = await api(`/admin/access-requests/${p._id}/aprovar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vincularA: alvo._id }),
+    });
+    toast(`Vinculado: ${r.emailAnterior} → ${p.email}.`);
+    await Promise.all([load(), loadRequests()]);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 
 async function recusarPedido(p) {

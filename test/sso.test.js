@@ -229,6 +229,38 @@ async function main() {
     r = await admin.req(`/admin/access-requests/${pedidoCiclano._id}/recusar`, { method: 'POST', json: { reason: 'não é da equipe' } });
     check('recusar encerra o pedido com motivo', r.status === 200 && r.body.request.status === 'recusado' && r.body.request.reason === 'não é da equipe', r.body);
 
+    /* ── Mesma pessoa, outro domínio (@ibm.com × @br.ibm.com) ──────────────
+       O caso que mais dói na prática: a conta foi cadastrada com um domínio e o
+       w3id devolve o outro. Aprovar como novo criaria uma segunda conta e a
+       pessoa perderia os acessos por cliente que já tinha. */
+    const antigo = (await admin.req('/admin/users', {
+      method: 'POST', json: { name: 'Beltrano', email: 'beltrano@ibm.com', password: 'senha123456', role: 'user', access: [{ client: String(cliente._id), level: 'edit' }] },
+    })).body;
+
+    const outroDominio = session(token({ email: 'beltrano@br.ibm.com' }));
+    await outroDominio.req('/auth/solicitar-acesso', { method: 'POST', json: { note: 'domínio diferente' } });
+
+    r = await admin.req('/admin/access-requests');
+    const pedidoBeltrano = r.body.items.find((x) => x.email === 'beltrano@br.ibm.com');
+    check('a fila avisa que já existe conta com o outro domínio',
+      pedidoBeltrano.parecida && pedidoBeltrano.parecida.email === 'beltrano@ibm.com', pedidoBeltrano.parecida);
+    check('não sugere parecida quando não há homônimo', !pedidoFulano.parecida || pedidoFulano.status !== 'pendente');
+
+    r = await admin.req(`/admin/access-requests/${pedidoBeltrano._id}/aprovar`, { method: 'POST', json: { vincularA: String(antigo._id) } });
+    check('vincular corrige o e-mail em vez de criar conta nova',
+      r.status === 200 && r.body.vinculado === true && r.body.criado === false
+      && r.body.user._id === antigo._id && r.body.user.email === 'beltrano@br.ibm.com', r.body);
+    check('vincular preserva o acesso por cliente que a conta já tinha',
+      r.body.user.access.length === 1 && r.body.user.access[0].level === 'edit', r.body.user.access);
+
+    r = await admin.req('/admin/users');
+    check('vincular NÃO deixa duas contas para a mesma pessoa',
+      r.body.filter((u) => String(u.email).startsWith('beltrano@')).length === 1,
+      r.body.filter((u) => String(u.email).startsWith('beltrano@')).map((u) => u.email));
+
+    r = await outroDominio.req('/auth/me');
+    check('vinculado entra pelo SSO com o e-mail do w3id', r.status === 200 && r.body._id === antigo._id, r.body);
+
     // ── Aprovado: agora entra direto, sem senha ──
     const aprovado = session(token({ email: 'fulano@br.ibm.com' }));
     r = await aprovado.req('/auth/me');

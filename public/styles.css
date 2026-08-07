@@ -1458,6 +1458,11 @@ body:not(.is-admin) [data-requires-admin] { display: none !important; }
   margin-left: auto; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px;
   display: inline-grid; place-items: center; background: var(--danger); color: #fff; font-size: 11px; font-weight: 600;
 }
+/* Aviso de conta já existente com o outro domínio, na fila de pedidos. */
+.req-parecida {
+  margin-top: 6px; padding: 6px 9px; border-radius: 6px; font-size: 11.5px; line-height: 1.45;
+  border: 1px solid #e4d08a; background: var(--warning-light); color: var(--warning); max-width: 380px;
+}
 .user-chip.has-alert { position: relative; }
 .user-chip.has-alert::after {
   content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;

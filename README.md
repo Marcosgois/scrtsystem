@@ -107,6 +107,13 @@ Pedir e-mail e senha de novo seria redundante, então o app aproveita essa ident
    acesso por cliente na mesma tela de sempre. Aprovar cria o usuário; a pessoa passa a entrar
    pelo SSO, sem senha nenhuma.
 
+**Mesma pessoa, outro domínio.** Boa parte das contas está em `@br.ibm.com` e o resto em
+`@ibm.com`, e o e-mail que o admin digitou nem sempre é o que o w3id devolve. Quando o pedido
+tem um homônimo (mesmo nome antes do `@`), a fila avisa e oferece **Vincular**: em vez de criar
+uma conta nova — que nasceria sem os acessos por cliente que a pessoa já tem —, corrige o e-mail
+da conta existente. Papel, acessos e a sessão aberta ficam intactos. Sem isso o cadastro se
+partiria em dois, e não haveria conserto: o e-mail é imutável na edição de usuário.
+
 Um selo vermelho com o número de pendências aparece na aba e no menu do usuário — pedido que
 ninguém vê é pedido perdido.
 
@@ -555,7 +562,7 @@ Todas as rotas ficam sob `/api`. Exceto `/api/auth/*`, todas exigem login; as qu
 | POST | `/auth/solicitar-acesso` | Pedido de cadastro — o e-mail vem do token do SSO, nunca do corpo |
 | GET POST PUT DELETE | `/admin/users[/:id]` | Gestão de usuários e acessos (admin) |
 | GET | `/admin/access-requests` | Fila de pedidos de acesso (admin) |
-| POST | `/admin/access-requests/:id/aprovar` · `/recusar` | Decide o pedido; aprovar cria o usuário (admin) |
+| POST | `/admin/access-requests/:id/aprovar` · `/recusar` | Decide o pedido; aprovar cria o usuário, ou corrige o e-mail de uma conta existente com `{vincularA}` (admin) |
 
 **Clientes e consumo (SCRT)**
 
